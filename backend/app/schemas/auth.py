@@ -30,10 +30,10 @@ class VerifySmsResponse(BaseModel):
 
 class ParentVerifyRequest(BaseModel):
     sms_token: str
+    region: str
     school_code: str
     school_name: str
     grade: int
-    class_num: int
     school_type: str  # elementary / middle / high
 
     @field_validator("grade")
@@ -54,10 +54,10 @@ class ParentVerifyRequest(BaseModel):
 class DevLoginRequest(BaseModel):
     """[개발 전용] 인증번호 없이 로그인할 때 사용."""
     phone_number: str
+    region: str = "강남구"
     school_code: str
     school_name: str
     grade: int
-    class_num: int
     school_type: str
 
     @field_validator("phone_number")

@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +16,7 @@ from app.schemas.auth import (
     VerifySmsRequest,
     VerifySmsResponse,
 )
-from app.schemas.user import UpdateNicknameRequest, UserProfile
+from app.schemas.user import UpdateNicknameRequest, UpdateProfileRequest, UserProfile
 from app.services import auth_service, sms_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -33,10 +34,10 @@ async def dev_login(
 
     parent_req = ParentVerifyRequest(
         sms_token="__dev__",
+        region=req.region,
         school_code=req.school_code,
         school_name=req.school_name,
         grade=req.grade,
-        class_num=req.class_num,
         school_type=req.school_type,
     )
     access_token, refresh_token = await auth_service.register_or_login(
@@ -110,6 +111,30 @@ async def update_nickname(
     db: AsyncSession = Depends(get_service_db),
 ):
     user.nickname = req.nickname
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.patch("/me/profile", response_model=UserProfile)
+async def update_profile(
+    req: UpdateProfileRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """지역/학교/학년 변경. 월 1회 제한."""
+    if user.profile_updated_at and user.profile_updated_at > datetime.utcnow() - timedelta(days=30):
+        next_date = user.profile_updated_at + timedelta(days=30)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"월 1회만 변경할 수 있습니다. 다음 변경 가능일: {next_date.strftime('%Y년 %m월 %d일')}",
+        )
+    user.region = req.region
+    user.school_code = req.school_code
+    user.school_name = req.school_name
+    user.grade = req.grade
+    user.school_type = req.school_type
+    user.profile_updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(user)
     return user

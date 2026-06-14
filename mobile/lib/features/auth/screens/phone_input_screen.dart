@@ -56,10 +56,10 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
       final dio = ref.read(dioProvider);
       final resp = await dio.post('/auth/dev/login', data: {
         'phone_number': phone,
+        'region': '강남구',
         'school_code': 'TEST001',
         'school_name': '테스트초등학교',
-        'grade': 1,
-        'class_num': 1,
+        'grade': 3,
         'school_type': 'elementary',
       });
 

@@ -42,11 +42,10 @@ async def register_or_login(
     verification = result.scalar_one_or_none()
 
     if verification:
-        # 재인증 — 학교/학년/반 정보 갱신
+        # 재인증 — 정보 갱신
         verification.school_code = req.school_code
         verification.school_name = req.school_name
         verification.grade = req.grade
-        verification.class_num = req.class_num
         verification.school_type = req.school_type
         verification.is_active = True
     else:
@@ -55,7 +54,7 @@ async def register_or_login(
             school_code=req.school_code,
             school_name=req.school_name,
             grade=req.grade,
-            class_num=req.class_num,
+            class_num=1,
             school_type=req.school_type,
         )
         auth_db.add(verification)
@@ -69,19 +68,19 @@ async def register_or_login(
     user = result.scalar_one_or_none()
 
     if user:
+        user.region = req.region
         user.school_code = req.school_code
         user.school_name = req.school_name
         user.grade = req.grade
-        user.class_num = req.class_num
         user.school_type = req.school_type
     else:
         user = User(
             anon_id=anon_id,
             nickname=_random_nickname(),
+            region=req.region,
             school_code=req.school_code,
             school_name=req.school_name,
             grade=req.grade,
-            class_num=req.class_num,
             school_type=req.school_type,
         )
         service_db.add(user)

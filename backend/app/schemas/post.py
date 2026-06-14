@@ -10,7 +10,7 @@ class PostCreate(BaseModel):
     is_anonymous: bool = True
 
     def model_post_init(self, __context) -> None:
-        if self.board_type not in ("class", "grade", "school", "region"):
+        if self.board_type not in ("grade", "school", "school_ask", "region"):
             raise ValueError("board_type은 class / grade / school / region 중 하나여야 합니다.")
         if len(self.title) < 2 or len(self.title) > 200:
             raise ValueError("제목은 2~200자 사이여야 합니다.")
@@ -41,6 +41,7 @@ class PostResponse(BaseModel):
     scrap_count: int
     report_count: int
     is_hidden: bool
+    comment_count: int = 0
     created_at: datetime
     updated_at: datetime
     author: Optional[PostAuthor] = None  # is_anonymous=True이면 None

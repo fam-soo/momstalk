@@ -8,6 +8,7 @@ import '../features/auth/screens/school_select_screen.dart';
 import '../features/board/screens/board_screen.dart';
 import '../features/board/screens/post_detail_screen.dart';
 import '../features/board/screens/post_write_screen.dart';
+import '../features/profile/screens/profile_screen.dart';
 import 'constants.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -31,6 +32,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/auth/school',
         builder: (ctx, s) => SchoolSelectScreen(smsToken: s.extra as String),
       ),
+      GoRoute(path: '/profile', builder: (ctx, s) => const ProfileScreen()),
       GoRoute(
         path: '/board',
         builder: (ctx, s) => const BoardScreen(),

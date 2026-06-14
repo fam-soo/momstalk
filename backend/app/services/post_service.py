@@ -42,9 +42,9 @@ async def get_post_response(post: Post, user: User, db: AsyncSession) -> PostRes
     scrap = await db.execute(
         select(Scrap).where(Scrap.user_id == user.id, Scrap.post_id == post.id)
     )
-    comment_count_result = await db.execute(
+    comment_count = (await db.execute(
         select(func.count()).where(Comment.post_id == post.id, Comment.is_hidden == False)
-    )
+    )).scalar() or 0
     return PostResponse(
         id=post.id,
         board_type=post.board_type,
@@ -56,6 +56,7 @@ async def get_post_response(post: Post, user: User, db: AsyncSession) -> PostRes
         scrap_count=post.scrap_count,
         report_count=post.report_count,
         is_hidden=post.is_hidden,
+        comment_count=comment_count,
         created_at=post.created_at,
         updated_at=post.updated_at,
         is_liked=like.scalar_one_or_none() is not None,
@@ -78,10 +79,8 @@ async def list_posts(
         .where(Post.board_type == board_type, Post.is_hidden == False, Post.is_deleted == False)
         .where(Post.school_code == school_code)
     )
-    if board_type in ("class", "grade") and grade:
+    if board_type == "grade" and grade:
         query = query.where(Post.grade == grade)
-    if board_type == "class" and class_num:
-        query = query.where(Post.class_num == class_num)
 
     query = query.order_by(Post.created_at.desc()).offset((page - 1) * size).limit(size)
     posts = (await db.execute(query)).scalars().all()

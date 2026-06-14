@@ -4,12 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 
-const _tabs = [
-  ('우리 반', 'class'),
-  ('학년 전체', 'grade'),
-  ('학교 전체', 'school'),
-  ('지역 라운지', 'region'),
-];
+/// 유저 프로필 정보를 캐싱하는 provider
+final _userProfileProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final dio = ref.read(dioProvider);
+  final resp = await dio.get('/auth/me');
+  return Map<String, dynamic>.from(resp.data);
+});
 
 class BoardScreen extends ConsumerStatefulWidget {
   const BoardScreen({super.key});
@@ -25,7 +25,7 @@ class _BoardScreenState extends ConsumerState<BoardScreen> with SingleTickerProv
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: _tabs.length, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) setState(() => _currentTab = _tabController.index);
     });
@@ -37,32 +37,63 @@ class _BoardScreenState extends ConsumerState<BoardScreen> with SingleTickerProv
     super.dispose();
   }
 
+  List<(String label, String boardType)> _buildTabs(Map<String, dynamic> profile) {
+    final region = profile['region'] as String? ?? '지역';
+    final school = profile['school_name'] as String? ?? '학교';
+    final grade = profile['grade'] as int? ?? 1;
+
+    // 학교 이름 축약 (OO초, OO중, OO고)
+    String schoolShort = school;
+    if (school.length > 6) {
+      schoolShort = '${school.substring(0, 4)}…';
+    }
+
+    return [
+      (region, 'region'),
+      (schoolShort, 'school'),
+      ('$grade학년', 'grade'),
+      ('@학교질문', 'school_ask'),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('MomsTalk'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: _tabs.map((t) => Tab(text: t.$1)).toList(),
-          isScrollable: false,
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.account_circle_outlined),
-            onPressed: () {}, // 프로필 화면 (추후 구현)
+    final profileAsync = ref.watch(_userProfileProvider);
+
+    return profileAsync.when(
+      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (_, __) => const Scaffold(body: Center(child: Text('프로필을 불러올 수 없습니다.'))),
+      data: (profile) {
+        final tabs = _buildTabs(profile);
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('MomsTalk'),
+            bottom: TabBar(
+              controller: _tabController,
+              tabs: tabs.map((t) => Tab(text: t.$1)).toList(),
+              isScrollable: false,
+              labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              unselectedLabelStyle: const TextStyle(fontSize: 13),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.account_circle_outlined),
+                tooltip: '내 정보',
+                onPressed: () => context.push('/profile'),
+              ),
+            ],
           ),
-        ],
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: _tabs.map((t) => _PostList(boardType: t.$2)).toList(),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/board/write', extra: _tabs[_currentTab].$2),
-        icon: const Icon(Icons.edit_outlined),
-        label: const Text('글쓰기'),
-      ),
+          body: TabBarView(
+            controller: _tabController,
+            children: tabs.map((t) => _PostList(boardType: t.$2)).toList(),
+          ),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => context.push('/board/write', extra: tabs[_currentTab].$2),
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('글쓰기'),
+          ),
+        );
+      },
     );
   }
 }
@@ -78,6 +109,7 @@ class _PostList extends ConsumerStatefulWidget {
 class _PostListState extends ConsumerState<_PostList> {
   List<Map<String, dynamic>> _posts = [];
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -86,19 +118,22 @@ class _PostListState extends ConsumerState<_PostList> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() { _loading = true; _error = null; });
     try {
       final dio = ref.read(dioProvider);
       final resp = await dio.get('/posts', queryParameters: {'board_type': widget.boardType});
       setState(() => _posts = List<Map<String, dynamic>>.from(resp.data));
+    } catch (e) {
+      setState(() => _error = e.toString());
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) return Center(child: Text('오류: $_error', style: const TextStyle(color: Colors.red)));
     if (_posts.isEmpty) {
       return Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -118,18 +153,32 @@ class _PostListState extends ConsumerState<_PostList> {
         separatorBuilder: (_, __) => const Divider(height: 1),
         itemBuilder: (ctx, i) {
           final p = _posts[i];
-          return ListTile(
-            title: Text(p['title'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(
-              '${p['is_anonymous'] == true ? '익명' : ''}  •  조회 ${p['view_count']}  •  댓글 ${p['comment_count']}',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+          return Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => context.push('/board/${p['id']}'),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(p['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 4),
+                    Row(children: [
+                      Text(p['is_anonymous'] == true ? '익명' : '', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      const Text('  •  ', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text('댓글 ${p['comment_count'] ?? 0}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      const Text('  •  ', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      const Icon(Icons.favorite_outline, size: 12, color: Colors.grey),
+                      const SizedBox(width: 2),
+                      Text('${p['like_count'] ?? 0}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      const Text('  •  ', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      Text('조회 ${p['view_count'] ?? 0}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    ]),
+                  ],
+                ),
+              ),
             ),
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.favorite_outline, size: 14, color: Colors.grey),
-              const SizedBox(width: 2),
-              Text('${p['like_count']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            ]),
-            onTap: () => context.push('/board/${p['id']}'),
           );
         },
       ),

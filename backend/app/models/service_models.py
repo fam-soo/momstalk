@@ -19,13 +19,15 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     anon_id = Column(String(64), unique=True, nullable=False, index=True)
     nickname = Column(String(30), nullable=True)        # 없으면 자동 생성 닉네임
+    region = Column(String(30), nullable=True)          # 지역 (예: 강남구, 수원시)
     school_code = Column(String(20), nullable=False)
     school_name = Column(String(100), nullable=False)
     grade = Column(Integer, nullable=False)
-    class_num = Column(Integer, nullable=False)
+    class_num = Column(Integer, nullable=True)
     school_type = Column(String(10), nullable=False)
     manner_score = Column(Integer, default=36)          # 블라인드 매너온도 유사
     is_banned = Column(Boolean, default=False)
+    profile_updated_at = Column(DateTime, nullable=True)  # 프로필 최종 수정일 (월 1회 제한)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     posts = relationship("Post", back_populates="author")
@@ -37,7 +39,7 @@ class Post(Base):
 
     id = Column(Integer, primary_key=True)
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    board_type = Column(String(10), nullable=False)     # class / grade / school / region
+    board_type = Column(String(20), nullable=False)     # grade / school / school_ask / region
     school_code = Column(String(20), nullable=False)
     grade = Column(Integer, nullable=True)              # class / grade 게시판에서만 사용
     class_num = Column(Integer, nullable=True)          # class 게시판에서만 사용

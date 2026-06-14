@@ -11,6 +11,10 @@ async def create_comment(
     req: CommentCreate,
     db: AsyncSession,
 ) -> CommentResponse:
+    post = (await db.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
+    if not post or post.is_deleted or post.is_hidden:
+        raise ValueError("게시글을 찾을 수 없습니다.")
+
     comment = Comment(
         post_id=post_id,
         author_id=user.id,
@@ -61,6 +65,14 @@ async def list_comments(post_id: int, user: User, db: AsyncSession) -> list[Comm
         )
         liked_ids = {row for row in likes_result.scalars()}
 
+    # 비익명 댓글 작성자 닉네임 일괄 조회
+    author_ids = {c.author_id for c in comments if not c.is_anonymous}
+    nicknames: dict[int, str] = {}
+    if author_ids:
+        users_result = await db.execute(select(User).where(User.id.in_(author_ids)))
+        for u in users_result.scalars():
+            nicknames[u.id] = u.nickname
+
     return [
         CommentResponse(
             id=c.id,
@@ -70,8 +82,9 @@ async def list_comments(post_id: int, user: User, db: AsyncSession) -> list[Comm
             is_anonymous=c.is_anonymous,
             like_count=c.like_count,
             is_hidden=c.is_hidden,
-            is_post_author=(c.author_id == post_author_id),  # ★ 작성자 뱃지
+            is_post_author=(c.author_id == post_author_id),
             is_liked=(c.id in liked_ids),
+            author_nickname=nicknames.get(c.author_id) if not c.is_anonymous else None,
             created_at=c.created_at,
         )
         for c in comments
