@@ -1,0 +1,78 @@
+version: "3.9"
+
+services:
+  # 서비스 DB (게시글, 유저, 댓글 등 — 신원 정보 없음)
+  db_service:
+    image: postgres:16-alpine
+    container_name: momstalk_service_db
+    environment:
+      POSTGRES_USER: momstalk
+      POSTGRES_PASSWORD: momstalk_pass
+      POSTGRES_DB: momstalk_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata_service:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U momstalk -d momstalk_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 인증 DB (전화번호, 학부모 인증 레코드 — 서비스 DB와 물리적 분리)
+  db_auth:
+    image: postgres:16-alpine
+    container_name: momstalk_auth_db
+    environment:
+      POSTGRES_USER: momstalk_auth
+      POSTGRES_PASSWORD: momstalk_auth_pass
+      POSTGRES_DB: momstalk_auth_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata_auth:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U momstalk_auth -d momstalk_auth_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis (세션 토큰, 캐시, Celery 브로커)
+  redis:
+    image: redis:7-alpine
+    container_name: momstalk_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI 백엔드
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: momstalk_backend
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      db_service:
+        condition: service_healthy
+      db_auth:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  pgdata_service:
+  pgdata_auth:
+  redisdata:

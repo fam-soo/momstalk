@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+*.egg-info/
+dist/
+build/
+
+# Alembic
+alembic/versions/*.py
+!alembic/versions/.gitkeep
+
+# Flutter
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/build/
+mobile/*.g.dart
+mobile/**/*.g.dart
+mobile/**/*.freezed.dart
+
+# IDE
+.idea/
+.vscode/
+*.swp
