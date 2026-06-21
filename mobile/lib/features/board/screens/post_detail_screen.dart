@@ -4,6 +4,176 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 
+// ── 신고 카테고리 ─────────────────────────────────────
+
+const _reportCategories = [
+  ('SPAM',           '스팸/홍보'),
+  ('OBSCENE',        '음란/선정적 내용'),
+  ('ABUSE',          '욕설/비방/혐오'),
+  ('PERSONAL_INFO',  '개인정보 노출'),
+  ('MISINFORMATION', '허위 사실/명예훼손'),
+  ('ILLEGAL',        '불법 정보 (마약/도박 등)'),
+  ('OFF_TOPIC',      '주제와 무관한 게시물'),
+  ('OTHER',          '기타'),
+];
+
+/// 공통 신고 다이얼로그.
+/// [targetType]: "post" | "comment"
+/// [targetId]: 대상 ID
+Future<void> showReportDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required String targetType,
+  required int targetId,
+}) async {
+  String? selectedCategory;
+  final otherCtrl = TextEditingController();
+
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setState) => AlertDialog(
+        title: const Text('신고하기'),
+        content: SizedBox(
+          width: 340,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('신고 사유를 선택해주세요.', style: TextStyle(fontSize: 13, color: Colors.grey)),
+              const SizedBox(height: 12),
+              ..._reportCategories.map(
+                (cat) => RadioListTile<String>(
+                  title: Text(cat.$2, style: const TextStyle(fontSize: 14)),
+                  value: cat.$1,
+                  groupValue: selectedCategory,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (v) => setState(() => selectedCategory = v),
+                ),
+              ),
+              if (selectedCategory == 'OTHER') ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: otherCtrl,
+                  decoration: const InputDecoration(
+                    hintText: '기타 사유를 입력하세요',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 2,
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+          FilledButton(
+            onPressed: selectedCategory == null ? null : () => Navigator.pop(ctx, true),
+            child: const Text('신고'),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  if (confirmed != true || selectedCategory == null) return;
+
+  try {
+    final dio = ref.read(dioProvider);
+    await dio.post('/posts/report', data: {
+      'target_type': targetType,
+      'target_id': targetId,
+      'category': selectedCategory,
+      'reason': selectedCategory == 'OTHER' ? otherCtrl.text.trim() : '',
+    });
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('신고가 접수되었습니다. 검토 후 조치됩니다.')));
+    }
+  } catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('신고 실패: $e')));
+    }
+  }
+}
+
+// ── 공용 액션 시트 ────────────────────────────────────
+
+Future<void> showPostActions(
+  BuildContext context,
+  WidgetRef ref, {
+  required int postId,
+  required int? authorId,
+  required String? authorNickname,
+  required bool isMyPost,
+  required VoidCallback onRefresh,
+  VoidCallback? onDelete,
+  VoidCallback? onEdit,
+}) async {
+  await showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+    builder: (_) => SafeArea(
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const SizedBox(height: 8),
+        Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+        const SizedBox(height: 12),
+        if (!isMyPost && authorId != null) ...[
+          ListTile(
+            leading: const Icon(Icons.chat_bubble_outline),
+            title: const Text('대화하기'),
+            onTap: () async {
+              Navigator.pop(context);
+              try {
+                final dio = ref.read(dioProvider);
+                final resp = await dio.post('/conversations/$authorId');
+                final convId = resp.data['id'] as int;
+                final nick = resp.data['other_nickname'] as String? ?? authorNickname ?? '상대방';
+                if (context.mounted) context.push('/dm/$convId', extra: nick);
+              } catch (e) {
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('오류: $e')));
+              }
+            },
+          ),
+        ],
+        if (isMyPost) ...[
+          if (onEdit != null) ListTile(leading: const Icon(Icons.edit_outlined), title: const Text('수정'), onTap: () { Navigator.pop(context); onEdit(); }),
+          if (onDelete != null) ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('삭제', style: TextStyle(color: Colors.red)), onTap: () { Navigator.pop(context); onDelete(); }),
+        ],
+        if (!isMyPost) ...[
+          ListTile(
+            leading: const Icon(Icons.flag_outlined, color: Colors.orange),
+            title: const Text('게시물/회원 신고하기', style: TextStyle(color: Colors.orange)),
+            onTap: () {
+              Navigator.pop(context);
+              showReportDialog(context, ref, targetType: 'post', targetId: postId);
+            },
+          ),
+          if (authorId != null) ListTile(
+            leading: const Icon(Icons.hide_source_outlined, color: Colors.red),
+            title: const Text('이 회원의 글 모두 숨기기', style: TextStyle(color: Colors.red)),
+            onTap: () async {
+              Navigator.pop(context);
+              try {
+                final dio = ref.read(dioProvider);
+                await dio.post('/users/$authorId/block');
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('이 회원의 글을 숨겼습니다.')));
+                  context.pop();
+                }
+              } catch (e) {
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('차단 실패: $e')));
+              }
+            },
+          ),
+        ],
+        const SizedBox(height: 8),
+      ]),
+    ),
+  );
+}
+
 class PostDetailScreen extends ConsumerStatefulWidget {
   final int postId;
   const PostDetailScreen({super.key, required this.postId});
@@ -173,44 +343,18 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       appBar: AppBar(
         title: const Text('게시글'),
         actions: [
-          PopupMenuButton<String>(
+          IconButton(
             icon: const Icon(Icons.more_vert),
-            onSelected: (v) async {
-              switch (v) {
-                case 'edit':
-                  await _editPost();
-                case 'delete':
-                  await _deletePost();
-                case 'scrap':
-                  await _scrapPost();
-                case 'report':
-                  try {
-                    final dio = ref.read(dioProvider);
-                    await dio.post('/posts/report', data: {
-                      'target_type': 'post',
-                      'target_id': widget.postId,
-                      'reason': '부적절한 게시글',
-                    });
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('신고가 접수되었습니다.')));
-                  } catch (e) {
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('신고 실패: $e')));
-                  }
-              }
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit_outlined, size: 18), SizedBox(width: 8), Text('수정')])),
-              const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete_outline, size: 18, color: Colors.red), SizedBox(width: 8), Text('삭제', style: TextStyle(color: Colors.red))])),
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                value: 'scrap',
-                child: Row(children: [
-                  Icon(post['is_scraped'] == true ? Icons.bookmark : Icons.bookmark_outline, size: 18),
-                  const SizedBox(width: 8),
-                  Text(post['is_scraped'] == true ? '스크랩 취소' : '스크랩'),
-                ]),
-              ),
-              const PopupMenuItem(value: 'report', child: Row(children: [Icon(Icons.flag_outlined, size: 18, color: Colors.orange), SizedBox(width: 8), Text('신고')])),
-            ],
+            onPressed: () => showPostActions(
+              context, ref,
+              postId: widget.postId,
+              authorId: post['author_id'] as int?,
+              authorNickname: post['author']?['nickname'] as String?,
+              isMyPost: post['author_id'] == myId,
+              onRefresh: _load,
+              onEdit: _editPost,
+              onDelete: _deletePost,
+            ),
           ),
         ],
       ),
@@ -331,6 +475,24 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
+class _CommentBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _CommentBadge({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold)),
+    );
+  }
+}
+
 class _CommentTile extends ConsumerStatefulWidget {
   final Map<String, dynamic> comment;
   final int postId;
@@ -344,6 +506,71 @@ class _CommentTile extends ConsumerStatefulWidget {
 }
 
 class _CommentTileState extends ConsumerState<_CommentTile> {
+  void _showCommentActions() {
+    final c = widget.comment;
+    final isMyComment = c['author_id'] == widget.myId;
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const SizedBox(height: 8),
+          Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+          const SizedBox(height: 12),
+          if (!isMyComment && c['author_id'] != null) ListTile(
+            leading: const Icon(Icons.chat_bubble_outline),
+            title: const Text('대화하기'),
+            onTap: () async {
+              Navigator.pop(context);
+              try {
+                final dio = ref.read(dioProvider);
+                final resp = await dio.post('/conversations/${c['author_id']}');
+                final convId = resp.data['id'] as int;
+                final nick = resp.data['other_nickname'] as String? ?? '상대방';
+                if (context.mounted) context.push('/dm/$convId', extra: nick);
+              } catch (e) {
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('오류: $e')));
+              }
+            },
+          ),
+          if (isMyComment) ListTile(
+            leading: const Icon(Icons.delete_outline, color: Colors.red),
+            title: const Text('삭제', style: TextStyle(color: Colors.red)),
+            onTap: () { Navigator.pop(context); _delete(); },
+          ),
+          if (!isMyComment) ...[
+            ListTile(
+              leading: const Icon(Icons.flag_outlined, color: Colors.orange),
+              title: const Text('댓글/회원 신고하기', style: TextStyle(color: Colors.orange)),
+              onTap: () {
+                Navigator.pop(context);
+                showReportDialog(context, ref, targetType: 'comment', targetId: c['id'] as int);
+              },
+            ),
+            if (c['author_id'] != null) ListTile(
+              leading: const Icon(Icons.hide_source_outlined, color: Colors.red),
+              title: const Text('이 회원의 글 모두 숨기기', style: TextStyle(color: Colors.red)),
+              onTap: () async {
+                Navigator.pop(context);
+                try {
+                  final dio = ref.read(dioProvider);
+                  await dio.post('/users/${c['author_id']}/block');
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('이 회원의 글을 숨겼습니다.')));
+                    widget.onChanged();
+                  }
+                } catch (e) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('차단 실패: $e')));
+                }
+              },
+            ),
+          ],
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _delete() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -370,8 +597,12 @@ class _CommentTileState extends ConsumerState<_CommentTile> {
   Widget build(BuildContext context) {
     final c = widget.comment;
     final isAnon = c['is_anonymous'] == true;
-    final authorName = isAnon ? '익명' : (c['author_nickname'] ?? '');
+    // 서버가 내려준 anon_label 사용 (글쓴이 / 익명1 / 익명2 ...)
+    final authorName = isAnon
+        ? (c['anon_label'] as String? ?? '익명')
+        : (c['author_nickname'] as String? ?? '');
     final isPostAuthor = c['is_post_author'] == true;
+    final isMine = c['is_mine'] == true;
     final isNested = c['parent_id'] != null;
 
     return Padding(
@@ -392,14 +623,11 @@ class _CommentTileState extends ConsumerState<_CommentTile> {
                 Text(authorName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                 if (isPostAuthor) ...[
                   const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text('작성자', style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold)),
-                  ),
+                  _CommentBadge(label: '작성자', color: Theme.of(context).colorScheme.primary),
+                ],
+                if (isMine && !isPostAuthor) ...[
+                  const SizedBox(width: 6),
+                  _CommentBadge(label: '나', color: Colors.grey),
                 ],
               ]),
               const SizedBox(height: 4),
@@ -427,15 +655,15 @@ class _CommentTileState extends ConsumerState<_CommentTile> {
               ),
             ),
           ),
-          // 삭제 (403이면 서버가 막음)
+          // 더보기 (대화/신고/삭제)
           Material(
             color: Colors.transparent,
             child: InkWell(
               borderRadius: BorderRadius.circular(4),
-              onTap: _delete,
+              onTap: () => _showCommentActions(),
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                child: Icon(Icons.delete_outline, size: 16, color: Colors.grey),
+                child: Icon(Icons.more_horiz, size: 16, color: Colors.grey),
               ),
             ),
           ),

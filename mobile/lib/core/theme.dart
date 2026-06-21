@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 final appTheme = ThemeData(
   useMaterial3: true,
   colorScheme: ColorScheme.fromSeed(
-    seedColor: const Color(0xFF4A90D9),  // 차분한 블루 — 신뢰감
+    seedColor: const Color(0xFF4A90D9),
     brightness: Brightness.light,
   ),
-  appBarTheme: const AppBarTheme(
+  // Noto Sans KR: 한글 완전 지원, Flutter font registry에 직접 등록
+  textTheme: GoogleFonts.notoSansKrTextTheme(),
+  appBarTheme: AppBarTheme(
     centerTitle: true,
     elevation: 0,
     scrolledUnderElevation: 1,
+    titleTextStyle: GoogleFonts.notoSansKr(
+      fontSize: 17,
+      fontWeight: FontWeight.w600,
+      color: Colors.black87,
+    ),
   ),
   cardTheme: CardTheme(
     elevation: 0,

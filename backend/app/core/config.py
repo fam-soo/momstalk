@@ -23,6 +23,17 @@ class Settings(BaseSettings):
 
     NEIS_API_KEY: str = ""
 
+    # 카카오 로그인
+    KAKAO_CLIENT_ID: str = ""           # REST API 키
+    KAKAO_REDIRECT_URI: str = ""        # 앱 딥링크 (카카오 콘솔 등록 필요)
+
+    # 추천 링크 기본 딥링크 스킴
+    INVITE_DEEPLINK_BASE: str = "momstalk://invite"
+
+    # Firebase Cloud Messaging — service account JSON 내용을 그대로 환경변수에 주입
+    # 값이 없으면 FCM 발송 없이 무시 (graceful degradation)
+    FCM_SERVICE_ACCOUNT_JSON: str = ""
+
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_S3_BUCKET: str = "momstalk-media"

@@ -1,14 +1,17 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.exc import IntegrityError
 
-from app.models.service_models import Comment, Like, Post, Report, Scrap, User
+from app.core.profanity import check_profanity
+from app.models.service_models import Block, Comment, Like, Post, Report, Scrap, User
 from app.schemas.post import PostCreate, PostListItem, PostResponse, ScrapResponse, PostUpdate
 
 REPORT_AUTO_HIDE_THRESHOLD = 5
 
 
 async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
+    check_profanity(req.title, "제목")
+    check_profanity(req.content, "내용")
     post = Post(
         author_id=user.id,
         board_type=req.board_type,
@@ -18,6 +21,7 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
         title=req.title,
         content=req.content,
         is_anonymous=req.is_anonymous,
+        mention_tags=req.mention_tags if req.mention_tags else None,
     )
     db.add(post)
     await db.commit()
@@ -57,6 +61,7 @@ async def get_post_response(post: Post, user: User, db: AsyncSession) -> PostRes
         report_count=post.report_count,
         is_hidden=post.is_hidden,
         comment_count=comment_count,
+        mention_tags=post.mention_tags or [],
         created_at=post.created_at,
         updated_at=post.updated_at,
         is_liked=like.scalar_one_or_none() is not None,
@@ -73,17 +78,53 @@ async def list_posts(
     size: int,
     user: User,
     db: AsyncSession,
+    q: str | None = None,
 ) -> list[PostListItem]:
-    query = (
-        select(Post)
-        .where(Post.board_type == board_type, Post.is_hidden == False, Post.is_deleted == False)
-        .where(Post.school_code == school_code)
-    )
-    if board_type == "grade" and grade:
-        query = query.where(Post.grade == grade)
+    # 차단한 유저의 게시글 제외
+    blocked_ids_result = await db.execute(select(Block.blocked_user_id).where(Block.user_id == user.id))
+    blocked_ids = {r for r in blocked_ids_result.scalars()}
+
+    query = select(Post).where(Post.board_type == board_type, Post.is_hidden == False, Post.is_deleted == False)
+
+    if blocked_ids:
+        query = query.where(Post.author_id.notin_(blocked_ids))
+
+    # 검색어 필터
+    if q:
+        query = query.where(or_(Post.title.ilike(f"%{q}%"), Post.content.ilike(f"%{q}%")))
+
+    if board_type == "region":
+        # 지역 게시판: 같은 지역(user.region) 기준
+        query = query.where(Post.school_code.in_(
+            select(User.school_code).where(User.region == user.region)
+        ))
+    elif board_type == "free":
+        # 전체 게시판: 학교 필터 없음, @태그 매칭 게시글을 상단 노출
+        pass  # 필터 없음 — 아래에서 정렬만
+    else:
+        # 학교/학년: 같은 학교 기준
+        query = query.where(Post.school_code == school_code)
+        if board_type == "grade" and grade:
+            query = query.where(Post.grade == grade)
 
     query = query.order_by(Post.created_at.desc()).offset((page - 1) * size).limit(size)
     posts = (await db.execute(query)).scalars().all()
+
+    # free 게시판: @태그가 현재 유저 프로필과 매칭되는 게시글을 상단 정렬
+    if board_type == "free":
+        user_tags = set()
+        if user.region:
+            user_tags.add(f"region:{user.region}")
+        if user.school_code:
+            user_tags.add(f"school:{user.school_code}")
+        if user.grade:
+            user_tags.add(f"grade:{user.grade}")
+
+        def _is_pinned(p: Post) -> bool:
+            tags = p.mention_tags or []
+            return bool(user_tags & set(tags))
+
+        posts = sorted(posts, key=lambda p: (0 if _is_pinned(p) else 1, -p.created_at.timestamp()))
 
     # 현재 유저의 좋아요 여부 일괄 조회
     post_ids = [p.id for p in posts]
@@ -98,11 +139,22 @@ async def list_posts(
         )
         liked_ids = {row for row in likes_result.scalars()}
 
+    # free 게시판용 pinned 태그 집합
+    user_tags: set[str] = set()
+    if board_type == "free":
+        if user.region:
+            user_tags.add(f"region:{user.region}")
+        if user.school_code:
+            user_tags.add(f"school:{user.school_code}")
+        if user.grade:
+            user_tags.add(f"grade:{user.grade}")
+
     items = []
     for post in posts:
         comment_count = (await db.execute(
             select(func.count()).where(Comment.post_id == post.id, Comment.is_hidden == False)
         )).scalar()
+        tags = post.mention_tags or []
         items.append(PostListItem(
             id=post.id,
             board_type=post.board_type,
@@ -112,7 +164,9 @@ async def list_posts(
             like_count=post.like_count,
             scrap_count=post.scrap_count,
             comment_count=comment_count or 0,
+            mention_tags=tags,
             is_liked=post.id in liked_ids,
+            is_pinned=bool(user_tags & set(tags)),
             created_at=post.created_at,
         ))
     return items
@@ -120,8 +174,10 @@ async def list_posts(
 
 async def update_post(post: Post, req: PostUpdate, db: AsyncSession) -> Post:
     if req.title is not None:
+        check_profanity(req.title, "제목")
         post.title = req.title
     if req.content is not None:
+        check_profanity(req.content, "내용")
         post.content = req.content
     await db.commit()
     await db.refresh(post)
@@ -208,6 +264,7 @@ async def report_content(
     reporter: User,
     target_type: str,
     target_id: int,
+    category: str,
     reason: str,
     db: AsyncSession,
 ) -> None:
@@ -216,6 +273,7 @@ async def report_content(
             reporter_id=reporter.id,
             target_type=target_type,
             target_id=target_id,
+            category=category,
             reason=reason,
         ))
         await db.flush()

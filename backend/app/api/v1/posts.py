@@ -14,13 +14,14 @@ router = APIRouter(prefix="/posts", tags=["posts"])
 
 @router.get("", response_model=list[PostListItem])
 async def list_posts(
-    board_type: str = Query(..., description="class / grade / school / region"),
+    board_type: str = Query(..., description="grade / school / free / region"),
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
+    q: str = Query(None, description="검색어 (제목+내용)"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_service_db),
 ):
-    """게시판별 게시글 목록. 유저의 학교/학년/반 기준으로 접근 범위 자동 제한."""
+    """게시판별 게시글 목록. 유저의 학교/학년 기준으로 접근 범위 자동 제한."""
     return await post_service.list_posts(
         board_type=board_type,
         school_code=user.school_code,
@@ -30,6 +31,7 @@ async def list_posts(
         size=size,
         user=user,
         db=db,
+        q=q,
     )
 
 
@@ -39,7 +41,10 @@ async def create_post(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_service_db),
 ):
-    post = await post_service.create_post(user, req, db)
+    try:
+        post = await post_service.create_post(user, req, db)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return await post_service.get_post_response(post, user, db)
 
 
@@ -184,6 +189,6 @@ async def report(
 ):
     """게시글/댓글 신고. 누적 5회 시 자동 블라인드. 중복 신고 불가."""
     try:
-        await post_service.report_content(user, req.target_type, req.target_id, req.reason, db)
+        await post_service.report_content(user, req.target_type, req.target_id, req.category, req.reason, db)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

@@ -1,0 +1,37 @@
+<!--
+flutter create --platforms=android,ios . 실행 후
+android/app/src/main/AndroidManifest.xml 의 <application> 태그 안에 추가하세요.
+
+1) 카카오 로그인 스킴 (KakaoXXXXXX 부분을 실제 네이티브 앱 키로 교체)
+2) 초대 링크 딥링크 (momstalk://invite/...)
+-->
+
+<!-- 카카오 로그인 리다이렉트 Activity -->
+<activity
+    android:name="com.kakao.sdk.flutter.AuthCodeCustomTabsActivity"
+    android:exported="true">
+    <intent-filter android:label="flutter_web_auth">
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <!-- ★ kakao{네이티브앱키} 형식으로 교체 -->
+        <data android:scheme="kakaoYOUR_NATIVE_APP_KEY" android:host="oauth"/>
+    </intent-filter>
+</activity>
+
+<!-- 초대 링크 딥링크: momstalk://invite/{token} -->
+<!-- MainActivity의 <intent-filter> 아래에 추가 -->
+<intent-filter android:autoVerify="true">
+    <action android:name="android.intent.action.VIEW" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <category android:name="android.intent.category.BROWSABLE" />
+    <data android:scheme="momstalk" android:host="invite" />
+</intent-filter>
+
+<!-- 웹 링크 딥링크 (선택): https://momstalk.kr/invite/{token} -->
+<intent-filter android:autoVerify="true">
+    <action android:name="android.intent.action.VIEW" />
+    <category android:name="android.intent.category.DEFAULT" />
+    <category android:name="android.intent.category.BROWSABLE" />
+    <data android:scheme="https" android:host="momstalk.kr" android:pathPrefix="/invite" />
+</intent-filter>

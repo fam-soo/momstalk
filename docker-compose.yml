@@ -51,7 +51,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # FastAPI 백엔드
+  # FastAPI 백엔드 (nginx 뒤에 위치, 외부 포트 직접 노출 안 함)
   backend:
     build:
       context: ./backend
@@ -59,8 +59,8 @@ services:
     container_name: momstalk_backend
     env_file:
       - ./backend/.env
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     depends_on:
       db_service:
         condition: service_healthy
@@ -70,9 +70,48 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  # Nginx — HTTPS + SSE 역방향 프록시
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: momstalk_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/letsencrypt:ro         # certbot 인증서
+      - certbot_www:/var/www/certbot:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Streamlit 관리자 대시보드 (외부 직접 노출 안 함 — nginx /admin/ 통해서만)
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+    container_name: momstalk_admin
+    env_file:
+      - ./admin/.env
+    expose:
+      - "8501"
+    depends_on:
+      - db_service
+    restart: unless-stopped
+
+  # Certbot — Let's Encrypt 인증서 발급/갱신
+  certbot:
+    image: certbot/certbot:latest
+    container_name: momstalk_certbot
+    volumes:
+      - ./nginx/certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   pgdata_service:
   pgdata_auth:
   redisdata:
+  certbot_www:

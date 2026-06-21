@@ -1,4 +1,25 @@
 class AppConstants {
+  /// 시도명 → NEIS 시도 교육청 코드 매핑
+  static const Map<String, String> provinceToNeisCode = {
+    '서울특별시':       'B10',
+    '부산광역시':       'C10',
+    '대구광역시':       'D10',
+    '인천광역시':       'E10',
+    '광주광역시':       'F10',
+    '대전광역시':       'G10',
+    '울산광역시':       'H10',
+    '세종특별자치시':   'I10',
+    '경기도':           'J10',
+    '강원특별자치도':   'K10',
+    '충청북도':         'M10',
+    '충청남도':         'N10',
+    '전북특별자치도':   'P10',
+    '전라남도':         'Q10',
+    '경상북도':         'R10',
+    '경상남도':         'S10',
+    '제주특별자치도':   'T10',
+  };
+
   // Android 에뮬레이터: 'http://10.0.2.2:8000/api/v1'
   // iOS 시뮬레이터:    'http://127.0.0.1:8000/api/v1'
   // 웹 / Windows:      'http://localhost:8000/api/v1'
@@ -8,6 +29,12 @@ class AppConstants {
   static const String refreshTokenKey = 'refresh_token';
 
   static const bool devMode = true; // 테스트 완료 후 false로 변경
+
+  /// 카카오 네이티브 앱 키 (AndroidManifest / Info.plist 에도 동일하게 등록)
+  static const String kakaoNativeAppKey = '95593f4d0972be3dd5072657262c5602';
+
+  /// 딥링크 스킴 (추천 링크)
+  static const String inviteScheme = 'momstalk';
 
   /// 광역시/특별시 → 구 단위, 그 외 도 → 시/군 단위
   static const Map<String, List<String>> regions = {

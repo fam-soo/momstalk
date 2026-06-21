@@ -4,7 +4,7 @@ anon_id 외에는 신원 정보 일절 없음.
 """
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -26,7 +26,15 @@ class User(Base):
     class_num = Column(Integer, nullable=True)
     school_type = Column(String(10), nullable=False)
     manner_score = Column(Integer, default=36)          # 블라인드 매너온도 유사
+    fcm_token = Column(String(256), nullable=True)      # Firebase 푸시 토큰 (기기별 갱신)
     is_banned = Column(Boolean, default=False)
+    suspended_until = Column(DateTime, nullable=True)   # 기간 정지 해제 시각 (NULL이면 정지 없음)
+    warning_count = Column(Integer, default=0)          # 누적 경고 횟수
+    # v3 인증 관련
+    social_provider = Column(String(20), nullable=True)   # "kakao"
+    member_grade = Column(String(10), nullable=False, server_default="lurker")  # lurker / member
+    auth_route = Column(String(10), nullable=True)        # "capture" / "invite"
+    auth_pending = Column(Boolean, default=False)         # 캡처 검토 대기 중 (lurker)
     profile_updated_at = Column(DateTime, nullable=True)  # 프로필 최종 수정일 (월 1회 제한)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -39,7 +47,8 @@ class Post(Base):
 
     id = Column(Integer, primary_key=True)
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    board_type = Column(String(20), nullable=False)     # grade / school / school_ask / region
+    board_type = Column(String(20), nullable=False)     # grade / school / free / region
+    mention_tags = Column(JSON, nullable=True)           # free 게시판 @태그 ["region:기장군", "school:B100", "grade:1"]
     school_code = Column(String(20), nullable=False)
     grade = Column(Integer, nullable=True)              # class / grade 게시판에서만 사용
     class_num = Column(Integer, nullable=True)          # class 게시판에서만 사용
@@ -112,9 +121,130 @@ class Report(Base):
     reporter_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     target_type = Column(String(10), nullable=False)    # post / comment
     target_id = Column(Integer, nullable=False)
-    reason = Column(String(200), nullable=False)
+    category = Column(String(20), nullable=False, default="OTHER")  # SPAM/OBSCENE/ABUSE/PERSONAL_INFO/MISINFORMATION/ILLEGAL/OFF_TOPIC/OTHER
+    reason = Column(String(200), nullable=False)        # detail_reason (기타 사유 직접 입력)
+    status = Column(String(20), default="pending")      # pending / reviewed / dismissed / actioned
+    reviewed_by = Column(Integer, nullable=True)        # 관리자 user_id
+    reviewed_at = Column(DateTime, nullable=True)
+    action_taken = Column(String(50), nullable=True)    # warned / suspended_7d / suspended_30d / banned / cleared
     created_at = Column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (
         __import__("sqlalchemy").UniqueConstraint("reporter_id", "target_type", "target_id", name="uq_report"),
     )
+
+
+class UserWarning(Base):
+    """관리자 또는 자동화에 의한 경고/정지 이력."""
+    __tablename__ = "user_warnings"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    reason = Column(Text, nullable=False)
+    warning_type = Column(String(20), nullable=False)   # warning / suspend_7d / suspend_30d / banned
+    issued_by = Column(Integer, nullable=True)          # 관리자 id (NULL이면 자동)
+    expires_at = Column(DateTime, nullable=True)        # 정지 해제 시각 (NULL이면 영구)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Block(Base):
+    """특정 유저의 게시글/댓글 전부 숨기기."""
+    __tablename__ = "blocks"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    blocked_user_id = Column(Integer, nullable=False)   # 차단 대상 service user id
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        __import__("sqlalchemy").UniqueConstraint("user_id", "blocked_user_id", name="uq_block"),
+    )
+
+
+class Conversation(Base):
+    """1:1 대화방. user_a_id < user_b_id 항상 유지."""
+    __tablename__ = "conversations"
+
+    id = Column(Integer, primary_key=True)
+    user_a_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_b_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    last_message_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    messages = relationship("DirectMessage", back_populates="conversation", lazy="dynamic")
+
+    __table_args__ = (
+        __import__("sqlalchemy").UniqueConstraint("user_a_id", "user_b_id", name="uq_conversation"),
+    )
+
+
+class DirectMessage(Base):
+    __tablename__ = "direct_messages"
+
+    id = Column(Integer, primary_key=True)
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content = Column(Text, nullable=False)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    conversation = relationship("Conversation", back_populates="messages")
+
+
+class AuthCapture(Base):
+    """알림장 캡처 업로드 — 관리자 대조 승인용."""
+    __tablename__ = "auth_captures"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    s3_key = Column(String(300), nullable=False)         # S3 오브젝트 키 (관리자 확인 후 삭제)
+    input_school_code = Column(String(20), nullable=False)
+    input_school_name = Column(String(100), nullable=False)
+    input_grade = Column(Integer, nullable=False)
+    input_class_num = Column(Integer, nullable=True)
+    status = Column(String(20), default="pending")       # pending / approved / rejected
+    reviewed_by = Column(Integer, nullable=True)         # admin_users.id
+    reviewed_at = Column(DateTime, nullable=True)
+    reject_reason = Column(String(200), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class InviteLink(Base):
+    """정회원이 발급하는 추천 링크."""
+    __tablename__ = "invite_links"
+
+    id = Column(Integer, primary_key=True)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    issuer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    school_code = Column(String(20), nullable=False)     # 발급자의 school_code 고정
+    school_name = Column(String(100), nullable=False)
+    school_type = Column(String(10), nullable=False)
+    used_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    used_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=False)        # 발급 후 48시간
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AdminUser(Base):
+    """관리자 계정 (별도 자격증명, service User와 무관)."""
+    __tablename__ = "admin_users"
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String(50), unique=True, nullable=False)
+    hashed_password = Column(String(200), nullable=False)
+    role = Column(String(20), default="moderator")       # superadmin / moderator
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AdminAction(Base):
+    """관리자 행동 이력 (감사 로그)."""
+    __tablename__ = "admin_actions"
+
+    id = Column(Integer, primary_key=True)
+    admin_id = Column(Integer, ForeignKey("admin_users.id"), nullable=False)
+    action_type = Column(String(50), nullable=False)     # approve_capture / reject_capture / ban_user / ...
+    target_type = Column(String(20), nullable=True)      # user / post / comment / capture
+    target_id = Column(Integer, nullable=True)
+    detail = Column(Text, nullable=True)                 # JSON 직렬화 사유/파라미터
+    created_at = Column(DateTime, default=datetime.utcnow)

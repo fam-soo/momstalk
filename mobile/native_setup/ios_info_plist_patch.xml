@@ -1,0 +1,49 @@
+<!--
+flutter create --platforms=android,ios . 실행 후
+ios/Runner/Info.plist 의 <dict> 안에 추가하세요.
+-->
+
+<!-- 카카오 앱 설치 여부 확인 (isKakaoTalkInstalled) -->
+<key>LSApplicationQueriesSchemes</key>
+<array>
+    <string>kakaokompassauth</string>
+    <string>storykompass</string>
+    <string>kakaolink</string>
+    <string>kakaoplus</string>
+    <string>kakaoparts</string>
+    <string>kakaotalk</string>
+    <string>kakaostory</string>
+    <string>kakao</string>
+    <string>momstalk</string>
+</array>
+
+<!-- 카카오 로그인 리다이렉트 URL 스킴 -->
+<!-- ★ kakao{네이티브앱키} 부분을 실제 값으로 교체 -->
+<key>CFBundleURLTypes</key>
+<array>
+    <dict>
+        <key>CFBundleTypeRole</key>
+        <string>Editor</string>
+        <key>CFBundleURLSchemes</key>
+        <array>
+            <string>kakaoYOUR_NATIVE_APP_KEY</string>
+        </array>
+    </dict>
+    <!-- 초대 링크 딥링크: momstalk://invite/{token} -->
+    <dict>
+        <key>CFBundleTypeRole</key>
+        <string>Editor</string>
+        <key>CFBundleURLSchemes</key>
+        <array>
+            <string>momstalk</string>
+        </array>
+    </dict>
+</array>
+
+<!-- 웹 링크 딥링크 (apple-app-site-association 연동 선택) -->
+<!--
+<key>com.apple.developer.associated-domains</key>
+<array>
+    <string>applinks:momstalk.kr</string>
+</array>
+-->

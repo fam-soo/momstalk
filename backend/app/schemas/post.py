@@ -4,14 +4,15 @@ from pydantic import BaseModel
 
 
 class PostCreate(BaseModel):
-    board_type: str       # class / grade / school / region
+    board_type: str       # grade / school / free / region
     title: str
     content: str
     is_anonymous: bool = True
+    mention_tags: list[str] = []  # free 게시판 전용: ["region:기장군", "school:B100", "grade:1"]
 
     def model_post_init(self, __context) -> None:
-        if self.board_type not in ("grade", "school", "school_ask", "region"):
-            raise ValueError("board_type은 class / grade / school / region 중 하나여야 합니다.")
+        if self.board_type not in ("grade", "school", "free", "region"):
+            raise ValueError("board_type은 grade / school / free / region 중 하나여야 합니다.")
         if len(self.title) < 2 or len(self.title) > 200:
             raise ValueError("제목은 2~200자 사이여야 합니다.")
         if len(self.content) < 5:
@@ -42,6 +43,7 @@ class PostResponse(BaseModel):
     report_count: int
     is_hidden: bool
     comment_count: int = 0
+    mention_tags: list[str] = []
     created_at: datetime
     updated_at: datetime
     author: Optional[PostAuthor] = None  # is_anonymous=True이면 None
@@ -60,7 +62,9 @@ class PostListItem(BaseModel):
     like_count: int
     scrap_count: int
     comment_count: int = 0
+    mention_tags: list[str] = []
     is_liked: bool = False
+    is_pinned: bool = False  # 현재 유저와 @태그가 매칭되는 경우 True
     created_at: datetime
 
     model_config = {"from_attributes": True}

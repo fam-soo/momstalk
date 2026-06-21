@@ -91,3 +91,34 @@ class TokenResponse(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class KakaoLoginRequest(BaseModel):
+    kakao_access_token: str
+
+
+class CapturePresignResponse(BaseModel):
+    upload_url: str
+    s3_key: str
+    skip_upload: bool = False  # True이면 S3 미설정(개발 환경) → 클라이언트가 PUT 생략
+
+
+class CaptureSubmitRequest(BaseModel):
+    s3_key: str
+    school_code: str
+    school_name: str
+    grade: int
+    class_num: int | None = None
+    school_type: str
+
+
+class InviteGenerateResponse(BaseModel):
+    token: str
+    expires_at: str
+    deeplink: str
+
+
+class InviteUseRequest(BaseModel):
+    token: str
+    grade: int
+    class_num: int | None = None

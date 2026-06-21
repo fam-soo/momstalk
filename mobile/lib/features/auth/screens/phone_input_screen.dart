@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/api_client.dart';
+import '../../../core/api_client.dart' show dioProvider, tokenStorageProvider;
 import '../../../core/constants.dart';
 
 class PhoneInputScreen extends ConsumerStatefulWidget {
@@ -63,9 +62,9 @@ class _PhoneInputScreenState extends ConsumerState<PhoneInputScreen> {
         'school_type': 'elementary',
       });
 
-      const storage = FlutterSecureStorage();
-      await storage.write(key: AppConstants.tokenKey, value: resp.data['access_token']);
-      await storage.write(key: AppConstants.refreshTokenKey, value: resp.data['refresh_token']);
+      final storage = ref.read(tokenStorageProvider);
+      await storage.write(AppConstants.tokenKey, resp.data['access_token']);
+      await storage.write(AppConstants.refreshTokenKey, resp.data['refresh_token']);
 
       if (mounted) context.go('/board');
     } catch (e) {

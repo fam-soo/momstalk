@@ -11,6 +11,8 @@ class UserProfile(BaseModel):
     grade: int
     school_type: str
     manner_score: int
+    member_grade: str = "lurker"   # lurker / member
+    auth_pending: bool = False
     profile_updated_at: Optional[datetime] = None
     created_at: datetime
 
