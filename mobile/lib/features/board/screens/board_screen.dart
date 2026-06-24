@@ -433,6 +433,7 @@ class _PostCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer(builder: (ctx, ref, _) {
       final isPinned = post['is_pinned'] == true;
+      final isHot = post['is_hot'] == true;
       final tags = (post['mention_tags'] as List<dynamic>? ?? []).cast<String>();
       final time = _relativeTime(post['created_at'] as String?);
 
@@ -464,7 +465,16 @@ class _PostCard extends StatelessWidget {
               ]),
               const SizedBox(height: 8),
               Row(children: [
-                if (isPinned) Container(
+                if (isHot) Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  margin: const EdgeInsets.only(right: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: const Text('🔥인기', style: TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.w700)),
+                ),
+                if (isPinned && !isHot) Container(
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   margin: const EdgeInsets.only(right: 6),
                   decoration: BoxDecoration(
@@ -477,7 +487,7 @@ class _PostCard extends StatelessWidget {
               ]),
               if (tags.isNotEmpty) ...[
                 const SizedBox(height: 6),
-                Wrap(spacing: 4, children: tags.map((t) => Text('@${t.split(':').last}', style: TextStyle(fontSize: 11, color: Theme.of(ctx).colorScheme.primary))).toList()),
+                Wrap(spacing: 4, children: tags.map((t) => Text('@$t', style: TextStyle(fontSize: 11, color: Theme.of(ctx).colorScheme.primary))).toList()),
               ],
               const SizedBox(height: 10),
               Row(children: [

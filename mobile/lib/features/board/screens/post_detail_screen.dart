@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -232,6 +233,23 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       });
       _commentCtrl.clear();
       await _load();
+    } on DioException catch (e) {
+      if (mounted) {
+        final data = e.response?.data;
+        String msg = '';
+        if (data is Map) {
+          final raw = data['detail'];
+          if (raw is String) {
+            msg = raw;
+          } else if (raw is List && raw.isNotEmpty) {
+            msg = (raw as List).map((item) => (item as Map)['msg'] as String? ?? '').join(', ');
+          }
+        }
+        if (msg.isEmpty) msg = '오류 ${e.response?.statusCode ?? ''}: ${e.message}';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), duration: const Duration(seconds: 5)),
+        );
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('오류: $e')));
     }
@@ -350,7 +368,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
               postId: widget.postId,
               authorId: post['author_id'] as int?,
               authorNickname: post['author']?['nickname'] as String?,
-              isMyPost: post['author_id'] == myId,
+              isMyPost: post['is_mine'] == true,
               onRefresh: _load,
               onEdit: _editPost,
               onDelete: _deletePost,

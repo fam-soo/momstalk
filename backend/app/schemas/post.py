@@ -49,6 +49,7 @@ class PostResponse(BaseModel):
     author: Optional[PostAuthor] = None  # is_anonymous=True이면 None
     is_liked: bool = False               # 현재 유저의 좋아요 여부
     is_scraped: bool = False             # 현재 유저의 스크랩 여부
+    is_mine: bool = False                # 현재 유저가 작성한 글인지 (익명 포함)
 
     model_config = {"from_attributes": True}
 
@@ -65,6 +66,7 @@ class PostListItem(BaseModel):
     mention_tags: list[str] = []
     is_liked: bool = False
     is_pinned: bool = False  # 현재 유저와 @태그가 매칭되는 경우 True
+    is_hot: bool = False     # 인기글 여부
     created_at: datetime
 
     model_config = {"from_attributes": True}

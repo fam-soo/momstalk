@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -45,20 +46,25 @@ async def dev_lurker_login(service_db: AsyncSession = Depends(get_service_db)):
     result = await service_db.execute(sa_select(User).where(User.anon_id == anon_id))
     user = result.scalar_one_or_none()
     if user is None:
-        user = User(
-            anon_id=anon_id,
-            nickname=_random_nickname(),
-            school_code="__pending__",
-            school_name="",
-            grade=1,
-            school_type="",
-            social_provider="dev",
-            member_grade="lurker",
-            auth_pending=False,
-        )
-        service_db.add(user)
-        await service_db.commit()
-        await service_db.refresh(user)
+        try:
+            user = User(
+                anon_id=anon_id,
+                nickname=_random_nickname(),
+                school_code="__pending__",
+                school_name="",
+                grade=1,
+                school_type="",
+                social_provider="dev",
+                member_grade="lurker",
+                auth_pending=False,
+            )
+            service_db.add(user)
+            await service_db.commit()
+            await service_db.refresh(user)
+        except IntegrityError:
+            await service_db.rollback()
+            result = await service_db.execute(sa_select(User).where(User.anon_id == anon_id))
+            user = result.scalar_one()
 
     access_token = create_access_token(str(user.id))
     refresh_token = create_refresh_token(str(user.id))

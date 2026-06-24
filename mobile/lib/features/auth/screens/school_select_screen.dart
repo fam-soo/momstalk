@@ -259,7 +259,9 @@ class _SchoolSelectScreenState extends ConsumerState<SchoolSelectScreen> {
           ],
 
           // ── 다음 버튼 ─────────────────────────────────
-          Padding(
+          SafeArea(
+            top: false,
+            child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: FilledButton(
               onPressed: _selected == null ? null : _proceed,
@@ -269,6 +271,7 @@ class _SchoolSelectScreenState extends ConsumerState<SchoolSelectScreen> {
               ),
               child: const Text('다음 — 알림장 캡처 업로드', style: TextStyle(fontSize: 15)),
             ),
+          ),
           ),
         ],
       ),

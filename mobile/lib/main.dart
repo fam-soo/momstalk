@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app_links/app_links.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
+import 'core/api_client.dart';
 import 'core/constants.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
@@ -12,6 +13,13 @@ import 'core/theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   KakaoSdk.init(nativeAppKey: AppConstants.kakaoNativeAppKey);
+
+  // mock 모드: 로그인 화면 없이 바로 앱 진입하도록 토큰 사전 주입
+  if (AppConstants.mockMode) {
+    await tokenStorage.write(AppConstants.tokenKey, 'mock_access_token_12345');
+    await tokenStorage.write(AppConstants.refreshTokenKey, 'mock_refresh_token_67890');
+  }
+
   runApp(const ProviderScope(child: MomsTalkApp()));
 }
 

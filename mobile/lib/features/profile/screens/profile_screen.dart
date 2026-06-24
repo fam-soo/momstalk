@@ -575,14 +575,17 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
               ]),
             ),
           ],
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-            child: FilledButton(
-              onPressed: (_selected == null || _saving) ? null : _save,
-              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-              child: _saving
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('변경 저장', style: TextStyle(fontSize: 15)),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: FilledButton(
+                onPressed: (_selected == null || _saving) ? null : _save,
+                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                child: _saving
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('변경 저장', style: TextStyle(fontSize: 15)),
+              ),
             ),
           ),
         ],

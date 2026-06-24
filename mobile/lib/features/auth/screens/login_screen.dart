@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,7 +45,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       // ── 웹: 카카오 SDK 미지원 ────────────────────────────
       if (kIsWeb) {
         if (AppConstants.devMode) {
-          // DEV 모드: 백엔드 dev endpoint로 lurker 로그인
           await _devLurkerLogin();
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -59,12 +59,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (await isKakaoTalkInstalled()) {
         token = await UserApi.instance.loginWithKakaoTalk();
       } else {
-        // 카카오 콘솔에서 전화번호 동의항목을 필수로 설정해두면
-        // 별도 scopes 지정 없이 자동으로 전화번호 동의 화면이 표시됨
         token = await UserApi.instance.loginWithKakaoAccount();
       }
 
-      final dio = ref.read(dioProvider);
+      await _authenticateWithBackend(token);
+    } catch (e) {
+      if (mounted) {
+        final msg = e.toString().contains('전화번호')
+            ? '카카오 전화번호 제공에 동의해주세요.\n카카오 앱 → 계정 관리 → 동의항목에서 확인하세요.'
+            : '로그인 실패: $e';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), duration: const Duration(seconds: 5)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// 카카오 토큰으로 백엔드 인증. 전화번호 동의 미완료 시 추가 동의 요청 후 재시도.
+  Future<void> _authenticateWithBackend(OAuthToken token) async {
+    final dio = ref.read(dioProvider);
+    try {
       final resp = await dio.post('/auth/kakao', data: {'kakao_access_token': token.accessToken});
 
       final storage = ref.read(tokenStorageProvider);
@@ -80,14 +96,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       } else {
         context.go('/board');
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('로그인 실패: $e')),
-        );
+    } on DioException catch (e) {
+      final detail = (e.response?.data as Map?)?['detail'] as String? ?? '';
+      if (detail.contains('전화번호')) {
+        // 전화번호 동의 추가 요청 후 재시도
+        final newToken = await UserApi.instance.loginWithNewScopes(['phone_number']);
+        final dio2 = ref.read(dioProvider);
+        final resp = await dio2.post('/auth/kakao', data: {'kakao_access_token': newToken.accessToken});
+
+        final storage = ref.read(tokenStorageProvider);
+        await storage.write(AppConstants.tokenKey, resp.data['access_token'] as String);
+        await storage.write(AppConstants.refreshTokenKey, resp.data['refresh_token'] as String);
+
+        final meResp = await dio2.get('/auth/me');
+        final authPending = meResp.data['auth_pending'] as bool? ?? false;
+
+        if (!mounted) return;
+        if (authPending) {
+          context.go('/auth/pending');
+        } else {
+          context.go('/board');
+        }
+      } else {
+        rethrow;
       }
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 

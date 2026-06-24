@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'constants.dart';
+import 'mock_interceptor.dart';
 
 // 웹: SharedPreferences (localStorage) — Web Crypto API 의존성 없음
 // 모바일: FlutterSecureStorage (Android Keystore / iOS Keychain)
@@ -43,6 +44,9 @@ class _TokenStorage {
 
 final _storage = _TokenStorage();
 
+/// mock 모드 초기화 등 ProviderScope 밖에서 토큰을 쓸 때 사용
+final tokenStorage = _storage;
+
 final tokenStorageProvider = Provider<_TokenStorage>((_) => _storage);
 
 /// router.dart / 하위 호환용 alias
@@ -55,6 +59,11 @@ final dioProvider = Provider<Dio>((ref) {
     receiveTimeout: const Duration(seconds: 10),
     headers: {'Content-Type': 'application/json'},
   ));
+
+  if (AppConstants.mockMode) {
+    dio.interceptors.add(MockInterceptor());
+    return dio;
+  }
 
   dio.interceptors.add(InterceptorsWrapper(
     onRequest: (options, handler) async {

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_
 from sqlalchemy.exc import IntegrityError
@@ -21,7 +22,7 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
         title=req.title,
         content=req.content,
         is_anonymous=req.is_anonymous,
-        mention_tags=req.mention_tags if req.mention_tags else None,
+        mention_tags=req.mention_tags or None,
     )
     db.add(post)
     await db.commit()
@@ -66,6 +67,7 @@ async def get_post_response(post: Post, user: User, db: AsyncSession) -> PostRes
         updated_at=post.updated_at,
         is_liked=like.scalar_one_or_none() is not None,
         is_scraped=scrap.scalar_one_or_none() is not None,
+        is_mine=post.author_id == user.id,
     )
 
 
@@ -108,23 +110,27 @@ async def list_posts(
             query = query.where(Post.grade == grade)
 
     query = query.order_by(Post.created_at.desc()).offset((page - 1) * size).limit(size)
-    posts = (await db.execute(query)).scalars().all()
+    posts = list((await db.execute(query)).scalars().all())
 
-    # free 게시판: @태그가 현재 유저 프로필과 매칭되는 게시글을 상단 정렬
-    if board_type == "free":
-        user_tags = set()
-        if user.region:
-            user_tags.add(f"region:{user.region}")
-        if user.school_code:
-            user_tags.add(f"school:{user.school_code}")
-        if user.grade:
-            user_tags.add(f"grade:{user.grade}")
+    # 유저 프로필 기반 @태그 매칭용 집합 (모든 게시판 공통)
+    user_tags: set[str] = set()
+    if user.region:
+        user_tags.add(user.region)
+    if user.school_name:
+        user_tags.add(user.school_name)
+    if user.grade:
+        user_tags.add(f"{user.grade}학년")
 
-        def _is_pinned(p: Post) -> bool:
-            tags = p.mention_tags or []
-            return bool(user_tags & set(tags))
+    def _is_pinned(p: Post) -> bool:
+        return bool(user_tags & set(p.mention_tags or []))
 
-        posts = sorted(posts, key=lambda p: (0 if _is_pinned(p) else 1, -p.created_at.timestamp()))
+    def _hot_score(p: Post, comment_count: int) -> float:
+        now = datetime.now(timezone.utc)
+        age_hours = (now - p.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+        if age_hours > 7 * 24:
+            return 0.0
+        decay = 1.0 if age_hours <= 24 else (0.7 if age_hours <= 72 else 0.4)
+        return (p.like_count * 2 + comment_count * 1.5 + p.scrap_count - p.report_count * 3) * decay
 
     # 현재 유저의 좋아요 여부 일괄 조회
     post_ids = [p.id for p in posts]
@@ -139,21 +145,34 @@ async def list_posts(
         )
         liked_ids = {row for row in likes_result.scalars()}
 
-    # free 게시판용 pinned 태그 집합
-    user_tags: set[str] = set()
-    if board_type == "free":
-        if user.region:
-            user_tags.add(f"region:{user.region}")
-        if user.school_code:
-            user_tags.add(f"school:{user.school_code}")
-        if user.grade:
-            user_tags.add(f"grade:{user.grade}")
+    # 댓글 수 일괄 계산 + 인기글 후보 판별
+    comment_counts: dict[int, int] = {}
+    hot_scores: dict[int, float] = {}
+    for post in posts:
+        cnt = (await db.execute(
+            select(func.count()).where(Comment.post_id == post.id, Comment.is_hidden == False)
+        )).scalar() or 0
+        comment_counts[post.id] = cnt
+        score = _hot_score(post, cnt)
+        if score >= 3:
+            hot_scores[post.id] = score
+
+    # 인기글: 최대 3개, 점수 높은 순
+    top_hot_ids = set(sorted(hot_scores, key=lambda pid: hot_scores[pid], reverse=True)[:3])
+
+    # @태그 매칭 게시글 상단 + 인기글 최상단 정렬
+    # 정렬 키: (hot=0 > pinned=1 > normal=2, 최신순)
+    def _sort_key(p: Post):
+        if p.id in top_hot_ids:
+            return (0, -p.created_at.timestamp())
+        if _is_pinned(p):
+            return (1, -p.created_at.timestamp())
+        return (2, -p.created_at.timestamp())
+
+    posts = sorted(posts, key=_sort_key)
 
     items = []
     for post in posts:
-        comment_count = (await db.execute(
-            select(func.count()).where(Comment.post_id == post.id, Comment.is_hidden == False)
-        )).scalar()
         tags = post.mention_tags or []
         items.append(PostListItem(
             id=post.id,
@@ -163,10 +182,11 @@ async def list_posts(
             view_count=post.view_count,
             like_count=post.like_count,
             scrap_count=post.scrap_count,
-            comment_count=comment_count or 0,
+            comment_count=comment_counts[post.id],
             mention_tags=tags,
             is_liked=post.id in liked_ids,
-            is_pinned=bool(user_tags & set(tags)),
+            is_pinned=_is_pinned(post),
+            is_hot=post.id in top_hot_ids,
             created_at=post.created_at,
         ))
     return items

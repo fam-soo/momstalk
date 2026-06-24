@@ -23,12 +23,14 @@ class AppConstants {
   // Android 에뮬레이터: 'http://10.0.2.2:8000/api/v1'
   // iOS 시뮬레이터:    'http://127.0.0.1:8000/api/v1'
   // 웹 / Windows:      'http://localhost:8000/api/v1'
-  static const String baseUrl = 'http://localhost:8000/api/v1';
+  // 실기기 (같은 Wi-Fi): PC의 로컬 IP 사용
+  static const String baseUrl = 'http://192.168.45.50:8000/api/v1';
 
   static const String tokenKey = 'access_token';
   static const String refreshTokenKey = 'refresh_token';
 
-  static const bool devMode = true; // 테스트 완료 후 false로 변경
+  static const bool devMode = true;  // 테스트 완료 후 false로 변경
+  static const bool mockMode = true; // 서버 없이 앱 테스트 시 true, 실서버 연결 시 false
 
   /// 카카오 네이티브 앱 키 (AndroidManifest / Info.plist 에도 동일하게 등록)
   static const String kakaoNativeAppKey = '95593f4d0972be3dd5072657262c5602';

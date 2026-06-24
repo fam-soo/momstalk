@@ -146,7 +146,9 @@ async def create_comment(
     try:
         return await comment_service.create_comment(user, post_id, req, db)
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        msg = str(e)
+        code = status.HTTP_404_NOT_FOUND if '찾을 수 없습니다' in msg else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=msg)
 
 
 @router.delete("/{post_id}/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
