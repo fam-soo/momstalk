@@ -202,81 +202,139 @@ CATEGORY_LABELS = {
 }
 
 
+def _get_content_preview(db, target_type, target_id):
+    if target_type == "post":
+        row = db.execute(text("SELECT title, content FROM posts WHERE id=:id"), {"id": target_id}).fetchone()
+        if row:
+            return f"**[제목]** {row.title}\n\n**[내용]** {row.content[:300]}"
+    elif target_type == "comment":
+        row = db.execute(text("SELECT content FROM comments WHERE id=:id"), {"id": target_id}).fetchone()
+        if row:
+            return row.content[:300]
+    return None
+
+
 def page_reports():
     st.title("🚨 신고 처리")
 
+    tab_pending, tab_done = st.tabs(["미처리", "처리 완료"])
+
+    with tab_pending:
+        with _db() as db:
+            rows = db.execute(text("""
+                SELECT r.id, r.reporter_id, r.target_type, r.target_id,
+                       r.category, r.reason, r.status, r.created_at
+                FROM reports r
+                WHERE r.status = 'pending'
+                ORDER BY r.created_at ASC
+                LIMIT 100
+            """)).fetchall()
+            previews = {
+                row.id: _get_content_preview(db, row.target_type, row.target_id)
+                for row in rows
+            }
+
+        if not rows:
+            st.info("처리할 신고가 없습니다.")
+        else:
+            st.markdown(f"**미처리 신고 {len(rows)}건**")
+
+            for row in rows:
+                cat = CATEGORY_LABELS.get(row.category, row.category)
+                with st.expander(
+                    f"[#{row.id}] {cat} — {row.target_type} #{row.target_id} "
+                    f"({row.created_at.strftime('%m/%d %H:%M') if row.created_at else ''})"
+                ):
+                    st.markdown(f"""
+                    - **신고자 ID**: {row.reporter_id}
+                    - **대상**: {row.target_type} #{row.target_id}
+                    - **카테고리**: {cat}
+                    - **신고 사유**: {row.reason or '(없음)'}
+                    """)
+
+                    preview = previews.get(row.id)
+                    if preview:
+                        st.markdown("**▼ 신고된 콘텐츠**")
+                        st.info(preview)
+
+                    col1, col2, col3, col4, col5 = st.columns(5)
+                    with col1:
+                        if st.button("경고", key=f"warn_{row.id}"):
+                            _review_report(row.id, row.target_type, row.target_id, "warn")
+                            st.rerun()
+                    with col2:
+                        if st.button("7일 정지", key=f"sus7_{row.id}"):
+                            _review_report(row.id, row.target_type, row.target_id, "suspend_7d")
+                            st.rerun()
+                    with col3:
+                        if st.button("30일 정지", key=f"sus30_{row.id}"):
+                            _review_report(row.id, row.target_type, row.target_id, "suspend_30d")
+                            st.rerun()
+                    with col4:
+                        if st.button("영구 차단", key=f"ban_{row.id}", type="secondary"):
+                            _review_report(row.id, row.target_type, row.target_id, "ban")
+                            st.rerun()
+                    with col5:
+                        if st.button("기각", key=f"clear_{row.id}"):
+                            _review_report(row.id, row.target_type, row.target_id, "cleared")
+                            st.rerun()
+
+    with tab_done:
+        with _db() as db:
+            rows = db.execute(text("""
+                SELECT id, target_type, target_id, category, action_taken, reviewed_at
+                FROM reports
+                WHERE status != 'pending'
+                ORDER BY reviewed_at DESC
+                LIMIT 50
+            """)).fetchall()
+        if rows:
+            df = pd.DataFrame(rows, columns=["ID", "대상유형", "대상ID", "카테고리", "처리결과", "처리시각"])
+            df["카테고리"] = df["카테고리"].map(lambda c: CATEGORY_LABELS.get(c, c))
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.info("처리 완료된 신고 없음")
+
+
+def _review_report(report_id, target_type, target_id, action):
     with _db() as db:
-        rows = db.execute(text("""
-            SELECT r.id, r.reporter_id, r.target_type, r.target_id,
-                   r.category, r.reason, r.status, r.created_at
-            FROM reports r
-            WHERE r.status = 'pending'
-            ORDER BY r.created_at ASC
-            LIMIT 100
-        """)).fetchall()
-
-    if not rows:
-        st.info("처리할 신고가 없습니다.")
-        return
-
-    st.markdown(f"**미처리 신고 {len(rows)}건**")
-
-    for row in rows:
-        cat = CATEGORY_LABELS.get(row.category, row.category)
-        with st.expander(
-            f"[#{row.id}] {cat} — {row.target_type} #{row.target_id} "
-            f"({row.created_at.strftime('%m/%d %H:%M') if row.created_at else ''})"
-        ):
-            st.markdown(f"""
-            - **신고자 ID**: {row.reporter_id}
-            - **대상**: {row.target_type} #{row.target_id}
-            - **카테고리**: {cat}
-            - **사유**: {row.reason or '(없음)'}
-            """)
-
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                if st.button("경고", key=f"warn_{row.id}"):
-                    _review_report(row.id, "warned")
-                    st.rerun()
-            with col2:
-                if st.button("7일 정지", key=f"sus7_{row.id}"):
-                    _review_report(row.id, "suspended_7d")
-                    st.rerun()
-            with col3:
-                if st.button("30일 정지", key=f"sus30_{row.id}"):
-                    _review_report(row.id, "suspended_30d")
-                    st.rerun()
-            with col4:
-                if st.button("기각", key=f"clear_{row.id}"):
-                    _review_report(row.id, "cleared")
-                    st.rerun()
-
-
-def _review_report(report_id, action):
-    with _db() as db:
-        status = "actioned" if action != "cleared" else "dismissed"
+        report_status = "dismissed" if action == "cleared" else "actioned"
         db.execute(text("""
             UPDATE reports
             SET status=:status, reviewed_at=NOW(), action_taken=:action
             WHERE id=:id
-        """), {"id": report_id, "status": status, "action": action})
+        """), {"id": report_id, "status": report_status, "action": action})
 
-        if action.startswith("suspended"):
-            days = int(action.split("_")[1].replace("d", ""))
-            # 신고 대상 게시글/댓글 작성자 정지
-            row = db.execute(text("SELECT target_type, target_id FROM reports WHERE id=:id"), {"id": report_id}).fetchone()
-            if row:
-                if row.target_type == "post":
-                    db.execute(text("""
-                        UPDATE users SET suspended_until = NOW() + INTERVAL ':days days'
-                        WHERE id = (SELECT author_id FROM posts WHERE id=:tid)
-                    """), {"days": days, "tid": row.target_id})
-                elif row.target_type == "comment":
-                    db.execute(text("""
-                        UPDATE users SET suspended_until = NOW() + INTERVAL ':days days'
-                        WHERE id = (SELECT author_id FROM comments WHERE id=:tid)
-                    """), {"days": days, "tid": row.target_id})
+        # 신고 대상 콘텐츠 블라인드 + 작성자 조회
+        author_id = None
+        if action != "cleared":
+            if target_type == "post":
+                row = db.execute(text("SELECT author_id FROM posts WHERE id=:id"), {"id": target_id}).fetchone()
+                if row:
+                    author_id = row.author_id
+                    db.execute(text("UPDATE posts SET is_hidden=true WHERE id=:id"), {"id": target_id})
+            elif target_type == "comment":
+                row = db.execute(text("SELECT author_id FROM comments WHERE id=:id"), {"id": target_id}).fetchone()
+                if row:
+                    author_id = row.author_id
+                    db.execute(text("UPDATE comments SET is_hidden=true WHERE id=:id"), {"id": target_id})
+
+        # 작성자 제재
+        if author_id and action != "cleared":
+            if action == "warn":
+                db.execute(text("UPDATE users SET warning_count = warning_count + 1 WHERE id=:id"), {"id": author_id})
+            elif action == "suspend_7d":
+                db.execute(text("""
+                    UPDATE users SET suspended_until = NOW() + INTERVAL '7 days',
+                    warning_count = warning_count + 1 WHERE id=:id
+                """), {"id": author_id})
+            elif action == "suspend_30d":
+                db.execute(text("""
+                    UPDATE users SET suspended_until = NOW() + INTERVAL '30 days',
+                    warning_count = warning_count + 1 WHERE id=:id
+                """), {"id": author_id})
+            elif action == "ban":
+                db.execute(text("UPDATE users SET is_banned=true WHERE id=:id"), {"id": author_id})
 
         db.commit()
     st.success(f"신고 #{report_id} → {action}")

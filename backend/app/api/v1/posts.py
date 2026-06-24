@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.core.rate_limit import RateLimit
 from app.db import get_service_db
 from app.models.service_models import User
 from app.models.service_models import Comment
@@ -38,9 +39,11 @@ async def list_posts(
 @router.post("", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
 async def create_post(
     req: PostCreate,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_service_db),
 ):
+    await RateLimit.post_create(request)
     try:
         post = await post_service.create_post(user, req, db)
     except ValueError as e:
@@ -81,7 +84,10 @@ async def update_post(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="게시글을 찾을 수 없습니다.")
     if post.author_id != user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="본인의 게시글만 수정할 수 있습니다.")
-    post = await post_service.update_post(post, req, db)
+    try:
+        post = await post_service.update_post(post, req, db)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return await post_service.get_post_response(post, user, db)
 
 
@@ -140,9 +146,11 @@ async def list_comments(
 async def create_comment(
     post_id: int,
     req: CommentCreate,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_service_db),
 ):
+    await RateLimit.comment_create(request)
     try:
         return await comment_service.create_comment(user, post_id, req, db)
     except ValueError as e:
@@ -186,10 +194,12 @@ async def like_comment(
 @router.post("/report", status_code=status.HTTP_204_NO_CONTENT)
 async def report(
     req: ReportRequest,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_service_db),
 ):
     """게시글/댓글 신고. 누적 5회 시 자동 블라인드. 중복 신고 불가."""
+    await RateLimit.report(request)
     try:
         await post_service.report_content(user, req.target_type, req.target_id, req.category, req.reason, db)
     except ValueError as e:

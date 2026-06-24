@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.permissions import require_member
+from app.core.rate_limit import RateLimit
 from app.core.security import create_access_token, decode_token
 from app.db import get_auth_db, get_service_db
 from app.models.service_models import User
@@ -127,8 +128,9 @@ async def dev_login(
 
 
 @router.post("/sms/send", status_code=status.HTTP_204_NO_CONTENT)
-async def send_sms(req: SendSmsRequest, auth_db: AsyncSession = Depends(get_auth_db)):
+async def send_sms(req: SendSmsRequest, request: Request, auth_db: AsyncSession = Depends(get_auth_db)):
     """SMS 인증코드 발송. 개발 모드에서는 콘솔에 출력."""
+    await RateLimit.sms(request)
     await sms_service.send_verification_code(req.phone_number, auth_db)
 
 
@@ -213,9 +215,11 @@ async def register_fcm_token(
 @router.post("/kakao", response_model=TokenResponse)
 async def kakao_login(
     req: KakaoLoginRequest,
+    request: Request,
     service_db: AsyncSession = Depends(get_service_db),
 ):
     """카카오 AccessToken으로 로그인/회원가입. 신규 유저는 lurker 상태로 생성됨."""
+    await RateLimit.login(request)
     try:
         access_token, refresh_token, _user = await social_auth_service.kakao_login(
             req.kakao_access_token, service_db

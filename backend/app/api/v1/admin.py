@@ -5,19 +5,21 @@
 이후 Authorization: Bearer admin_token 으로 모든 /admin/* 호출.
 """
 from datetime import datetime, timedelta
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.core.config import settings
-from app.core.security import decode_token
 from app.db import get_service_db
 from app.models.service_models import (
     AdminAction,
     AdminUser,
     AuthCapture,
+    Comment,
+    Post,
     Report,
     User,
     UserWarning,
@@ -167,6 +169,94 @@ class SuspendRequest(BaseModel):
     reason: str
 
 
+class WarnRequest(BaseModel):
+    reason: str
+
+
+@router.get("/users")
+async def list_users(
+    q: Optional[str] = Query(None),
+    admin: AdminUser = Depends(_get_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    query = select(User).order_by(User.created_at.desc()).limit(100)
+    if q:
+        from sqlalchemy import or_, cast, String
+        query = select(User).where(
+            or_(User.nickname.ilike(f"%{q}%"), cast(User.id, String) == q)
+        ).order_by(User.created_at.desc()).limit(50)
+    users = (await db.execute(query)).scalars().all()
+    return [
+        {
+            "id": u.id,
+            "nickname": u.nickname,
+            "school_name": u.school_name,
+            "grade": u.grade,
+            "member_grade": u.member_grade,
+            "is_banned": u.is_banned,
+            "suspended_until": u.suspended_until.isoformat() if u.suspended_until else None,
+            "warning_count": u.warning_count,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+        }
+        for u in users
+    ]
+
+
+@router.get("/users/{user_id}")
+async def get_user_detail(
+    user_id: int,
+    admin: AdminUser = Depends(_get_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+    warnings = (await db.execute(
+        select(UserWarning).where(UserWarning.user_id == user_id).order_by(UserWarning.created_at.desc())
+    )).scalars().all()
+    post_count = (await db.execute(
+        select(func.count()).where(Post.author_id == user_id, Post.is_deleted == False)
+    )).scalar()
+    return {
+        "id": user.id,
+        "nickname": user.nickname,
+        "school_name": user.school_name,
+        "grade": user.grade,
+        "member_grade": user.member_grade,
+        "is_banned": user.is_banned,
+        "suspended_until": user.suspended_until.isoformat() if user.suspended_until else None,
+        "warning_count": user.warning_count,
+        "post_count": post_count,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "warnings": [
+            {
+                "id": w.id,
+                "warning_type": w.warning_type,
+                "reason": w.reason,
+                "expires_at": w.expires_at.isoformat() if w.expires_at else None,
+                "created_at": w.created_at.isoformat() if w.created_at else None,
+            }
+            for w in warnings
+        ],
+    }
+
+
+@router.post("/users/{user_id}/warn", status_code=status.HTTP_204_NO_CONTENT)
+async def warn_user(
+    user_id: int,
+    req: WarnRequest,
+    admin: AdminUser = Depends(_get_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+    user.warning_count = (user.warning_count or 0) + 1
+    db.add(UserWarning(user_id=user_id, reason=req.reason, warning_type="warning", issued_by=admin.id))
+    db.add(AdminAction(admin_id=admin.id, action_type="warn", target_type="user", target_id=user_id, detail=req.reason))
+    await db.commit()
+
+
 @router.post("/users/{user_id}/suspend", status_code=status.HTTP_204_NO_CONTENT)
 async def suspend_user(
     user_id: int,
@@ -187,7 +277,7 @@ async def suspend_user(
 @router.post("/users/{user_id}/ban", status_code=status.HTTP_204_NO_CONTENT)
 async def ban_user(
     user_id: int,
-    req: RejectRequest,
+    req: WarnRequest,
     admin: AdminUser = Depends(_get_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
@@ -196,6 +286,67 @@ async def ban_user(
         raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
     user.is_banned = True
     db.add(AdminAction(admin_id=admin.id, action_type="ban", target_type="user", target_id=user_id, detail=req.reason))
+    db.add(UserWarning(user_id=user_id, reason=req.reason, warning_type="banned", issued_by=admin.id))
+    await db.commit()
+
+
+@router.post("/users/{user_id}/unban", status_code=status.HTTP_204_NO_CONTENT)
+async def unban_user(
+    user_id: int,
+    admin: AdminUser = Depends(_get_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+    user.is_banned = False
+    user.suspended_until = None
+    db.add(AdminAction(admin_id=admin.id, action_type="unban", target_type="user", target_id=user_id))
+    await db.commit()
+
+
+# ── 게시글 관리 ───────────────────────────────────────
+
+@router.post("/posts/{post_id}/hide", status_code=status.HTTP_204_NO_CONTENT)
+async def hide_post(
+    post_id: int,
+    admin: AdminUser = Depends(_get_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    post = (await db.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
+    post.is_hidden = True
+    db.add(AdminAction(admin_id=admin.id, action_type="hide_post", target_type="post", target_id=post_id))
+    await db.commit()
+
+
+@router.post("/posts/{post_id}/unhide", status_code=status.HTTP_204_NO_CONTENT)
+async def unhide_post(
+    post_id: int,
+    admin: AdminUser = Depends(_get_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    post = (await db.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
+    post.is_hidden = False
+    db.add(AdminAction(admin_id=admin.id, action_type="unhide_post", target_type="post", target_id=post_id))
+    await db.commit()
+
+
+@router.delete("/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def force_delete_post(
+    post_id: int,
+    admin: AdminUser = Depends(_get_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    post = (await db.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="게시글을 찾을 수 없습니다.")
+    post.is_deleted = True
+    post.is_hidden = True
+    db.add(AdminAction(admin_id=admin.id, action_type="delete_post", target_type="post", target_id=post_id))
     await db.commit()
 
 
@@ -211,8 +362,19 @@ async def list_reports(
         select(Report).where(Report.status == status_filter).order_by(Report.created_at.desc()).limit(100)
     )
     reports = result.scalars().all()
-    return [
-        {
+
+    items = []
+    for r in reports:
+        content_preview = None
+        if r.target_type == "post":
+            post = (await db.execute(select(Post).where(Post.id == r.target_id))).scalar_one_or_none()
+            if post:
+                content_preview = f"[제목] {post.title}\n[내용] {post.content[:200]}"
+        elif r.target_type == "comment":
+            comment = (await db.execute(select(Comment).where(Comment.id == r.target_id))).scalar_one_or_none()
+            if comment:
+                content_preview = comment.content[:200]
+        items.append({
             "id": r.id,
             "reporter_id": r.reporter_id,
             "target_type": r.target_type,
@@ -220,14 +382,14 @@ async def list_reports(
             "category": r.category,
             "reason": r.reason,
             "status": r.status,
+            "content_preview": content_preview,
             "created_at": r.created_at.isoformat() if r.created_at else None,
-        }
-        for r in reports
-    ]
+        })
+    return items
 
 
 class ReviewReportRequest(BaseModel):
-    action: str  # warned / suspended_7d / suspended_30d / banned / cleared
+    action: str  # warn / suspend_7d / suspend_30d / ban / cleared
     reason: str = ""
 
 
@@ -241,9 +403,45 @@ async def review_report(
     report = (await db.execute(select(Report).where(Report.id == report_id))).scalar_one_or_none()
     if not report:
         raise HTTPException(status_code=404, detail="신고를 찾을 수 없습니다.")
-    report.status = "actioned" if req.action != "cleared" else "dismissed"
+
+    report.status = "dismissed" if req.action == "cleared" else "actioned"
     report.reviewed_by = admin.id
     report.reviewed_at = datetime.utcnow()
     report.action_taken = req.action
     db.add(AdminAction(admin_id=admin.id, action_type=f"report_{req.action}", target_type=report.target_type, target_id=report.target_id, detail=req.reason))
+
+    # 작성자 조회
+    author_id: Optional[int] = None
+    if report.target_type == "post":
+        post = (await db.execute(select(Post).where(Post.id == report.target_id))).scalar_one_or_none()
+        if post:
+            author_id = post.author_id
+            if req.action != "cleared":
+                post.is_hidden = True
+    elif report.target_type == "comment":
+        comment = (await db.execute(select(Comment).where(Comment.id == report.target_id))).scalar_one_or_none()
+        if comment:
+            author_id = comment.author_id
+            if req.action != "cleared":
+                comment.is_hidden = True
+
+    # 작성자 제재 적용
+    if author_id and req.action != "cleared":
+        user = (await db.execute(select(User).where(User.id == author_id))).scalar_one_or_none()
+        if user:
+            if req.action == "warn":
+                user.warning_count = (user.warning_count or 0) + 1
+                db.add(UserWarning(user_id=author_id, reason=req.reason or "신고 누적", warning_type="warning", issued_by=admin.id))
+            elif req.action == "suspend_7d":
+                user.suspended_until = datetime.utcnow() + timedelta(days=7)
+                user.warning_count = (user.warning_count or 0) + 1
+                db.add(UserWarning(user_id=author_id, reason=req.reason or "신고 처리", warning_type="suspend_7d", issued_by=admin.id, expires_at=user.suspended_until))
+            elif req.action == "suspend_30d":
+                user.suspended_until = datetime.utcnow() + timedelta(days=30)
+                user.warning_count = (user.warning_count or 0) + 1
+                db.add(UserWarning(user_id=author_id, reason=req.reason or "신고 처리", warning_type="suspend_30d", issued_by=admin.id, expires_at=user.suspended_until))
+            elif req.action == "ban":
+                user.is_banned = True
+                db.add(UserWarning(user_id=author_id, reason=req.reason or "영구 정지", warning_type="banned", issued_by=admin.id))
+
     await db.commit()
