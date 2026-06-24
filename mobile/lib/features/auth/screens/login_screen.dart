@@ -1,9 +1,11 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api_client.dart' show dioProvider, tokenStorageProvider;
 import '../../../core/constants.dart';
@@ -17,6 +19,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _loading = false;
+  bool _agreed = false;
 
   /// 개발 전용: 백엔드 /auth/dev/lurker-login 호출 → 실제 JWT 저장 → /board 진입
   Future<void> _devLurkerLogin() async {
@@ -51,6 +54,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             const SnackBar(content: Text('카카오 로그인은 모바일 앱에서만 지원됩니다.')),
           );
         }
+        return;
+      }
+
+      if (!_agreed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('이용약관 및 개인정보처리방침에 동의해주세요.')),
+        );
+        setState(() => _loading = false);
         return;
       }
 
@@ -149,6 +160,54 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 style: TextStyle(color: Colors.grey),
               ),
               const Spacer(),
+              // ── 약관 동의 체크박스 ──────────────────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Checkbox(
+                    value: _agreed,
+                    onChanged: (v) => setState(() => _agreed = v ?? false),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  Expanded(
+                    child: RichText(
+                      text: TextSpan(
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        children: [
+                          const TextSpan(text: '(필수) '),
+                          TextSpan(
+                            text: '이용약관',
+                            style: const TextStyle(
+                              color: Color(0xFF4A90D9),
+                              decoration: TextDecoration.underline,
+                            ),
+                            recognizer: TapGestureRecognizer()
+                              ..onTap = () => launchUrl(
+                                    Uri.parse(AppConstants.termsOfServiceUrl),
+                                    mode: LaunchMode.externalApplication,
+                                  ),
+                          ),
+                          const TextSpan(text: ' 및 '),
+                          TextSpan(
+                            text: '개인정보처리방침',
+                            style: const TextStyle(
+                              color: Color(0xFF4A90D9),
+                              decoration: TextDecoration.underline,
+                            ),
+                            recognizer: TapGestureRecognizer()
+                              ..onTap = () => launchUrl(
+                                    Uri.parse(AppConstants.privacyPolicyUrl),
+                                    mode: LaunchMode.externalApplication,
+                                  ),
+                          ),
+                          const TextSpan(text: '에 동의합니다.'),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
               _loading
                   ? const Center(child: CircularProgressIndicator())
                   : GestureDetector(
@@ -156,17 +215,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       child: Container(
                         height: 52,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFEE500),
+                          color: _agreed ? const Color(0xFFFEE500) : Colors.grey.shade300,
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Row(
+                        child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.chat_bubble, size: 24, color: Color(0xFF3C1E1E)),
-                            SizedBox(width: 8),
+                            Icon(Icons.chat_bubble, size: 24,
+                                color: _agreed ? const Color(0xFF3C1E1E) : Colors.grey),
+                            const SizedBox(width: 8),
                             Text(
                               '카카오로 시작하기',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF3C1E1E)),
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: _agreed ? const Color(0xFF3C1E1E) : Colors.grey),
                             ),
                           ],
                         ),

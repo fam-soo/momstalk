@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
 import '../../board/screens/board_screen.dart';
@@ -40,6 +41,50 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _logout() async {
     await ref.read(tokenStorageProvider).deleteAll();
     if (mounted) context.go('/auth/login');
+  }
+
+  Future<void> _deleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('회원 탈퇴'),
+        content: const Text(
+          '탈퇴하면 모든 개인정보가 즉시 삭제됩니다.\n'
+          '작성한 게시글·댓글은 익명 상태로 유지됩니다.\n\n'
+          '정말 탈퇴하시겠습니까?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('탈퇴'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.delete('/auth/me');
+      await ref.read(tokenStorageProvider).deleteAll();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('탈퇴가 완료되었습니다.')),
+        );
+        context.go('/auth/login');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('탈퇴 처리 중 오류가 발생했습니다: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _generateInvite() async {
@@ -99,12 +144,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('내 정보'),
-        actions: [
-          TextButton(
-            onPressed: _logout,
-            child: const Text('로그아웃', style: TextStyle(color: Colors.red)),
-          ),
-        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -267,6 +306,68 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             },
           ),
         ),
+        const SizedBox(height: 8),
+
+        // ── 서비스 정보 ───────────────────────────────────
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.description_outlined),
+                title: const Text('이용약관'),
+                trailing: const Icon(Icons.open_in_new, size: 16, color: Colors.grey),
+                onTap: () => launchUrl(
+                  Uri.parse(AppConstants.termsOfServiceUrl),
+                  mode: LaunchMode.externalApplication,
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.privacy_tip_outlined),
+                title: const Text('개인정보처리방침'),
+                trailing: const Icon(Icons.open_in_new, size: 16, color: Colors.grey),
+                onTap: () => launchUrl(
+                  Uri.parse(AppConstants.privacyPolicyUrl),
+                  mode: LaunchMode.externalApplication,
+                ),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.info_outline),
+                title: const Text('앱 버전'),
+                trailing: Text(
+                  'v1.0.0',
+                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // ── 로그아웃 / 탈퇴 ──────────────────────────────
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.logout, color: Colors.orange),
+                title: const Text('로그아웃', style: TextStyle(color: Colors.orange)),
+                onTap: _logout,
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.person_remove_outlined, color: Colors.red),
+                title: const Text('회원 탈퇴', style: TextStyle(color: Colors.red)),
+                subtitle: const Text('탈퇴 시 개인정보가 즉시 삭제됩니다',
+                    style: TextStyle(fontSize: 11, color: Colors.grey)),
+                onTap: _deleteAccount,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
       ],
     );
   }

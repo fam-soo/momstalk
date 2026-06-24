@@ -38,6 +38,12 @@ class AppConstants {
   /// 딥링크 스킴 (추천 링크)
   static const String inviteScheme = 'momstalk';
 
+  /// 법적 문서 URL (Notion 퍼블릭 페이지)
+  static const String privacyPolicyUrl =
+      'https://app.notion.com/p/3896cfae8a0780779f2eec48ffa0b60b';
+  static const String termsOfServiceUrl =
+      'https://app.notion.com/p/3896cfae8a078052a7a1fe788f6d3f9a';
+
   /// 광역시/특별시 → 구 단위, 그 외 도 → 시/군 단위
   static const Map<String, List<String>> regions = {
     '서울특별시': [

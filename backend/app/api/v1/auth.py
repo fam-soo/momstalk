@@ -186,6 +186,28 @@ async def get_me(user: User = Depends(get_current_user)):
     return user
 
 
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_service_db),
+    auth_db: AsyncSession = Depends(get_auth_db),
+):
+    """회원 탈퇴. 개인정보(anon_id) 즉시 삭제, 게시글·댓글은 익명으로 유지."""
+    from sqlalchemy import delete as sa_delete
+    from app.models.auth_models import ParentVerification
+
+    # Auth DB에서 인증 레코드 삭제
+    await auth_db.execute(sa_delete(ParentVerification).where(ParentVerification.anon_id == user.anon_id))
+    await auth_db.commit()
+
+    # Service DB: anon_id·닉네임 삭제, 게시글·댓글 내용은 보존 (익명 처리)
+    user.anon_id = f"deleted_{user.id}"
+    user.nickname = "탈퇴한 사용자"
+    user.fcm_token = None
+    user.is_banned = True  # 재활용 방지
+    await db.commit()
+
+
 @router.patch("/me/nickname", response_model=UserProfile)
 async def update_nickname(
     req: UpdateNicknameRequest,
