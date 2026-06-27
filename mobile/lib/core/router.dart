@@ -20,6 +20,9 @@ import '../features/academy/screens/academy_detail_screen.dart';
 import '../features/academy/screens/academy_review_write_screen.dart';
 import 'api_client.dart' show tokenStorageProvider;
 import 'constants.dart';
+import '../features/admin/admin_api.dart';
+import '../features/admin/screens/admin_login_screen.dart';
+import '../features/admin/screens/admin_home_screen.dart';
 
 final _rootNavKey = GlobalKey<NavigatorState>();
 final _shellNavKey = GlobalKey<NavigatorState>();
@@ -29,14 +32,27 @@ final routerProvider = Provider<GoRouter>((ref) {
     navigatorKey: _rootNavKey,
     initialLocation: '/board',
     redirect: (context, state) async {
+      final loc = state.matchedLocation;
+      if (loc.startsWith('/admin')) return null;
       final storage = ref.read(tokenStorageProvider);
       final token = await storage.read(AppConstants.tokenKey);
-      final loc = state.matchedLocation;
       final isAuthRoute = loc.startsWith('/auth') || loc.startsWith('/invite');
       if (token == null && !isAuthRoute) return '/auth/login';
       return null;
     },
     routes: [
+      // ── 관리자 ────────────────────────────────────────
+      GoRoute(path: '/admin/login', builder: (ctx, s) => const AdminLoginScreen()),
+      GoRoute(
+        path: '/admin',
+        redirect: (ctx, s) async {
+          final token = await readAdminToken();
+          if (token == null) return '/admin/login';
+          return null;
+        },
+        builder: (ctx, s) => const AdminHomeScreen(),
+      ),
+
       // ── 인증 ──────────────────────────────────────────
       GoRoute(path: '/auth/login', builder: (ctx, s) => const LoginScreen()),
       GoRoute(path: '/auth/school-select', builder: (ctx, s) => const SchoolSelectScreen()),
