@@ -24,7 +24,7 @@ class AppConstants {
   // 실기기 (같은 Wi-Fi): PC의 로컬 IP 사용
   // 프로덕션: Render 배포 후 'https://momstalk-api.onrender.com/api/v1'
   static const String _devUrl = 'http://localhost:8000/api/v1';
-  static const String _prodUrl = 'https://momstalk-api.onrender.com/api/v1';
+  static const String _prodUrl = 'https://momstalk.onrender.com/api/v1';
   static const String baseUrl = bool.fromEnvironment('dart.vm.product') ? _prodUrl : _devUrl;
 
   static const String tokenKey = 'access_token';

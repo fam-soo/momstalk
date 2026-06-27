@@ -28,3 +28,8 @@ firebase-service-account*.json
 .idea/
 .vscode/
 *.swp
+
+# Supabase production env (contains secrets)
+backend/.env.supabase
+*.db
+supabase_*.sql
