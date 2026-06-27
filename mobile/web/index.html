@@ -36,6 +36,27 @@
 
   <title>MomsTalk</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    // GitHub Pages SPA 라우팅 — ?p= 파라미터를 실제 경로로 복원
+    (function() {
+      var redirect = sessionStorage.redirect;
+      delete sessionStorage.redirect;
+      if (redirect && redirect !== location.href) {
+        history.replaceState(null, null, redirect);
+      } else {
+        var search = location.search;
+        if (search) {
+          var p = new URLSearchParams(search).get('p');
+          if (p) {
+            var q = new URLSearchParams(search).get('q');
+            var url = location.pathname.split('?')[0] + p +
+              (q ? '?' + q.replace(/~and~/g, '&') : '') + location.hash;
+            history.replaceState(null, null, url);
+          }
+        }
+      }
+    })();
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
