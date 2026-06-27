@@ -54,11 +54,12 @@ def _sidebar():
     st.sidebar.title("🏠 MomsTalk 관리자")
     st.sidebar.markdown("---")
     pages = {
+        "📊 대시보드": "dashboard",
+        "✏️ 공지 작성": "post_write",
         "📋 캡처 심사": "captures",
         "🚨 신고 처리": "reports",
         "👥 유저 관리": "users",
         "🚫 금칙어 관리": "profanity",
-        "📊 대시보드": "dashboard",
     }
     selected = st.sidebar.radio("메뉴", list(pages.keys()))
     st.sidebar.markdown("---")
@@ -524,23 +525,23 @@ def page_dashboard():
     col1, col2, col3 = st.columns(3)
     col1.metric("전체 유저", stats.total_users)
     col2.metric("정회원", stats.members)
-    col3.metric("심사 대기", stats.pending_captures, delta=f"+{stats.pending} 보류" if stats.pending else None)
+    col3.metric("심사 대기 캡처", stats.pending_captures)
 
     col4, col5, col6 = st.columns(3)
     col4.metric("게시글 수", stats.posts)
     col5.metric("미처리 신고", stats.open_reports)
-    col6.metric("심사 대기 캡처", stats.pending_captures)
+    col6.metric("인증 보류 유저", stats.pending)
 
     st.markdown("---")
-    st.subheader("최근 7일 가입 추이")
 
+    # ── 최근 7일 가입 추이 ──────────────────────────────
+    st.subheader("최근 7일 가입 추이")
     with _db() as db:
         signup_rows = db.execute(text("""
             SELECT DATE(created_at) AS day, COUNT(*) AS cnt
             FROM users
             WHERE created_at >= NOW() - INTERVAL '7 days'
-            GROUP BY day
-            ORDER BY day
+            GROUP BY day ORDER BY day
         """)).fetchall()
 
     if signup_rows:
@@ -549,6 +550,143 @@ def page_dashboard():
         st.bar_chart(df.set_index("날짜"))
     else:
         st.info("최근 7일 가입 데이터 없음")
+
+    st.markdown("---")
+
+    # ── 지역별 게시글 현황 ──────────────────────────────
+    st.subheader("지역별 게시글 현황")
+    with _db() as db:
+        region_rows = db.execute(text("""
+            SELECT u.region, COUNT(p.id) AS post_cnt
+            FROM posts p
+            JOIN users u ON u.id = p.author_id
+            WHERE p.is_deleted = false AND u.region IS NOT NULL AND u.region != ''
+            GROUP BY u.region
+            ORDER BY post_cnt DESC
+            LIMIT 20
+        """)).fetchall()
+
+    if region_rows:
+        df_region = pd.DataFrame(region_rows, columns=["지역", "게시글수"])
+        st.bar_chart(df_region.set_index("지역"))
+        st.dataframe(df_region, use_container_width=True, hide_index=True)
+    else:
+        st.info("게시글 데이터 없음")
+
+    st.markdown("---")
+
+    # ── 악성 유저 현황 ──────────────────────────────────
+    st.subheader("악성 유저 현황 (경고 1회 이상)")
+    with _db() as db:
+        bad_rows = db.execute(text("""
+            SELECT id, nickname, school_name, warning_count,
+                   is_banned, suspended_until, member_grade, created_at
+            FROM users
+            WHERE warning_count > 0 OR is_banned = true
+               OR (suspended_until IS NOT NULL AND suspended_until > NOW())
+            ORDER BY warning_count DESC, is_banned DESC
+            LIMIT 50
+        """)).fetchall()
+
+    if bad_rows:
+        data = []
+        for r in bad_rows:
+            status = "🔴 영구차단" if r.is_banned else (
+                f"⛔ {r.suspended_until.strftime('%m/%d')}까지 정지"
+                if r.suspended_until and r.suspended_until > datetime.datetime.utcnow()
+                else "⚠️ 경고"
+            )
+            data.append({
+                "ID": r.id, "닉네임": r.nickname, "학교": r.school_name or "-",
+                "경고수": r.warning_count, "상태": status,
+            })
+        st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+    else:
+        st.success("제재 이력이 있는 유저가 없습니다.")
+
+
+# ══════════════════════════════════════════════════════════════════
+# 페이지 6 — 공지 / 게시글 작성
+# ══════════════════════════════════════════════════════════════════
+
+def page_post_write():
+    st.title("✏️ 공지 / 게시글 작성")
+    st.caption("운영자 계정으로 게시판에 직접 글을 작성합니다.")
+
+    ADMIN_ANON_ID = "system_admin_001"
+
+    # 운영자 계정 자동 생성
+    with _db() as db:
+        admin = db.execute(text(
+            "SELECT id FROM users WHERE anon_id = :aid"
+        ), {"aid": ADMIN_ANON_ID}).fetchone()
+        if not admin:
+            db.execute(text("""
+                INSERT INTO users (anon_id, nickname, region, member_grade)
+                VALUES (:aid, '운영자', '전국', 'member')
+            """), {"aid": ADMIN_ANON_ID})
+            db.commit()
+            admin = db.execute(text(
+                "SELECT id FROM users WHERE anon_id = :aid"
+            ), {"aid": ADMIN_ANON_ID}).fetchone()
+        admin_id = admin.id
+
+    board_options = {"전체 (공지)": "free", "지역": "region", "학교": "school", "학년": "grade"}
+    board_label = st.selectbox("게시판", list(board_options.keys()))
+    board_type = board_options[board_label]
+
+    title = st.text_input("제목", placeholder="공지사항 제목을 입력하세요")
+    content = st.text_area("내용", height=300, placeholder="내용을 입력하세요")
+    is_pinned = st.checkbox("상단 고정 (공지)", value=True)
+
+    if st.button("게시글 등록", type="primary", disabled=not title.strip()):
+        if not content.strip():
+            st.error("내용을 입력해주세요.")
+        else:
+            with _db() as db:
+                db.execute(text("""
+                    INSERT INTO posts (author_id, board_type, title, content, is_anonymous, is_pinned, created_at)
+                    VALUES (:author_id, :board_type, :title, :content, false, :is_pinned, NOW())
+                """), {
+                    "author_id": admin_id, "board_type": board_type,
+                    "title": title, "content": content, "is_pinned": is_pinned,
+                })
+                db.commit()
+            st.success("게시글이 등록되었습니다!")
+            st.rerun()
+
+    st.markdown("---")
+    st.subheader("최근 운영자 게시글")
+    with _db() as db:
+        posts = db.execute(text("""
+            SELECT p.id, p.board_type, p.title, p.is_pinned, p.created_at,
+                   p.view_count, p.like_count
+            FROM posts p
+            WHERE p.author_id = :aid AND p.is_deleted = false
+            ORDER BY p.created_at DESC LIMIT 20
+        """), {"aid": admin_id}).fetchall()
+
+    if posts:
+        for p in posts:
+            pin = "📌 " if p.is_pinned else ""
+            col_title, col_del = st.columns([5, 1])
+            with col_title:
+                st.markdown(
+                    f"{pin}**[{p.board_type}]** {p.title} "
+                    f"<small style='color:gray'>조회 {p.view_count} · 좋아요 {p.like_count} · "
+                    f"{p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else ''}</small>",
+                    unsafe_allow_html=True,
+                )
+            with col_del:
+                if st.button("삭제", key=f"del_post_{p.id}"):
+                    with _db() as db:
+                        db.execute(text(
+                            "UPDATE posts SET is_deleted=true WHERE id=:id"
+                        ), {"id": p.id})
+                        db.commit()
+                    st.rerun()
+    else:
+        st.info("작성된 게시글이 없습니다.")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -566,7 +704,11 @@ if not _check_password():
 
 page = _sidebar()
 
-if page == "captures":
+if page == "dashboard":
+    page_dashboard()
+elif page == "post_write":
+    page_post_write()
+elif page == "captures":
     page_captures()
 elif page == "reports":
     page_reports()
@@ -574,5 +716,3 @@ elif page == "users":
     page_users()
 elif page == "profanity":
     page_profanity()
-elif page == "dashboard":
-    page_dashboard()
