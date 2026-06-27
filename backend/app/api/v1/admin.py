@@ -26,11 +26,17 @@ from app.models.service_models import (
 )
 from app.services import capture_service
 
-from passlib.context import CryptContext
+import bcrypt as _bcrypt
 from jose import jwt as jose_jwt, JWTError
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def _hash_password(plain: str) -> str:
+    return _bcrypt.hashpw(plain.encode(), _bcrypt.gensalt()).decode()
+
+
+def _verify_password(plain: str, hashed: str) -> bool:
+    return _bcrypt.checkpw(plain.encode(), hashed.encode())
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 _bearer = HTTPBearer()
@@ -80,7 +86,7 @@ async def admin_login(req: AdminLoginRequest, db: AsyncSession = Depends(get_ser
     admin = (await db.execute(
         select(AdminUser).where(AdminUser.username == req.username, AdminUser.is_active == True)
     )).scalar_one_or_none()
-    if not admin or not _pwd_ctx.verify(req.password, admin.hashed_password):
+    if not admin or not _verify_password(req.password, admin.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="잘못된 자격증명입니다.")
     return {"admin_token": _create_admin_token(admin.id), "role": admin.role}
 
@@ -101,7 +107,7 @@ async def create_admin(
 ):
     if admin.role != "superadmin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="superadmin 권한이 필요합니다.")
-    hashed = _pwd_ctx.hash(req.password)
+    hashed = _hash_password(req.password)
     new_admin = AdminUser(username=req.username, hashed_password=hashed, role=req.role)
     db.add(new_admin)
     await db.commit()
