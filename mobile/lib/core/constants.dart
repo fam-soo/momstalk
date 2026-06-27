@@ -36,6 +36,9 @@ class AppConstants {
   /// 카카오 네이티브 앱 키 (AndroidManifest / Info.plist 에도 동일하게 등록)
   static const String kakaoNativeAppKey = '95593f4d0972be3dd5072657262c5602';
 
+  /// 카카오 JavaScript 키 (웹 플랫폼용)
+  static const String kakaoJavaScriptKey = '985da64b367618f43e49b3c127ca9306';
+
   /// 딥링크 스킴 (추천 링크)
   static const String inviteScheme = 'momstalk';
 

@@ -13,7 +13,10 @@ import 'core/theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  KakaoSdk.init(nativeAppKey: AppConstants.kakaoNativeAppKey);
+  KakaoSdk.init(
+    nativeAppKey: AppConstants.kakaoNativeAppKey,
+    javaScriptAppKey: AppConstants.kakaoJavaScriptKey,
+  );
 
   // Firebase 초기화 (google-services.json 없는 개발 환경에서는 무시)
   try {
