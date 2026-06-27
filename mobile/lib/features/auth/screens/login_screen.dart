@@ -64,9 +64,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await _authenticateWithBackend(token);
     } catch (e) {
       if (mounted) {
-        final msg = e.toString().contains('전화번호')
-            ? '카카오 전화번호 제공에 동의해주세요.\n카카오 앱 → 계정 관리 → 동의항목에서 확인하세요.'
-            : '로그인 실패: $e';
+        final msg = '로그인 실패: $e';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg), duration: const Duration(seconds: 5)),
         );
@@ -95,30 +93,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       } else {
         context.go('/board');
       }
-    } on DioException catch (e) {
-      final detail = (e.response?.data as Map?)?['detail'] as String? ?? '';
-      if (detail.contains('전화번호')) {
-        // 전화번호 동의 추가 요청 후 재시도
-        final newToken = await UserApi.instance.loginWithNewScopes(['phone_number']);
-        final dio2 = ref.read(dioProvider);
-        final resp = await dio2.post('/auth/kakao', data: {'kakao_access_token': newToken.accessToken});
-
-        final storage = ref.read(tokenStorageProvider);
-        await storage.write(AppConstants.tokenKey, resp.data['access_token'] as String);
-        await storage.write(AppConstants.refreshTokenKey, resp.data['refresh_token'] as String);
-
-        final meResp = await dio2.get('/auth/me');
-        final authPending = meResp.data['auth_pending'] as bool? ?? false;
-
-        if (!mounted) return;
-        if (authPending) {
-          context.go('/auth/pending');
-        } else {
-          context.go('/board');
-        }
-      } else {
-        rethrow;
-      }
+    } on DioException {
+      rethrow;
     }
   }
 

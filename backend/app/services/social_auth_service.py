@@ -19,29 +19,16 @@ KAKAO_ME_URL = "https://kapi.kakao.com/v2/user/me"
 
 
 async def _fetch_kakao_profile(kakao_access_token: str) -> dict:
-    """카카오 API로 사용자 정보 조회. 전화번호 동의 항목 필수."""
+    """카카오 API로 사용자 정보 조회. 카카오 고유 ID만 사용 (phone_number 스코프 불필요)."""
     headers = {"Authorization": f"Bearer {kakao_access_token}"}
-    params = {"property_keys": '["kakao_account.phone_number","kakao_account.name"]'}
     async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.get(KAKAO_ME_URL, headers=headers, params=params)
+        resp = await client.get(KAKAO_ME_URL, headers=headers)
     if resp.status_code != 200:
         raise ValueError(f"카카오 API 오류: {resp.status_code}")
     data = resp.json()
-    kakao_account = data.get("kakao_account", {})
-    phone = kakao_account.get("phone_number")
-    if not phone:
-        raise ValueError("전화번호 동의가 필요합니다. 카카오 로그인 시 전화번호 제공에 동의해 주세요.")
-    # 카카오 전화번호: "+82 10-XXXX-XXXX" → "010XXXXXXXX"
-    phone_normalized = _normalize_kakao_phone(phone)
-    return {"phone": phone_normalized, "kakao_id": str(data["id"])}
+    kakao_id = str(data["id"])
+    return {"kakao_id": kakao_id}
 
-
-def _normalize_kakao_phone(raw: str) -> str:
-    digits = "".join(c for c in raw if c.isdigit())
-    # 국가코드 82 제거 후 0 붙임
-    if digits.startswith("82") and len(digits) > 2:
-        digits = "0" + digits[2:]
-    return digits
 
 
 async def kakao_login(
@@ -53,8 +40,7 @@ async def kakao_login(
     신규 유저는 member_grade='lurker', auth_pending=False로 생성된다.
     """
     profile = await _fetch_kakao_profile(kakao_access_token)
-    phone = profile["phone"]
-    anon_id = make_anon_id(phone)
+    anon_id = make_anon_id(profile["kakao_id"])
 
     result = await service_db.execute(select(User).where(User.anon_id == anon_id))
     user = result.scalar_one_or_none()
