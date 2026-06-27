@@ -39,7 +39,7 @@ jobs:
 
       - name: Build Flutter Web
         working-directory: mobile
-        run: flutter build web --release --base-href /momstalk/ --dart-define=FLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/
+        run: flutter build web --release --base-href / --dart-define=FLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/
 
       - uses: actions/configure-pages@v4
 
