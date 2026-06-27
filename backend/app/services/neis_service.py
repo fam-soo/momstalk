@@ -166,6 +166,125 @@ async def search_schools(
     return results
 
 
+NEIS_ACADEMY_ENDPOINT = "https://open.neis.go.kr/hub/acaInsTiInfo"
+
+# 지역명 → 시도교육청코드 (acaInsTiInfo 필수 파라미터)
+_REGION_TO_EDU_CODE: dict[str, str] = {
+    "서울": "B10", "서울특별시": "B10",
+    "부산": "C10", "부산광역시": "C10",
+    "대구": "D10", "대구광역시": "D10",
+    "인천": "E10", "인천광역시": "E10",
+    "광주": "F10", "광주광역시": "F10",
+    "대전": "G10", "대전광역시": "G10",
+    "울산": "H10", "울산광역시": "H10",
+    "세종": "I10", "세종특별자치시": "I10",
+    "경기": "J10", "경기도": "J10",
+    "강원": "K10", "강원특별자치도": "K10",
+    "충북": "M10", "충청북도": "M10",
+    "충남": "N10", "충청남도": "N10",
+    "전북": "P10", "전북특별자치도": "P10",
+    "전남": "Q10", "전라남도": "Q10",
+    "경북": "R10", "경상북도": "R10",
+    "경남": "S10", "경상남도": "S10",
+    "제주": "T10", "제주특별자치도": "T10",
+}
+
+# 구/군 → 시도 코드 (구 단위 지역 입력 시)
+for _district, _code in list(_DISTRICT_TO_NEIS_CODE.items()):
+    _REGION_TO_EDU_CODE[_district] = _code
+
+
+def _infer_edu_code(region: str) -> str | None:
+    """지역명에서 시도교육청코드를 추론."""
+    if region in _REGION_TO_EDU_CODE:
+        return _REGION_TO_EDU_CODE[region]
+    for key, code in _REGION_TO_EDU_CODE.items():
+        if key in region or region in key:
+            return code
+    return None
+
+
+async def search_academies(
+    name: str | None = None,
+    region: str | None = None,
+    subject: str | None = None,
+) -> list[dict]:
+    """NEIS acaInsTiInfo API로 학원 검색.
+
+    ATPT_OFCDC_SC_CODE 필수: region에서 자동 추론.
+    region 없으면 서울(B10) 기본값.
+    """
+    edu_code = _infer_edu_code(region or "") or "B10"
+
+    if not settings.NEIS_API_KEY:
+        return _dummy_academies(name, region, subject)
+
+    params: dict = {
+        "KEY": settings.NEIS_API_KEY,
+        "Type": "json",
+        "pIndex": 1,
+        "pSize": 50,
+        "ATPT_OFCDC_SC_CODE": edu_code,
+    }
+    if name:
+        params["ACA_NM"] = name
+    if region:
+        # 구/군 단위면 ADMST_ZONE_NM (행정구역명)에 삽입
+        if any(region.endswith(s) for s in ("구", "군", "시")):
+            params["ADMST_ZONE_NM"] = region
+    if subject:
+        params["LE_ORD_NM"] = subject  # 계열명 (예: 국어, 수학)
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(NEIS_ACADEMY_ENDPOINT, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception:
+        return _dummy_academies(name, region, subject)
+
+    if "RESULT" in data:
+        return []
+
+    rows = (
+        data.get("acaInsTiInfo", [{}])[1].get("row", [])
+        if "acaInsTiInfo" in data and len(data["acaInsTiInfo"]) > 1
+        else []
+    )
+
+    results = []
+    for row in rows:
+        results.append({
+            "neis_academy_code": row.get("ACA_INSTI_SC_CODE"),
+            "name": row.get("ACA_NM", ""),
+            "region": row.get("ADMST_ZONE_NM", ""),
+            "address": row.get("FA_RDNMA", ""),
+            "phone": row.get("ACA_PONE_NO", ""),
+            "subjects": [s.strip() for s in (row.get("LE_ORD_NM") or "").split(",") if s.strip()],
+            "school_type": row.get("REALM_SC_NM", ""),
+        })
+    return results
+
+
+def _dummy_academies(name: str | None, region: str | None, subject: str | None) -> list[dict]:
+    """NEIS API 키 없을 때 개발용 더미 학원 데이터."""
+    region_label = region or "강남구"
+    prefix = name or region_label
+    subjects_list = [subject] if subject else ["수학", "영어"]
+    return [
+        {
+            "neis_academy_code": f"DUMMY_ACA_{i:03d}",
+            "name": f"{prefix}학원{i}",
+            "region": region_label,
+            "address": f"서울특별시 {region_label} 테헤란로 {i * 10}",
+            "phone": f"02-{i:04d}-{i * 11:04d}",
+            "subjects": subjects_list,
+            "school_type": "보습학원",
+        }
+        for i in range(1, 6)
+    ]
+
+
 def _dummy_schools(
     keyword: Optional[str],
     region_code: Optional[str],

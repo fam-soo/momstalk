@@ -2,20 +2,18 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 
 from app.core.config import settings
 
-# 서비스 DB 엔진 (게시글, 댓글, 유저 — 신원 정보 없음)
-service_engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG)
-ServiceSessionLocal = async_sessionmaker(service_engine, expire_on_commit=False)
+engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG)
+SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
-# 인증 DB 엔진 (전화번호, 학부모 인증 레코드 — 물리적 분리)
-auth_engine = create_async_engine(settings.AUTH_DATABASE_URL, echo=settings.DEBUG)
-AuthSessionLocal = async_sessionmaker(auth_engine, expire_on_commit=False)
+# 하위 호환 별칭 (리팩토링 완료 전 사용 중인 코드 대비)
+service_engine = engine
+ServiceSessionLocal = SessionLocal
 
 
-async def get_service_db() -> AsyncSession:
-    async with ServiceSessionLocal() as session:
+async def get_db() -> AsyncSession:
+    async with SessionLocal() as session:
         yield session
 
 
-async def get_auth_db() -> AsyncSession:
-    async with AuthSessionLocal() as session:
-        yield session
+# 하위 호환 별칭
+get_service_db = get_db

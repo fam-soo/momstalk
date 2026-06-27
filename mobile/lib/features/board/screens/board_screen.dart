@@ -1,3 +1,4 @@
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -47,9 +48,9 @@ class _BoardScreenState extends ConsumerState<BoardScreen> with SingleTickerProv
     } catch (_) {}
   }
 
-  dynamic _tryGetMessaging() {
+  FirebaseMessaging? _tryGetMessaging() {
     try {
-      return null;
+      return FirebaseMessaging.instance;
     } catch (_) {
       return null;
     }
@@ -161,11 +162,6 @@ class _BoardScreenState extends ConsumerState<BoardScreen> with SingleTickerProv
                     foregroundColor: isPending ? Colors.orange : Theme.of(context).colorScheme.primary,
                   ),
                 ),
-              IconButton(
-                icon: const Icon(Icons.account_circle_outlined),
-                tooltip: '내 정보',
-                onPressed: () => context.push('/profile'),
-              ),
             ],
           ),
           body: TabBarView(
@@ -345,7 +341,7 @@ class _LockedBoardPlaceholder extends StatelessWidget {
   }
 }
 
-// ── 게시글 목록 ──────────────────────────────────────
+// ── 게시글 목록 (무한 스크롤 + 인기순 정렬) ──────────
 
 class _PostList extends ConsumerStatefulWidget {
   final String boardType;
@@ -358,49 +354,147 @@ class _PostList extends ConsumerStatefulWidget {
 class _PostListState extends ConsumerState<_PostList> {
   List<Map<String, dynamic>> _posts = [];
   bool _loading = true;
+  bool _loadingMore = false;
   String? _error;
+  int? _nextCursor;
+  String _sort = 'recent'; // 'recent' | 'popular'
+  final _scrollCtrl = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(reset: true);
+    _scrollCtrl.addListener(_onScroll);
   }
 
-  Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+  @override
+  void dispose() {
+    _scrollCtrl.removeListener(_onScroll);
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_loadingMore || _nextCursor == null) return;
+    if (_scrollCtrl.position.pixels >= _scrollCtrl.position.maxScrollExtent - 200) {
+      _load(reset: false);
+    }
+  }
+
+  Future<void> _load({required bool reset}) async {
+    if (reset) {
+      setState(() { _loading = true; _error = null; _posts = []; _nextCursor = null; });
+    } else {
+      if (_loadingMore) return;
+      setState(() => _loadingMore = true);
+    }
     try {
       final dio = ref.read(dioProvider);
-      final resp = await dio.get('/posts', queryParameters: {'board_type': widget.boardType});
-      setState(() => _posts = List<Map<String, dynamic>>.from(resp.data));
+      final params = <String, dynamic>{
+        'board_type': widget.boardType,
+        'sort': _sort,
+        'size': 20,
+      };
+      if (!reset && _nextCursor != null) params['cursor'] = _nextCursor;
+      final resp = await dio.get('/posts', queryParameters: params);
+      final data = resp.data as Map<String, dynamic>;
+      final items = List<Map<String, dynamic>>.from(data['items'] as List);
+      final next = data['next_cursor'] as int?;
+      if (mounted) {
+        setState(() {
+          if (reset) {
+            _posts = items;
+          } else {
+            _posts = [..._posts, ...items];
+          }
+          _nextCursor = next;
+        });
+      }
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (reset && mounted) setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() { _loading = false; _loadingMore = false; });
     }
+  }
+
+  void _setSort(String sort) {
+    if (_sort == sort) return;
+    setState(() => _sort = sort);
+    _load(reset: true);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text('오류: $_error', style: const TextStyle(color: Colors.red)));
-    if (_posts.isEmpty) {
-      return Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.chat_bubble_outline, size: 48, color: Colors.grey),
-          const SizedBox(height: 12),
-          const Text('아직 게시글이 없어요.\n첫 번째 글을 남겨보세요!', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
-        ]),
-      );
-    }
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        // ── 정렬 탭 ───────────────────────────────────
+        Container(
+          color: theme.colorScheme.surface,
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+          child: Row(
+            children: [
+              _SortChip(label: '최신순', value: 'recent', current: _sort, onSelect: _setSort),
+              const SizedBox(width: 8),
+              _SortChip(label: '🔥 인기순', value: 'popular', current: _sort, onSelect: _setSort),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+                  ? Center(child: Text('오류: $_error', style: const TextStyle(color: Colors.red)))
+                  : _posts.isEmpty
+                      ? Center(
+                          child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            const Icon(Icons.chat_bubble_outline, size: 48, color: Colors.grey),
+                            const SizedBox(height: 12),
+                            const Text('아직 게시글이 없어요.\n첫 번째 글을 남겨보세요!',
+                                textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
+                          ]),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: () => _load(reset: true),
+                          child: ListView.separated(
+                            controller: _scrollCtrl,
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            itemCount: _posts.length + (_nextCursor != null ? 1 : 0),
+                            separatorBuilder: (_, __) => const Divider(height: 1),
+                            itemBuilder: (ctx, i) {
+                              if (i == _posts.length) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16),
+                                  child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                );
+                              }
+                              return _PostCard(post: _posts[i], onRefresh: () => _load(reset: true));
+                            },
+                          ),
+                        ),
+        ),
+      ],
+    );
+  }
+}
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        itemCount: _posts.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (ctx, i) => _PostCard(post: _posts[i], onRefresh: _load),
-      ),
+class _SortChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final String current;
+  final void Function(String) onSelect;
+  const _SortChip({required this.label, required this.value, required this.current, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = value == current;
+    return FilterChip(
+      label: Text(label, style: TextStyle(fontSize: 12, fontWeight: selected ? FontWeight.w700 : FontWeight.normal)),
+      selected: selected,
+      onSelected: (_) => onSelect(value),
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
     );
   }
 }

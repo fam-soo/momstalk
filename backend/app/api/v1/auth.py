@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.core.permissions import require_member
 from app.core.rate_limit import RateLimit
 from app.core.security import create_access_token, decode_token
-from app.db import get_auth_db, get_service_db
+from app.db import get_db
 from app.models.service_models import User
 from app.schemas.auth import (
     CapturePresignResponse,
@@ -32,7 +32,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/dev/lurker-login", response_model=TokenResponse, include_in_schema=settings.DEBUG)
-async def dev_lurker_login(service_db: AsyncSession = Depends(get_service_db)):
+async def dev_lurker_login(service_db: AsyncSession = Depends(get_db)):
     """[개발 전용] lurker 상태로 즉시 로그인 — 눈팅 모드 UX 테스트용. DEBUG=true 일 때만 동작."""
     if not settings.DEBUG:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
@@ -75,7 +75,7 @@ async def dev_lurker_login(service_db: AsyncSession = Depends(get_service_db)):
 @router.post("/dev/approve-me", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=settings.DEBUG)
 async def dev_approve_me(
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_service_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """[개발 전용] 현재 유저를 즉시 정회원으로 승급. 최근 캡처에서 학교 정보를 복사한다."""
     if not settings.DEBUG:
@@ -106,8 +106,7 @@ async def dev_approve_me(
 @router.post("/dev/login", response_model=TokenResponse, include_in_schema=settings.DEBUG)
 async def dev_login(
     req: DevLoginRequest,
-    auth_db: AsyncSession = Depends(get_auth_db),
-    service_db: AsyncSession = Depends(get_service_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """[개발 전용] 인증번호 없이 바로 로그인. DEBUG=true 일 때만 동작."""
     if not settings.DEBUG:
@@ -122,23 +121,23 @@ async def dev_login(
         school_type=req.school_type,
     )
     access_token, refresh_token = await auth_service.register_or_login(
-        req.phone_number, parent_req, auth_db, service_db
+        req.phone_number, parent_req, db
     )
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/sms/send", status_code=status.HTTP_204_NO_CONTENT)
-async def send_sms(req: SendSmsRequest, request: Request, auth_db: AsyncSession = Depends(get_auth_db)):
+async def send_sms(req: SendSmsRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """SMS 인증코드 발송. 개발 모드에서는 콘솔에 출력."""
     await RateLimit.sms(request)
-    await sms_service.send_verification_code(req.phone_number, auth_db)
+    await sms_service.send_verification_code(req.phone_number, db)
 
 
 @router.post("/sms/verify", response_model=VerifySmsResponse)
-async def verify_sms(req: VerifySmsRequest, auth_db: AsyncSession = Depends(get_auth_db)):
+async def verify_sms(req: VerifySmsRequest, db: AsyncSession = Depends(get_db)):
     """SMS 코드 검증 → 학부모 인증에 쓸 단기 sms_token 반환."""
     try:
-        token = await sms_service.verify_code_and_get_token(req.phone_number, req.code, auth_db)
+        token = await sms_service.verify_code_and_get_token(req.phone_number, req.code, db)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return VerifySmsResponse(sms_token=token)
@@ -147,26 +146,22 @@ async def verify_sms(req: VerifySmsRequest, auth_db: AsyncSession = Depends(get_
 @router.post("/parent/verify", response_model=TokenResponse)
 async def verify_parent(
     req: ParentVerifyRequest,
-    auth_db: AsyncSession = Depends(get_auth_db),
-    service_db: AsyncSession = Depends(get_service_db),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    학부모 인증 완료 → JWT 발급.
-    sms_token 안의 전화번호 → HMAC 익명화 → 인증 DB + 서비스 DB 저장.
-    """
+    """학부모 인증 완료 → JWT 발급."""
     try:
         phone_number = await sms_service.decode_sms_token(req.sms_token)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     access_token, refresh_token = await auth_service.register_or_login(
-        phone_number, req, auth_db, service_db
+        phone_number, req, db
     )
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(req: RefreshRequest, service_db: AsyncSession = Depends(get_service_db)):
+async def refresh_token(req: RefreshRequest, db: AsyncSession = Depends(get_db)):
     """Refresh 토큰으로 새 Access 토큰 발급."""
     try:
         payload = decode_token(req.refresh_token)
@@ -189,18 +184,16 @@ async def get_me(user: User = Depends(get_current_user)):
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_account(
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_service_db),
-    auth_db: AsyncSession = Depends(get_auth_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """회원 탈퇴. 개인정보(anon_id) 즉시 삭제, 게시글·댓글은 익명으로 유지."""
     from sqlalchemy import delete as sa_delete
-    from app.models.auth_models import ParentVerification
+    from app.models.service_models import ParentVerification
 
-    # Auth DB에서 인증 레코드 삭제
-    await auth_db.execute(sa_delete(ParentVerification).where(ParentVerification.anon_id == user.anon_id))
-    await auth_db.commit()
+    # 인증 레코드 삭제
+    await db.execute(sa_delete(ParentVerification).where(ParentVerification.anon_id == user.anon_id))
 
-    # Service DB: anon_id·닉네임 삭제, 게시글·댓글 내용은 보존 (익명 처리)
+    # anon_id·닉네임 삭제, 게시글·댓글 내용은 보존 (익명 처리)
     user.anon_id = f"deleted_{user.id}"
     user.nickname = "탈퇴한 사용자"
     user.fcm_token = None
@@ -212,7 +205,7 @@ async def delete_account(
 async def update_nickname(
     req: UpdateNicknameRequest,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_service_db),
+    db: AsyncSession = Depends(get_db),
 ):
     user.nickname = req.nickname
     await db.commit()
@@ -224,7 +217,7 @@ async def update_nickname(
 async def register_fcm_token(
     body: dict,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_service_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """FCM 디바이스 토큰 등록/갱신. 앱 시작 시마다 호출."""
     token = body.get("token", "").strip()
@@ -238,7 +231,7 @@ async def register_fcm_token(
 async def kakao_login(
     req: KakaoLoginRequest,
     request: Request,
-    service_db: AsyncSession = Depends(get_service_db),
+    service_db: AsyncSession = Depends(get_db),
 ):
     """카카오 AccessToken으로 로그인/회원가입. 신규 유저는 lurker 상태로 생성됨."""
     await RateLimit.login(request)
@@ -268,7 +261,7 @@ async def capture_presign(user: User = Depends(get_current_user)):
 async def capture_submit(
     req: CaptureSubmitRequest,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_service_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """캡처 업로드 완료 후 학교 정보와 함께 제출. 관리자 검토 대기 상태로 전환."""
     await capture_service.submit_capture(
@@ -281,7 +274,7 @@ async def capture_submit(
 @router.post("/invite/generate", response_model=InviteGenerateResponse)
 async def generate_invite(
     user: User = Depends(require_member),
-    db: AsyncSession = Depends(get_service_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """정회원만 추천 링크 발급. 발급자의 school_code 고정, 48시간 유효."""
     link = await invite_service.generate_invite(user, db)
@@ -294,7 +287,7 @@ async def generate_invite(
 
 
 @router.get("/invite/{token}")
-async def check_invite(token: str, db: AsyncSession = Depends(get_service_db)):
+async def check_invite(token: str, db: AsyncSession = Depends(get_db)):
     """초대 링크 유효성 미리 확인 (사용 전 정보 표시용)."""
     try:
         link = await invite_service.validate_invite(token, db)
@@ -307,7 +300,7 @@ async def check_invite(token: str, db: AsyncSession = Depends(get_service_db)):
 async def use_invite(
     req: InviteUseRequest,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_service_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """초대 링크 사용 → 즉시 정회원 승급."""
     try:
@@ -320,7 +313,7 @@ async def use_invite(
 async def update_profile(
     req: UpdateProfileRequest,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_service_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """지역/학교/학년 변경. 월 1회 제한 (DEBUG 모드에서는 무제한)."""
     if not settings.DEBUG:

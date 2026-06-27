@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.security import create_access_token, decode_token
-from app.models.auth_models import PhoneVerification
+from app.models.service_models import PhoneVerification
 
 
 def _generate_code(length: int = 6) -> str:

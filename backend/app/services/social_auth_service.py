@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from app.core.security import make_anon_id, create_access_token, create_refresh_token
 from app.models.service_models import User
-from app.services.auth_service import _random_nickname
+from app.services.auth_service import _random_anon_nickname as _random_nickname
 
 
 KAKAO_ME_URL = "https://kapi.kakao.com/v2/user/me"

@@ -6,23 +6,13 @@ from alembic import context
 
 from app.core.config import settings
 from app.models.service_models import Base
-from app.models.auth_models import AuthBase
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# 두 DB 중 어느 쪽을 마이그레이션할지 환경변수로 선택
-# ALEMBIC_TARGET=auth → 인증 DB, 그 외 → 서비스 DB
-import os
-ALEMBIC_TARGET = os.getenv("ALEMBIC_TARGET", "service")
-
-if ALEMBIC_TARGET == "auth":
-    target_metadata = AuthBase.metadata
-    db_url = settings.AUTH_DATABASE_URL
-else:
-    target_metadata = Base.metadata
-    db_url = settings.DATABASE_URL
+target_metadata = Base.metadata
+db_url = settings.DATABASE_URL
 
 
 def run_migrations_offline() -> None:

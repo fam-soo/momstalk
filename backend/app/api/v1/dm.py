@@ -27,6 +27,15 @@ async def block_user(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/users/blocks")
+async def list_blocks(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """내가 차단한 유저 목록 조회."""
+    return await dm_service.list_blocks(user, db)
+
+
 @router.delete("/users/{target_id}/block", status_code=status.HTTP_204_NO_CONTENT)
 async def unblock_user(
     target_id: int,

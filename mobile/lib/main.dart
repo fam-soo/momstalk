@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app_links/app_links.dart';
@@ -13,6 +14,11 @@ import 'core/theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   KakaoSdk.init(nativeAppKey: AppConstants.kakaoNativeAppKey);
+
+  // Firebase 초기화 (google-services.json 없는 개발 환경에서는 무시)
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {}
 
   // mock 모드: 로그인 화면 없이 바로 앱 진입하도록 토큰 사전 주입
   if (AppConstants.mockMode) {

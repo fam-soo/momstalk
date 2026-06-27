@@ -7,10 +7,15 @@ class CommentCreate(BaseModel):
     content: str
     parent_id: Optional[int] = None   # 대댓글이면 부모 댓글 ID
     is_anonymous: bool = True
+    nickname_type: str = "anon"       # anon / certified
 
     def model_post_init(self, __context) -> None:
         if len(self.content) < 1:
             raise ValueError("댓글 내용을 입력해주세요.")
+        if self.nickname_type not in ("anon", "certified"):
+            raise ValueError("nickname_type은 anon / certified 중 하나여야 합니다.")
+        if self.nickname_type == "certified":
+            self.is_anonymous = False
 
 
 class CommentResponse(BaseModel):
@@ -24,9 +29,10 @@ class CommentResponse(BaseModel):
     is_post_author: bool = False     # 댓글 작성자 == 게시글 작성자 여부 → '작성자' 뱃지
     is_liked: bool = False           # 현재 유저의 좋아요 여부
     is_mine: bool = False            # 현재 조회 유저가 작성한 댓글
-    anon_label: Optional[str] = None # 익명 표시명: "글쓴이" / "익명1" / "익명2" ... (is_anonymous=True일 때만)
+    nickname_type: str = "anon"
+    anon_label: Optional[str] = None   # 익명 표시명: "글쓴이" / "익명1" / "익명2" ... (is_anonymous=True일 때만)
     created_at: datetime
-    author_nickname: Optional[str] = None  # is_anonymous=False이면 닉네임
+    author_nickname: Optional[str] = None    # nickname_type=anon이면 익명닉네임, certified이면 인증닉네임
 
     model_config = {"from_attributes": True}
 

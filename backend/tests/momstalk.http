@@ -1,0 +1,635 @@
+### MomsTalk API — VS Code REST Client 실기기 테스트
+### 사용법: VS Code에 "REST Client" 확장 설치 후 각 요청 위 "Send Request" 클릭
+###
+### 실행 순서:
+###   1. 서버 기동: uvicorn app.main:app --reload  (backend/ 디렉터리에서)
+###   2. 이 파일을 VS Code에서 열기
+###   3. Step 1부터 순서대로 "Send Request" 클릭
+###   4. 응답에서 토큰/ID를 복사해 아래 변수(@token 등)에 붙여넣기
+
+@baseUrl = http://localhost:8000/api/v1
+
+### ─────────────────────────────────────────────────────────────
+### [변수] 각 단계 실행 후 응답값을 여기에 붙여넣으세요
+### ─────────────────────────────────────────────────────────────
+
+# Step 2 응답의 access_token
+@lurkerToken = PASTE_LURKER_ACCESS_TOKEN_HERE
+
+# Step 3 응답의 access_token
+@memberToken = PASTE_MEMBER_ACCESS_TOKEN_HERE
+
+# Step 4 응답의 access_token (refresh 후)
+@newAccessToken = PASTE_NEW_ACCESS_TOKEN_HERE
+
+# Step 6 응답의 id
+@postId = PASTE_POST_ID_HERE
+
+# Step 13 응답의 id
+@commentId = PASTE_COMMENT_ID_HERE
+
+# Step 15 응답의 id
+@convId = PASTE_CONV_ID_HERE
+
+# Step 14 응답의 id (두 번째 유저)
+@user2Id = PASTE_USER2_ID_HERE
+
+# Step 16 응답의 token
+@inviteToken = PASTE_INVITE_TOKEN_HERE
+
+# Step 19 응답의 id
+@captureId = PASTE_CAPTURE_ID_HERE
+
+### ═══════════════════════════════════════════════════════
+### Step 0 ── 서버 헬스체크
+### ═══════════════════════════════════════════════════════
+
+# @name health
+GET http://localhost:8000/health
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 1 ── 학교 검색 (NEIS API)
+### ═══════════════════════════════════════════════════════
+
+# @name searchSchool
+GET {{baseUrl}}/schools/search?q=서울초등학교
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 2 ── [개발 전용] lurker 로그인
+###           → 응답의 access_token을 @lurkerToken 에 붙여넣기
+### ═══════════════════════════════════════════════════════
+
+# @name lurkerLogin
+POST {{baseUrl}}/auth/dev/lurker-login
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 3 ── [개발 전용] 정회원 로그인 (SMS 인증 없이)
+###           → 응답의 access_token을 @memberToken 에 붙여넣기
+### ═══════════════════════════════════════════════════════
+
+# @name devLogin
+POST {{baseUrl}}/auth/dev/login
+Content-Type: application/json
+
+{
+  "phone_number": "01011112222",
+  "region": "서울",
+  "school_code": "B100000393",
+  "school_name": "테스트초등학교",
+  "grade": 2,
+  "school_type": "elementary"
+}
+
+###
+
+### ─── Step 3-1 ── lurker → 정회원 승급 (Step 3 토큰 필요) ───
+
+# @name approveMe
+POST {{baseUrl}}/auth/dev/approve-me
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 4 ── Refresh 토큰으로 새 Access 토큰 발급
+###           (Step 3 응답의 refresh_token 사용)
+###           → 응답의 access_token을 @newAccessToken 에 붙여넣기
+### ═══════════════════════════════════════════════════════
+
+# @name refreshToken
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "PASTE_REFRESH_TOKEN_FROM_STEP3_HERE"
+}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 5 ── 내 프로필 조회
+### ═══════════════════════════════════════════════════════
+
+# @name getMe
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ─── Step 5-1 ── 닉네임 변경 ───
+
+# @name updateNickname
+PATCH {{baseUrl}}/auth/me/nickname
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "nickname": "따뜻한엄마1234"
+}
+
+###
+
+### ─── Step 5-2 ── 프로필(학교/학년) 변경 ───
+
+# @name updateProfile
+PATCH {{baseUrl}}/auth/me/profile
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "region": "경기",
+  "school_code": "J100000001",
+  "school_name": "새학교초등학교",
+  "grade": 3,
+  "school_type": "elementary"
+}
+
+###
+
+### ─── Step 5-3 ── FCM 토큰 등록 ───
+
+# @name registerFcmToken
+POST {{baseUrl}}/auth/me/fcm-token
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "token": "fcm-device-token-example-12345"
+}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 6 ── 게시글 작성
+###           → 응답의 id를 @postId 에 붙여넣기
+### ═══════════════════════════════════════════════════════
+
+# @name createPost
+POST {{baseUrl}}/posts
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "title": "안녕하세요, 2학년 학부모입니다",
+  "content": "오늘 학교에서 있었던 일을 공유하고 싶어서 글을 올립니다. 아이가 즐겁게 학교생활을 하고 있어요.",
+  "board_type": "free",
+  "is_anonymous": true
+}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 7 ── 게시판별 게시글 목록 조회
+### ═══════════════════════════════════════════════════════
+
+# @name listPosts_free
+GET {{baseUrl}}/posts?board_type=free&page=1&size=20
+Authorization: Bearer {{memberToken}}
+
+###
+
+# @name listPosts_school
+GET {{baseUrl}}/posts?board_type=school
+Authorization: Bearer {{memberToken}}
+
+###
+
+# @name listPosts_grade
+GET {{baseUrl}}/posts?board_type=grade
+Authorization: Bearer {{memberToken}}
+
+###
+
+# @name searchPosts
+GET {{baseUrl}}/posts?board_type=free&q=학부모
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 8 ── 게시글 단건 조회 (Step 6의 postId 필요)
+### ═══════════════════════════════════════════════════════
+
+# @name getPost
+GET {{baseUrl}}/posts/{{postId}}
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 9 ── 게시글 수정
+### ═══════════════════════════════════════════════════════
+
+# @name updatePost
+PATCH {{baseUrl}}/posts/{{postId}}
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "title": "수정된 제목입니다",
+  "content": "내용을 수정했습니다. 더 자세한 내용을 추가했어요."
+}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 10 ── 좋아요 토글 (한 번 더 누르면 취소)
+### ═══════════════════════════════════════════════════════
+
+# @name likePost
+POST {{baseUrl}}/posts/{{postId}}/like
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 11 ── 스크랩 토글
+### ═══════════════════════════════════════════════════════
+
+# @name scrapPost
+POST {{baseUrl}}/posts/{{postId}}/scrap
+Authorization: Bearer {{memberToken}}
+
+###
+
+# @name myScrapList
+GET {{baseUrl}}/posts/me/scraps
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 12 ── 신고
+### ═══════════════════════════════════════════════════════
+
+# @name reportPost
+POST {{baseUrl}}/posts/report
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "target_type": "post",
+  "target_id": {{postId}},
+  "category": "SPAM",
+  "reason": "광고성 게시글입니다"
+}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 13 ── 댓글 작성
+###            → 응답의 id를 @commentId 에 붙여넣기
+### ═══════════════════════════════════════════════════════
+
+# @name createComment
+POST {{baseUrl}}/posts/{{postId}}/comments
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "content": "좋은 글 감사합니다!",
+  "is_anonymous": true
+}
+
+###
+
+# @name createReply
+POST {{baseUrl}}/posts/{{postId}}/comments
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "content": "저도 같은 경험이 있어요",
+  "parent_id": {{commentId}},
+  "is_anonymous": true
+}
+
+###
+
+# @name listComments
+GET {{baseUrl}}/posts/{{postId}}/comments
+Authorization: Bearer {{memberToken}}
+
+###
+
+# @name likeComment
+POST {{baseUrl}}/posts/{{postId}}/comments/{{commentId}}/like
+Authorization: Bearer {{memberToken}}
+
+###
+
+# @name deleteComment
+DELETE {{baseUrl}}/posts/{{postId}}/comments/{{commentId}}
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 14 ── 두 번째 유저 생성 (DM 테스트용)
+###             → 응답의 access_token으로 /auth/me 호출 후
+###               응답의 id를 @user2Id 에 붙여넣기
+### ═══════════════════════════════════════════════════════
+
+# @name devLogin2
+POST {{baseUrl}}/auth/dev/login
+Content-Type: application/json
+
+{
+  "phone_number": "01099998888",
+  "region": "부산",
+  "school_code": "D100000001",
+  "school_name": "부산테스트초등학교",
+  "grade": 3,
+  "school_type": "elementary"
+}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 15 ── DM 대화방 생성/조회
+###             → 응답의 id를 @convId 에 붙여넣기
+### ═══════════════════════════════════════════════════════
+
+# @name startConversation
+POST {{baseUrl}}/conversations/{{user2Id}}
+Authorization: Bearer {{memberToken}}
+
+###
+
+# @name listConversations
+GET {{baseUrl}}/conversations
+Authorization: Bearer {{memberToken}}
+
+###
+
+# @name sendMessage
+POST {{baseUrl}}/conversations/{{convId}}/messages
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "content": "안녕하세요! 저도 같은 학교 학부모예요."
+}
+
+###
+
+# @name listMessages
+GET {{baseUrl}}/conversations/{{convId}}/messages
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ─── 차단/해제 ───
+
+# @name blockUser
+POST {{baseUrl}}/users/{{user2Id}}/block
+Authorization: Bearer {{memberToken}}
+
+###
+
+# @name unblockUser
+DELETE {{baseUrl}}/users/{{user2Id}}/block
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 16 ── 초대 링크 발급 (정회원만 가능)
+###             → 응답의 token을 @inviteToken 에 붙여넣기
+### ═══════════════════════════════════════════════════════
+
+# @name generateInvite
+POST {{baseUrl}}/auth/invite/generate
+Authorization: Bearer {{memberToken}}
+
+###
+
+# @name checkInvite
+GET {{baseUrl}}/auth/invite/{{inviteToken}}
+
+###
+
+# @name useInvite (lurker 계정으로 사용)
+POST {{baseUrl}}/auth/invite/use
+Authorization: Bearer {{lurkerToken}}
+Content-Type: application/json
+
+{
+  "token": "{{inviteToken}}",
+  "grade": 2,
+  "class_num": 3
+}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 17 ── SMS 인증 플로우 (실제 SMS 없이 토큰만 확인)
+### ═══════════════════════════════════════════════════════
+
+# @name sendSms
+POST {{baseUrl}}/auth/sms/send
+Content-Type: application/json
+
+{
+  "phone_number": "01012345678"
+}
+
+###
+
+# @name verifySms  (개발 모드: 콘솔 로그에서 인증코드 확인 후 입력)
+POST {{baseUrl}}/auth/sms/verify
+Content-Type: application/json
+
+{
+  "phone_number": "01012345678",
+  "code": "123456"
+}
+
+###
+
+# @name parentVerify  (verifySms 응답의 sms_token 사용)
+POST {{baseUrl}}/auth/parent/verify
+Content-Type: application/json
+
+{
+  "sms_token": "PASTE_SMS_TOKEN_HERE",
+  "region": "서울",
+  "school_code": "B100000393",
+  "school_name": "테스트초등학교",
+  "grade": 2,
+  "school_type": "elementary"
+}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 18 ── 캡처 업로드 (S3 미설정 시 skip_upload=true)
+### ═══════════════════════════════════════════════════════
+
+# @name capturePresign
+POST {{baseUrl}}/auth/capture/presign
+Authorization: Bearer {{lurkerToken}}
+
+###
+
+# @name captureSubmit  (capturePresign 응답의 s3_key 사용)
+POST {{baseUrl}}/auth/capture/submit
+Authorization: Bearer {{lurkerToken}}
+Content-Type: application/json
+
+{
+  "s3_key": "PASTE_S3_KEY_FROM_PRESIGN_HERE",
+  "school_code": "B100000393",
+  "school_name": "테스트초등학교",
+  "grade": 2,
+  "class_num": 3
+}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 19 ── 관리자 API
+### ═══════════════════════════════════════════════════════
+
+### 19-1. 관리자 계정 생성 (최초 1회 — DB에 직접 superadmin 계정 seed 필요)
+###       아래 명령으로 seed:
+###       python -c "
+###       import asyncio
+###       from app.db import service_engine
+###       from app.models.service_models import AdminUser, Base
+###       from passlib.context import CryptContext
+###       from sqlalchemy.ext.asyncio import AsyncSession
+###       from sqlalchemy.ext.asyncio import async_sessionmaker
+###       pwd = CryptContext(schemes=['bcrypt']).hash('admin1234!')
+###       async def seed():
+###           async with service_engine.begin() as conn:
+###               await conn.run_sync(Base.metadata.create_all)
+###           Session = async_sessionmaker(service_engine)
+###           async with Session() as s:
+###               s.add(AdminUser(username='admin', hashed_password=pwd, role='superadmin'))
+###               await s.commit()
+###       asyncio.run(seed())
+###       "
+
+# @name adminLogin
+POST {{baseUrl}}/admin/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin1234!"
+}
+
+###
+
+### 19-2. 아래 @adminToken 에 adminLogin 응답의 admin_token 붙여넣기
+
+@adminToken = PASTE_ADMIN_TOKEN_HERE
+
+###
+
+# @name listCaptures
+GET {{baseUrl}}/admin/captures
+Authorization: Bearer {{adminToken}}
+
+###
+
+# @name approveCapture
+POST {{baseUrl}}/admin/captures/{{captureId}}/approve
+Authorization: Bearer {{adminToken}}
+
+###
+
+# @name rejectCapture
+POST {{baseUrl}}/admin/captures/{{captureId}}/reject
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "reason": "첨부 이미지가 학급 알림장과 관련 없습니다."
+}
+
+###
+
+# @name listReports
+GET {{baseUrl}}/admin/reports?status_filter=pending
+Authorization: Bearer {{adminToken}}
+
+###
+
+# @name suspendUser
+POST {{baseUrl}}/admin/users/{{user2Id}}/suspend
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "days": 7,
+  "reason": "반복적인 욕설 사용"
+}
+
+###
+
+# @name banUser
+POST {{baseUrl}}/admin/users/{{user2Id}}/ban
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "reason": "심각한 개인정보 유출"
+}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### Step 20 ── 게시글 삭제 (마지막에 실행)
+### ═══════════════════════════════════════════════════════
+
+# @name deletePost
+DELETE {{baseUrl}}/posts/{{postId}}
+Authorization: Bearer {{memberToken}}
+
+###
+
+### ═══════════════════════════════════════════════════════
+### 오류 케이스 확인 (각각 독립적으로 실행 가능)
+### ═══════════════════════════════════════════════════════
+
+# 401 — 인증 없이 접근
+# @name unauthorized
+GET {{baseUrl}}/posts?board_type=free
+
+###
+
+# 404 — 존재하지 않는 게시글
+# @name notFound
+GET {{baseUrl}}/posts/99999999
+Authorization: Bearer {{memberToken}}
+
+###
+
+# 400 — 본문 너무 짧음 (5자 미만)
+# @name validationError
+POST {{baseUrl}}/posts
+Authorization: Bearer {{memberToken}}
+Content-Type: application/json
+
+{
+  "title": "제",
+  "content": "짧",
+  "board_type": "free"
+}
+
+###
+
+# 401 — 만료/잘못된 토큰
+# @name invalidToken
+GET {{baseUrl}}/auth/me
+Authorization: Bearer invalid.token.here
+
+###

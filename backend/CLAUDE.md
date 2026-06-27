@@ -32,7 +32,7 @@ C:\projects\momstalk\
 |------|------|
 | 백엔드 | FastAPI + Python 3.12, SQLAlchemy 2.x (async), Alembic |
 | 인증 | JWT HS256 — Access 60분 / Refresh 30일 |
-| DB | PostgreSQL × 2 (서비스 :5432 / 인증 :5433), Redis :6379 |
+| DB | PostgreSQL × 1 (단일 통합 DB :5432), Redis :6379 |
 | 모바일 | Flutter 3.x, Riverpod 2.x, go_router 14.x, Dio 5.x |
 | 푸시 | Firebase Admin SDK (FCM) |
 | 실시간 | SSE (asyncio Queue 기반, 단일 인스턴스) |
@@ -45,7 +45,7 @@ C:\projects\momstalk\
 ```powershell
 # 1. Docker 백엔드 기동 (프로젝트 루트에서)
 cd C:\projects\momstalk
-docker-compose up -d
+docker-compose up -d db redis backend
 
 # 2. 헬스체크
 curl http://localhost:8000/health
@@ -84,8 +84,7 @@ streamlit run app.py --server.port 8501
 
 ## 인증 구조 핵심
 - `anon_id` = `HMAC-SHA256(전화번호, ANON_HASH_SECRET)` — 복호화 불가
-- Auth DB(5433): 전화번호 + anon_id 보관
-- Service DB(5432): anon_id만 참조, 전화번호 없음
+- 단일 DB: phone_verifications(SMS 코드), parent_verifications(인증 레코드), users(anon_id 참조) 모두 한 DB
 - 토큰 저장: Web → SharedPreferences(localStorage) / Mobile → FlutterSecureStorage
 
 ---

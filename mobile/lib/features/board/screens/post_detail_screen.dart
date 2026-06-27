@@ -360,6 +360,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('게시글'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/board'),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.more_vert),

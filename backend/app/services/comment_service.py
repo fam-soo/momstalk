@@ -25,6 +25,7 @@ async def create_comment(
         parent_id=req.parent_id,
         content=req.content,
         is_anonymous=req.is_anonymous,
+        nickname_type=req.nickname_type,
     )
     db.add(comment)
     await db.commit()
@@ -126,13 +127,24 @@ async def list_comments(post_id: int, user: User, db: AsyncSession) -> list[Comm
         )
         liked_ids = {row for row in likes_result.scalars()}
 
-    # 비익명 댓글 작성자 닉네임 일괄 조회
-    author_ids = {c.author_id for c in comments if not c.is_anonymous}
-    nicknames: dict[int, str] = {}
-    if author_ids:
-        users_result = await db.execute(select(User).where(User.id.in_(author_ids)))
+    # 댓글 작성자 일괄 조회 (nickname_type에 따라 적절한 닉네임 선택)
+    all_author_ids = {c.author_id for c in comments}
+    users_map: dict[int, User] = {}
+    if all_author_ids:
+        users_result = await db.execute(select(User).where(User.id.in_(all_author_ids)))
         for u in users_result.scalars():
-            nicknames[u.id] = u.nickname
+            users_map[u.id] = u
+
+    def _comment_display_name(c: Comment) -> str | None:
+        if c.is_anonymous:
+            return None
+        author = users_map.get(c.author_id)
+        if not author:
+            return None
+        nick_type = getattr(c, "nickname_type", "anon")
+        if nick_type == "certified":
+            return author.certified_nickname or author.nickname
+        return author.nickname
 
     return [
         CommentResponse(
@@ -141,13 +153,14 @@ async def list_comments(post_id: int, user: User, db: AsyncSession) -> list[Comm
             parent_id=c.parent_id,
             content=c.content,
             is_anonymous=c.is_anonymous,
+            nickname_type=getattr(c, "nickname_type", "anon"),
             like_count=c.like_count,
             is_hidden=c.is_hidden,
             is_post_author=(c.author_id == post_author_id),
             is_liked=(c.id in liked_ids),
             is_mine=(c.author_id == user.id),
             anon_label=anon_labels.get(c.author_id) if c.is_anonymous else None,
-            author_nickname=nicknames.get(c.author_id) if not c.is_anonymous else None,
+            author_nickname=_comment_display_name(c),
             created_at=c.created_at,
         )
         for c in comments

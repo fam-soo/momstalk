@@ -1,0 +1,173 @@
+from decimal import Decimal
+from typing import Optional
+
+import sqlalchemy as sa
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.profanity import check_profanity
+from app.models.service_models import Academy, AcademyReview, User
+from app.schemas.academy import AcademyReviewCreate, AcademyReviewResponse, AcademyResponse
+from app.services import neis_service
+
+
+async def search_academies(
+    db: AsyncSession,
+    name: Optional[str] = None,
+    region: Optional[str] = None,
+    subject: Optional[str] = None,
+) -> list[AcademyResponse]:
+    """DB 우선 검색 → 결과 없으면 NEIS API 조회 후 DB 캐싱."""
+    filters = []
+    if name:
+        filters.append(Academy.name.ilike(f"%{name}%"))
+    if region:
+        filters.append(Academy.region.ilike(f"%{region}%"))
+    if subject:
+        filters.append(Academy.subjects.cast(sa.Text).ilike(f"%{subject}%"))
+
+    result = await db.execute(
+        select(Academy).where(*filters).order_by(Academy.review_count.desc()).limit(50)
+    )
+    academies = result.scalars().all()
+
+    if not academies:
+        # NEIS API 조회 후 DB 저장
+        neis_results = await neis_service.search_academies(name=name, region=region, subject=subject)
+        for r in neis_results:
+            neis_code = r.get("neis_academy_code")
+            if neis_code:
+                existing = await db.execute(
+                    select(Academy).where(Academy.neis_academy_code == neis_code)
+                )
+                if existing.scalar_one_or_none():
+                    continue
+            else:
+                # neis_code 없는 경우 이름+지역으로 중복 체크
+                existing = await db.execute(
+                    select(Academy).where(Academy.name == r["name"], Academy.region == r.get("region"))
+                )
+                if existing.scalar_one_or_none():
+                    continue
+            academy = Academy(
+                neis_academy_code=neis_code,
+                name=r["name"],
+                region=r.get("region"),
+                address=r.get("address"),
+                phone=r.get("phone"),
+                subjects=r.get("subjects"),
+                school_type=r.get("school_type"),
+            )
+            db.add(academy)
+        await db.commit()
+
+        result2 = await db.execute(
+            select(Academy).where(*filters).order_by(Academy.review_count.desc()).limit(50)
+        )
+        academies = result2.scalars().all()
+
+    return [AcademyResponse.model_validate(a) for a in academies]
+
+
+async def get_academy(academy_id: int, db: AsyncSession) -> Optional[AcademyResponse]:
+    result = await db.execute(select(Academy).where(Academy.id == academy_id))
+    academy = result.scalar_one_or_none()
+    if not academy:
+        return None
+    return AcademyResponse.model_validate(academy)
+
+
+async def create_review(
+    academy_id: int,
+    user: User,
+    req: AcademyReviewCreate,
+    db: AsyncSession,
+) -> AcademyReviewResponse:
+    academy = (await db.execute(select(Academy).where(Academy.id == academy_id))).scalar_one_or_none()
+    if not academy:
+        raise ValueError("학원을 찾을 수 없습니다.")
+
+    check_profanity(req.review_text, "후기")
+
+    review = AcademyReview(
+        academy_id=academy_id,
+        author_id=user.id,
+        subject=req.subject,
+        teacher_style=req.teacher_style,
+        homework_level=req.homework_level,
+        score_improvement=req.score_improvement,
+        review_text=req.review_text,
+        rating=req.rating,
+        nickname_type=req.nickname_type,
+        is_anonymous=req.is_anonymous,
+    )
+    db.add(review)
+
+    # 학원 통계 갱신
+    academy.review_count += 1
+    current_avg = float(academy.avg_rating or 0)
+    prev_count = academy.review_count - 1
+    new_avg = (current_avg * prev_count + req.rating) / academy.review_count
+    academy.avg_rating = Decimal(str(round(new_avg, 2)))
+
+    await db.commit()
+    await db.refresh(review)
+
+    author_display = None
+    if not review.is_anonymous:
+        if review.nickname_type == "certified":
+            author_display = user.certified_nickname or user.nickname
+        else:
+            author_display = user.nickname
+
+    return AcademyReviewResponse(
+        id=review.id,
+        academy_id=review.academy_id,
+        subject=review.subject,
+        teacher_style=review.teacher_style,
+        homework_level=review.homework_level,
+        score_improvement=review.score_improvement,
+        review_text=review.review_text,
+        rating=review.rating,
+        nickname_type=review.nickname_type,
+        is_anonymous=review.is_anonymous,
+        author_display_name=author_display,
+        report_count=review.report_count,
+        is_hidden=review.is_hidden,
+        created_at=review.created_at,
+    )
+
+
+async def list_reviews(academy_id: int, db: AsyncSession) -> list[AcademyReviewResponse]:
+    result = await db.execute(
+        select(AcademyReview, User)
+        .join(User, User.id == AcademyReview.author_id)
+        .where(AcademyReview.academy_id == academy_id, AcademyReview.is_hidden == False)
+        .order_by(AcademyReview.created_at.desc())
+    )
+    rows = result.all()
+    out = []
+    for review, author in rows:
+        author_display = None
+        if not review.is_anonymous:
+            if review.nickname_type == "certified":
+                author_display = author.certified_nickname or author.nickname
+            else:
+                author_display = author.nickname
+        out.append(AcademyReviewResponse(
+            id=review.id,
+            academy_id=review.academy_id,
+            subject=review.subject,
+            teacher_style=review.teacher_style,
+            homework_level=review.homework_level,
+            score_improvement=review.score_improvement,
+            review_text=review.review_text,
+            rating=review.rating,
+            nickname_type=review.nickname_type,
+            is_anonymous=review.is_anonymous,
+            author_display_name=author_display,
+            report_count=review.report_count,
+            is_hidden=review.is_hidden,
+            created_at=review.created_at,
+        ))
+    return out

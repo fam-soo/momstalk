@@ -19,16 +19,16 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
   final _titleCtrl = TextEditingController();
   final _contentCtrl = TextEditingController();
   final _tagSearchCtrl = TextEditingController();
-  bool _isAnonymous = true;
+
+  // 닉네임 유형 선택: 'anon' | 'certified'
+  String _nicknameType = 'anon';
+  String? _certifiedNickname;   // 서버에서 불러온 인증 닉네임
+  String? _anonNickname;        // 서버에서 불러온 익명 닉네임
+
   bool _submitting = false;
 
-  // 선택된 태그 (DB canonical 값 — 학교명 or 지역명 or "N학년")
   final Set<String> _selectedTags = {};
-
-  // 내 프로필 태그 (빠른 선택용)
   List<String> _myTags = [];
-
-  // 검색 자동완성
   List<_TagSuggestion> _suggestions = [];
   bool _searching = false;
   Timer? _debounce;
@@ -36,7 +36,7 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMyTags();
+    _loadMyProfile();
   }
 
   @override
@@ -48,11 +48,12 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
     super.dispose();
   }
 
-  Future<void> _loadMyTags() async {
+  Future<void> _loadMyProfile() async {
     try {
       final dio = ref.read(dioProvider);
       final resp = await dio.get('/auth/me');
       final p = resp.data as Map<String, dynamic>;
+
       final tags = <String>[];
       final region = p['region'] as String?;
       final school = p['school_name'] as String?;
@@ -60,7 +61,14 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
       if (region != null && region.isNotEmpty) tags.add(region);
       if (school != null && school.isNotEmpty) tags.add(school);
       if (grade != null) tags.add('$grade학년');
-      if (mounted) setState(() => _myTags = tags);
+
+      if (mounted) {
+        setState(() {
+          _myTags = tags;
+          _certifiedNickname = p['certified_nickname'] as String?;
+          _anonNickname = p['nickname'] as String?;
+        });
+      }
     } catch (_) {}
   }
 
@@ -81,7 +89,6 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
       final resp = await dio.get('/schools/search', queryParameters: {'q': q});
       final results = (resp.data as List).cast<Map<String, dynamic>>();
 
-      // 학교명 + 지역명(중복 제거) 추출
       final suggestions = <_TagSuggestion>[];
       final seenRegions = <String>{};
       for (final r in results.take(10)) {
@@ -102,8 +109,7 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
   }
 
   void _addTag(String value) {
-    if (_selectedTags.length >= 5) return;
-    if (value.isEmpty) return;
+    if (_selectedTags.length >= 5 || value.isEmpty) return;
     setState(() {
       _selectedTags.add(value);
       _suggestions = [];
@@ -126,12 +132,13 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
         'board_type': widget.boardType,
         'title': _titleCtrl.text.trim(),
         'content': _contentCtrl.text.trim(),
-        'is_anonymous': _isAnonymous,
+        'is_anonymous': _nicknameType == 'anon',
+        'nickname_type': _nicknameType,
         'mention_tags': _selectedTags.toList(),
       };
       final resp = await dio.post('/posts', data: body);
       final postId = resp.data['id'];
-      if (mounted) context.go('/board/$postId');
+      if (mounted) context.pushReplacement('/board/$postId');
     } on DioException catch (e) {
       if (mounted) {
         final data = e.response?.data;
@@ -162,6 +169,7 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
   Widget build(BuildContext context) {
     final canAddMore = _selectedTags.length < 5;
     final myUnselected = _myTags.where((t) => !_selectedTags.contains(t)).toList();
+    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
@@ -184,7 +192,7 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
               child: TextField(
                 controller: _titleCtrl,
                 decoration: const InputDecoration(hintText: '제목', border: InputBorder.none),
-                style: Theme.of(context).textTheme.titleMedium,
+                style: theme.textTheme.titleMedium,
               ),
             ),
             const Divider(height: 1),
@@ -211,17 +219,16 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                   Row(children: [
                     Text(
                       '@태그',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+                      style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(width: 6),
                     Text(
                       '해당 지역·학교 게시판 상단에 노출됩니다 (최대 5개)',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: Colors.grey[600]),
+                      style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey[600]),
                     ),
                   ]),
                   const SizedBox(height: 8),
 
-                  // 선택된 태그 칩
                   if (_selectedTags.isNotEmpty)
                     Wrap(
                       spacing: 6,
@@ -235,7 +242,6 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                       )).toList(),
                     ),
 
-                  // 내 프로필 빠른 선택 (선택 안된 것만)
                   if (myUnselected.isNotEmpty && canAddMore) ...[
                     const SizedBox(height: 6),
                     Wrap(
@@ -246,13 +252,12 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                         onPressed: () => _addTag(tag),
                         visualDensity: VisualDensity.compact,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        side: BorderSide(color: Theme.of(context).colorScheme.primary.withOpacity(0.4)),
-                        backgroundColor: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                        side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
+                        backgroundColor: theme.colorScheme.primaryContainer.withOpacity(0.3),
                       )).toList(),
                     ),
                   ],
 
-                  // 검색 필드
                   if (canAddMore) ...[
                     const SizedBox(height: 6),
                     TextField(
@@ -273,7 +278,6 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                     ),
                   ],
 
-                  // 자동완성 결과
                   if (_suggestions.isNotEmpty)
                     Container(
                       constraints: const BoxConstraints(maxHeight: 200),
@@ -281,7 +285,7 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.grey.shade300),
                         borderRadius: BorderRadius.circular(8),
-                        color: Theme.of(context).colorScheme.surface,
+                        color: theme.colorScheme.surface,
                       ),
                       child: ListView.separated(
                         shrinkWrap: true,
@@ -314,12 +318,59 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
             ),
 
             const Divider(height: 1),
-            SwitchListTile(
-              value: _isAnonymous,
-              onChanged: (v) => setState(() => _isAnonymous = v),
-              title: const Text('익명으로 게시'),
-              subtitle: const Text('작성자 닉네임이 표시되지 않습니다.'),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+
+            // ── 닉네임 유형 선택 (선택적 실명제) ─────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '공개 방식',
+                    style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _NicknameTypeCard(
+                          selected: _nicknameType == 'anon',
+                          icon: Icons.visibility_off_outlined,
+                          title: '완전 익명',
+                          subtitle: _anonNickname != null ? '익명 닉네임 사용' : '익명',
+                          color: Colors.grey.shade600,
+                          onTap: () => setState(() => _nicknameType = 'anon'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _NicknameTypeCard(
+                          selected: _nicknameType == 'certified',
+                          icon: Icons.verified_outlined,
+                          title: '인증 닉네임',
+                          subtitle: _certifiedNickname ?? '설정 필요',
+                          color: theme.colorScheme.primary,
+                          onTap: _certifiedNickname != null
+                              ? () => setState(() => _nicknameType = 'certified')
+                              : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_nicknameType == 'certified')
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(children: [
+                        Icon(Icons.info_outline, size: 14, color: theme.colorScheme.primary),
+                        const SizedBox(width: 4),
+                        Text(
+                          '학교 인증된 닉네임으로 게시됩니다.',
+                          style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary),
+                        ),
+                      ]),
+                    ),
+                ],
+              ),
             ),
           ],
         ),
@@ -328,10 +379,81 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
   }
 }
 
+
+class _NicknameTypeCard extends StatelessWidget {
+  final bool selected;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback? onTap;
+
+  const _NicknameTypeCard({
+    required this.selected,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final disabled = onTap == null;
+    return GestureDetector(
+      onTap: disabled ? null : onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: selected ? color : Colors.grey.shade300,
+            width: selected ? 2 : 1,
+          ),
+          color: selected ? color.withOpacity(0.06) : (disabled ? Colors.grey.shade50 : null),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: disabled ? Colors.grey.shade400 : color),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: disabled ? Colors.grey.shade400 : null,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: disabled ? Colors.grey.shade400 : color,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            if (selected)
+              Icon(Icons.check_circle, size: 16, color: color),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
 class _TagSuggestion {
   final String label;
   final String subtitle;
   final String value;
-  final String type; // '학교' | '지역'
+  final String type;
   const _TagSuggestion({required this.label, required this.subtitle, required this.value, required this.type});
 }

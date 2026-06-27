@@ -13,6 +13,11 @@ import '../features/profile/screens/profile_screen.dart';
 import '../features/search/screens/search_screen.dart';
 import '../features/dm/screens/dm_list_screen.dart';
 import '../features/dm/screens/dm_chat_screen.dart';
+import '../features/legal/screens/terms_screen.dart';
+import '../features/legal/screens/privacy_screen.dart';
+import '../features/academy/screens/academy_screen.dart';
+import '../features/academy/screens/academy_detail_screen.dart';
+import '../features/academy/screens/academy_review_write_screen.dart';
 import 'api_client.dart' show tokenStorageProvider;
 import 'constants.dart';
 
@@ -67,6 +72,20 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(path: '/profile', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const ProfileScreen()),
+      GoRoute(path: '/terms', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const TermsScreen()),
+      GoRoute(path: '/privacy', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const PrivacyScreen()),
+
+      // ── 학원 후기 (Shell 밖) ──────────────────────────────
+      GoRoute(
+        path: '/academy/:id/review/write',
+        parentNavigatorKey: _rootNavKey,
+        builder: (ctx, s) => AcademyReviewWriteScreen(academyId: int.parse(s.pathParameters['id']!)),
+      ),
+      GoRoute(
+        path: '/academy/:id',
+        parentNavigatorKey: _rootNavKey,
+        builder: (ctx, s) => AcademyDetailScreen(academyId: int.parse(s.pathParameters['id']!)),
+      ),
 
       // ── 바텀 네비 Shell ──────────────────────────────────
       StatefulShellRoute.indexedStack(
@@ -78,7 +97,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [GoRoute(path: '/board', builder: (ctx, s) => const BoardScreen())],
           ),
           StatefulShellBranch(routes: [GoRoute(path: '/search', builder: (ctx, s) => const SearchScreen())]),
+          StatefulShellBranch(routes: [GoRoute(path: '/academy', builder: (ctx, s) => const AcademyScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: '/dm', builder: (ctx, s) => const DmListScreen())]),
+          StatefulShellBranch(routes: [GoRoute(path: '/my', builder: (ctx, s) => const ProfileScreen())]),
         ],
       ),
     ],
@@ -98,8 +119,10 @@ class _MainShell extends StatelessWidget {
         onDestinationSelected: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.article_outlined), selectedIcon: Icon(Icons.article), label: '게시판'),
-          NavigationDestination(icon: Icon(Icons.search), selectedIcon: Icon(Icons.search), label: '검색'),
+          NavigationDestination(icon: Icon(Icons.search_outlined), selectedIcon: Icon(Icons.search), label: '검색'),
+          NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: '학원'),
           NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: '대화'),
+          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '내정보'),
         ],
       ),
     );

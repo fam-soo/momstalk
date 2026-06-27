@@ -57,6 +57,7 @@ def _sidebar():
         "📋 캡처 심사": "captures",
         "🚨 신고 처리": "reports",
         "👥 유저 관리": "users",
+        "🚫 금칙어 관리": "profanity",
         "📊 대시보드": "dashboard",
     }
     selected = st.sidebar.radio("메뉴", list(pages.keys()))
@@ -440,7 +441,70 @@ def _unban_user(user_id):
 
 
 # ══════════════════════════════════════════════════════════════════
-# 페이지 4 — 대시보드 (통계)
+# 페이지 4 — 금칙어 관리
+# ══════════════════════════════════════════════════════════════════
+
+def page_profanity():
+    st.title("🚫 금칙어 관리")
+    st.caption("추가된 금칙어는 게시글·댓글 작성·수정 시 서버에서 즉시 차단됩니다.")
+
+    # 추가
+    col_input, col_btn = st.columns([3, 1])
+    with col_input:
+        new_word = st.text_input("새 금칙어 입력", placeholder="예: 나쁜단어", label_visibility="collapsed")
+    with col_btn:
+        if st.button("추가", type="primary", use_container_width=True):
+            word = new_word.strip()
+            if not word:
+                st.error("단어를 입력해주세요.")
+            else:
+                try:
+                    with _db() as db:
+                        db.execute(text("""
+                            INSERT INTO profanity_words (word, created_at)
+                            VALUES (:word, NOW())
+                            ON CONFLICT (word) DO NOTHING
+                        """), {"word": word})
+                        db.commit()
+                    st.success(f"'{word}' 추가 완료")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"추가 실패: {e}")
+
+    st.markdown("---")
+
+    # 목록
+    try:
+        with _db() as db:
+            rows = db.execute(text(
+                "SELECT id, word, created_at FROM profanity_words ORDER BY created_at DESC"
+            )).fetchall()
+    except Exception:
+        st.warning("profanity_words 테이블이 없습니다. Migration 0007을 먼저 실행해주세요.")
+        st.code("docker exec momstalk_backend alembic upgrade head", language="bash")
+        return
+
+    if not rows:
+        st.info("추가된 금칙어가 없습니다. 서버 기본 금칙어는 코드에 내장되어 있습니다.")
+        return
+
+    st.markdown(f"**DB 관리 금칙어 {len(rows)}개**")
+    for row in rows:
+        col_word, col_date, col_del = st.columns([2, 2, 1])
+        with col_word:
+            st.code(row.word)
+        with col_date:
+            st.caption(row.created_at.strftime("%Y-%m-%d %H:%M") if row.created_at else "-")
+        with col_del:
+            if st.button("삭제", key=f"del_prof_{row.id}"):
+                with _db() as db:
+                    db.execute(text("DELETE FROM profanity_words WHERE id=:id"), {"id": row.id})
+                    db.commit()
+                st.rerun()
+
+
+# ══════════════════════════════════════════════════════════════════
+# 페이지 5 — 대시보드 (통계)
 # ══════════════════════════════════════════════════════════════════
 
 def page_dashboard():
@@ -508,5 +572,7 @@ elif page == "reports":
     page_reports()
 elif page == "users":
     page_users()
+elif page == "profanity":
+    page_profanity()
 elif page == "dashboard":
     page_dashboard()

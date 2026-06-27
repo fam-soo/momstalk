@@ -1,15 +1,48 @@
 """
-서비스 DB 전용 모델 (DATABASE_URL 연결)
-anon_id 외에는 신원 정보 일절 없음.
+통합 DB 모델 (DATABASE_URL 연결)
+인증 테이블(PhoneVerification, ParentVerification) 포함.
 """
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, JSON
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, SmallInteger, String, Text, JSON
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
 class Base(DeclarativeBase):
     pass
+
+
+# ── 인증 테이블 (구 Auth DB → 통합) ──────────────────────────
+
+class PhoneVerification(Base):
+    """SMS 인증 코드 임시 저장 (TTL 5분)"""
+    __tablename__ = "phone_verifications"
+
+    id = Column(Integer, primary_key=True)
+    phone_number = Column(String(20), nullable=False, index=True)
+    code = Column(String(6), nullable=False)
+    is_used = Column(Boolean, default=False)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ParentVerification(Base):
+    """
+    학부모 인증 레코드.
+    anon_id = HMAC-SHA256(전화번호, ANON_HASH_SECRET) — 이 값으로 User와 연결.
+    """
+    __tablename__ = "parent_verifications"
+
+    id = Column(Integer, primary_key=True)
+    anon_id = Column(String(64), unique=True, nullable=False, index=True)
+    school_code = Column(String(20), nullable=False)
+    school_name = Column(String(100), nullable=False)
+    grade = Column(Integer, nullable=False)
+    class_num = Column(Integer, nullable=False)
+    school_type = Column(String(10), nullable=False)
+    verified_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
 
 
 class User(Base):
@@ -30,6 +63,9 @@ class User(Base):
     is_banned = Column(Boolean, default=False)
     suspended_until = Column(DateTime, nullable=True)   # 기간 정지 해제 시각 (NULL이면 정지 없음)
     warning_count = Column(Integer, default=0)          # 누적 경고 횟수
+    # 선택적 실명제 (v0.5)
+    certified_nickname = Column(String(50), nullable=True)   # 인증 닉네임 (예: 행복초_지혜맘)
+    school_short_name = Column(String(20), nullable=True)    # 학교 약칭 (인증 닉네임 생성용)
     # v3 인증 관련
     social_provider = Column(String(20), nullable=True)   # "kakao"
     member_grade = Column(String(10), nullable=False, server_default="lurker")  # lurker / member
@@ -55,6 +91,7 @@ class Post(Base):
     title = Column(String(200), nullable=False)
     content = Column(Text, nullable=False)
     is_anonymous = Column(Boolean, default=True)
+    nickname_type = Column(String(10), nullable=False, server_default="anon")  # anon / certified
     view_count = Column(Integer, default=0)
     like_count = Column(Integer, default=0)
     scrap_count = Column(Integer, default=0)
@@ -77,6 +114,7 @@ class Comment(Base):
     parent_id = Column(Integer, ForeignKey("comments.id"), nullable=True)  # 대댓글
     content = Column(Text, nullable=False)
     is_anonymous = Column(Boolean, default=True)
+    nickname_type = Column(String(10), nullable=False, server_default="anon")  # anon / certified
     like_count = Column(Integer, default=0)
     report_count = Column(Integer, default=0)
     is_hidden = Column(Boolean, default=False)
@@ -237,6 +275,15 @@ class AdminUser(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class ProfanityWord(Base):
+    """DB 기반 금칙어 관리 (관리자 대시보드에서 실시간 추가/삭제)."""
+    __tablename__ = "profanity_words"
+
+    id = Column(Integer, primary_key=True)
+    word = Column(String(100), unique=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class AdminAction(Base):
     """관리자 행동 이력 (감사 로그)."""
     __tablename__ = "admin_actions"
@@ -247,4 +294,43 @@ class AdminAction(Base):
     target_type = Column(String(20), nullable=True)      # user / post / comment / capture
     target_id = Column(Integer, nullable=True)
     detail = Column(Text, nullable=True)                 # JSON 직렬화 사유/파라미터
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Academy(Base):
+    """NEIS 연동 학원 정보."""
+    __tablename__ = "academies"
+
+    id = Column(Integer, primary_key=True)
+    neis_academy_code = Column(String(30), unique=True, nullable=True)
+    name = Column(String(100), nullable=False, index=True)
+    region = Column(String(50), nullable=True, index=True)
+    address = Column(String(200), nullable=True)
+    phone = Column(String(20), nullable=True)
+    subjects = Column(JSONB, nullable=True)              # ["수학", "영어"]
+    school_type = Column(String(20), nullable=True)
+    is_b2b = Column(Boolean, default=False)
+    b2b_expires_at = Column(DateTime, nullable=True)
+    review_count = Column(Integer, default=0)
+    avg_rating = Column(Numeric(3, 2), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AcademyReview(Base):
+    """학원 후기 (구조화 평가 + 자유 텍스트)."""
+    __tablename__ = "academy_reviews"
+
+    id = Column(Integer, primary_key=True)
+    academy_id = Column(Integer, ForeignKey("academies.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    subject = Column(String(30), nullable=True)
+    teacher_style = Column(String(30), nullable=True)
+    homework_level = Column(String(20), nullable=True)
+    score_improvement = Column(String(30), nullable=True)
+    review_text = Column(Text, nullable=False)
+    rating = Column(SmallInteger, nullable=False)
+    nickname_type = Column(String(10), nullable=False, server_default="anon")
+    is_anonymous = Column(Boolean, nullable=False, default=True)
+    report_count = Column(Integer, default=0)
+    is_hidden = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)

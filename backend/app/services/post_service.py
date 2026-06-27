@@ -10,6 +10,16 @@ from app.schemas.post import PostCreate, PostListItem, PostResponse, ScrapRespon
 REPORT_AUTO_HIDE_THRESHOLD = 5
 
 
+def _author_display_name(post_or_comment, author: User) -> str | None:
+    """nickname_type에 따른 표시용 닉네임 반환."""
+    nickname_type = getattr(post_or_comment, "nickname_type", "anon")
+    if nickname_type == "certified":
+        return author.certified_nickname or author.nickname
+    if not getattr(post_or_comment, "is_anonymous", True):
+        return author.nickname
+    return None
+
+
 async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
     check_profanity(req.title, "제목")
     check_profanity(req.content, "내용")
@@ -22,6 +32,7 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
         title=req.title,
         content=req.content,
         is_anonymous=req.is_anonymous,
+        nickname_type=req.nickname_type,
         mention_tags=req.mention_tags or None,
     )
     db.add(post)
@@ -50,12 +61,16 @@ async def get_post_response(post: Post, user: User, db: AsyncSession) -> PostRes
     comment_count = (await db.execute(
         select(func.count()).where(Comment.post_id == post.id, Comment.is_hidden == False)
     )).scalar() or 0
+    author = (await db.execute(select(User).where(User.id == post.author_id))).scalar_one_or_none()
+    display_name = _author_display_name(post, author) if author else None
     return PostResponse(
         id=post.id,
         board_type=post.board_type,
         title=post.title,
         content=post.content,
         is_anonymous=post.is_anonymous,
+        nickname_type=getattr(post, "nickname_type", "anon"),
+        author_display_name=display_name,
         view_count=post.view_count,
         like_count=post.like_count,
         scrap_count=post.scrap_count,
@@ -76,12 +91,15 @@ async def list_posts(
     school_code: str,
     grade: int | None,
     class_num: int | None,
-    page: int,
     size: int,
     user: User,
     db: AsyncSession,
     q: str | None = None,
-) -> list[PostListItem]:
+    sort: str = "recent",       # "recent" | "popular"
+    cursor: int | None = None,  # cursor 기반 페이지네이션: 마지막 post.id
+) -> "PostListResponse":
+    from app.schemas.post import PostListResponse
+
     # 차단한 유저의 게시글 제외
     blocked_ids_result = await db.execute(select(Block.blocked_user_id).where(Block.user_id == user.id))
     blocked_ids = {r for r in blocked_ids_result.scalars()}
@@ -91,28 +109,49 @@ async def list_posts(
     if blocked_ids:
         query = query.where(Post.author_id.notin_(blocked_ids))
 
-    # 검색어 필터
     if q:
         query = query.where(or_(Post.title.ilike(f"%{q}%"), Post.content.ilike(f"%{q}%")))
 
     if board_type == "region":
-        # 지역 게시판: 같은 지역(user.region) 기준
         query = query.where(Post.school_code.in_(
             select(User.school_code).where(User.region == user.region)
         ))
     elif board_type == "free":
-        # 전체 게시판: 학교 필터 없음, @태그 매칭 게시글을 상단 노출
-        pass  # 필터 없음 — 아래에서 정렬만
+        pass
     else:
-        # 학교/학년: 같은 학교 기준
         query = query.where(Post.school_code == school_code)
         if board_type == "grade" and grade:
             query = query.where(Post.grade == grade)
 
-    query = query.order_by(Post.created_at.desc()).offset((page - 1) * size).limit(size)
+    # cursor 필터 + 정렬
+    if sort == "popular":
+        # 인기순: like_count DESC → id DESC (cursor는 id 기준)
+        if cursor is not None:
+            # cursor 이후의 행: 같은 like_count에서 id < cursor, 또는 like_count 더 낮은 행
+            cursor_post = (await db.execute(select(Post).where(Post.id == cursor))).scalar_one_or_none()
+            if cursor_post:
+                query = query.where(
+                    or_(
+                        Post.like_count < cursor_post.like_count,
+                        (Post.like_count == cursor_post.like_count) & (Post.id < cursor),
+                    )
+                )
+        query = query.order_by(Post.like_count.desc(), Post.id.desc()).limit(size + 1)
+    else:
+        # 최신순: id DESC cursor
+        if cursor is not None:
+            query = query.where(Post.id < cursor)
+        query = query.order_by(Post.id.desc()).limit(size + 1)
+
     posts = list((await db.execute(query)).scalars().all())
 
-    # 유저 프로필 기반 @태그 매칭용 집합 (모든 게시판 공통)
+    # 다음 페이지 존재 여부
+    has_more = len(posts) > size
+    if has_more:
+        posts = posts[:size]
+    next_cursor = posts[-1].id if has_more and posts else None
+
+    # 유저 @태그 집합
     user_tags: set[str] = set()
     if user.region:
         user_tags.add(user.region)
@@ -132,7 +171,6 @@ async def list_posts(
         decay = 1.0 if age_hours <= 24 else (0.7 if age_hours <= 72 else 0.4)
         return (p.like_count * 2 + comment_count * 1.5 + p.scrap_count - p.report_count * 3) * decay
 
-    # 현재 유저의 좋아요 여부 일괄 조회
     post_ids = [p.id for p in posts]
     liked_ids: set[int] = set()
     if post_ids:
@@ -145,7 +183,6 @@ async def list_posts(
         )
         liked_ids = {row for row in likes_result.scalars()}
 
-    # 댓글 수 일괄 계산 + 인기글 후보 판별
     comment_counts: dict[int, int] = {}
     hot_scores: dict[int, float] = {}
     for post in posts:
@@ -157,28 +194,34 @@ async def list_posts(
         if score >= 3:
             hot_scores[post.id] = score
 
-    # 인기글: 최대 3개, 점수 높은 순
     top_hot_ids = set(sorted(hot_scores, key=lambda pid: hot_scores[pid], reverse=True)[:3])
 
-    # @태그 매칭 게시글 상단 + 인기글 최상단 정렬
-    # 정렬 키: (hot=0 > pinned=1 > normal=2, 최신순)
-    def _sort_key(p: Post):
-        if p.id in top_hot_ids:
-            return (0, -p.created_at.timestamp())
-        if _is_pinned(p):
-            return (1, -p.created_at.timestamp())
-        return (2, -p.created_at.timestamp())
+    # 최신순일 때만 pinned/hot 재정렬 (인기순은 like_count 정렬 유지)
+    if sort == "recent":
+        def _sort_key(p: Post):
+            if p.id in top_hot_ids:
+                return (0, -p.created_at.timestamp())
+            if _is_pinned(p):
+                return (1, -p.created_at.timestamp())
+            return (2, -p.created_at.timestamp())
+        posts = sorted(posts, key=_sort_key)
 
-    posts = sorted(posts, key=_sort_key)
+    author_ids = {p.author_id for p in posts}
+    authors_result = await db.execute(select(User).where(User.id.in_(author_ids)))
+    authors: dict[int, User] = {u.id: u for u in authors_result.scalars()}
 
     items = []
     for post in posts:
         tags = post.mention_tags or []
+        author = authors.get(post.author_id)
+        display_name = _author_display_name(post, author) if author else None
         items.append(PostListItem(
             id=post.id,
             board_type=post.board_type,
             title=post.title,
             is_anonymous=post.is_anonymous,
+            nickname_type=getattr(post, "nickname_type", "anon"),
+            author_display_name=display_name,
             view_count=post.view_count,
             like_count=post.like_count,
             scrap_count=post.scrap_count,
@@ -189,7 +232,7 @@ async def list_posts(
             is_hot=post.id in top_hot_ids,
             created_at=post.created_at,
         ))
-    return items
+    return PostListResponse(items=items, next_cursor=next_cursor)
 
 
 async def update_post(post: Post, req: PostUpdate, db: AsyncSession) -> Post:

@@ -7,32 +7,34 @@ from app.db import get_service_db
 from app.models.service_models import User
 from app.models.service_models import Comment
 from app.schemas.comment import CommentCreate, CommentResponse, ReportRequest
-from app.schemas.post import PostCreate, PostListItem, PostResponse, PostUpdate, ScrapResponse
+from app.schemas.post import PostCreate, PostListItem, PostListResponse, PostResponse, PostUpdate, ScrapResponse
 from app.services import comment_service, post_service
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
 
-@router.get("", response_model=list[PostListItem])
+@router.get("", response_model=PostListResponse)
 async def list_posts(
     board_type: str = Query(..., description="grade / school / free / region"),
-    page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
+    cursor: int = Query(None, description="이전 응답의 next_cursor 값 (첫 페이지는 생략)"),
+    sort: str = Query("recent", description="recent | popular"),
     q: str = Query(None, description="검색어 (제목+내용)"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_service_db),
 ):
-    """게시판별 게시글 목록. 유저의 학교/학년 기준으로 접근 범위 자동 제한."""
+    """게시판별 게시글 목록. cursor 기반 무한 스크롤."""
     return await post_service.list_posts(
         board_type=board_type,
         school_code=user.school_code,
         grade=user.grade,
         class_num=user.class_num,
-        page=page,
         size=size,
         user=user,
         db=db,
         q=q,
+        sort=sort,
+        cursor=cursor,
     )
 
 

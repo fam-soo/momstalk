@@ -8,11 +8,16 @@ class PostCreate(BaseModel):
     title: str
     content: str
     is_anonymous: bool = True
+    nickname_type: str = "anon"   # anon / certified
     mention_tags: list[str] = []  # free 게시판 전용: ["region:기장군", "school:B100", "grade:1"]
 
     def model_post_init(self, __context) -> None:
         if self.board_type not in ("grade", "school", "free", "region"):
             raise ValueError("board_type은 grade / school / free / region 중 하나여야 합니다.")
+        if self.nickname_type not in ("anon", "certified"):
+            raise ValueError("nickname_type은 anon / certified 중 하나여야 합니다.")
+        if self.nickname_type == "certified":
+            self.is_anonymous = False
         if len(self.title) < 2 or len(self.title) > 200:
             raise ValueError("제목은 2~200자 사이여야 합니다.")
         if len(self.content) < 5:
@@ -37,6 +42,8 @@ class PostResponse(BaseModel):
     title: str
     content: str
     is_anonymous: bool
+    nickname_type: str = "anon"
+    author_display_name: Optional[str] = None   # 표시용 닉네임 (익명이면 None)
     view_count: int
     like_count: int
     scrap_count: int
@@ -47,9 +54,9 @@ class PostResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     author: Optional[PostAuthor] = None  # is_anonymous=True이면 None
-    is_liked: bool = False               # 현재 유저의 좋아요 여부
-    is_scraped: bool = False             # 현재 유저의 스크랩 여부
-    is_mine: bool = False                # 현재 유저가 작성한 글인지 (익명 포함)
+    is_liked: bool = False
+    is_scraped: bool = False
+    is_mine: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -59,17 +66,25 @@ class PostListItem(BaseModel):
     board_type: str
     title: str
     is_anonymous: bool
+    nickname_type: str = "anon"
+    author_display_name: Optional[str] = None
     view_count: int
     like_count: int
     scrap_count: int
     comment_count: int = 0
     mention_tags: list[str] = []
     is_liked: bool = False
-    is_pinned: bool = False  # 현재 유저와 @태그가 매칭되는 경우 True
-    is_hot: bool = False     # 인기글 여부
+    is_pinned: bool = False
+    is_hot: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PostListResponse(BaseModel):
+    """cursor 기반 무한 스크롤 응답."""
+    items: list[PostListItem]
+    next_cursor: Optional[int] = None   # 다음 페이지 커서 (마지막 post.id), None이면 끝
 
 
 class ScrapResponse(BaseModel):

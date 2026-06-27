@@ -20,11 +20,12 @@ class AppConstants {
     '제주특별자치도':   'T10',
   };
 
-  // Android 에뮬레이터: 'http://10.0.2.2:8000/api/v1'
-  // iOS 시뮬레이터:    'http://127.0.0.1:8000/api/v1'
-  // 웹 / Windows:      'http://localhost:8000/api/v1'
+  // 로컬 개발: 'http://localhost:8000/api/v1'
   // 실기기 (같은 Wi-Fi): PC의 로컬 IP 사용
-  static const String baseUrl = 'http://192.168.45.50:8000/api/v1';
+  // 프로덕션: Render 배포 후 'https://momstalk-api.onrender.com/api/v1'
+  static const String _devUrl = 'http://localhost:8000/api/v1';
+  static const String _prodUrl = 'https://momstalk-api.onrender.com/api/v1';
+  static const String baseUrl = bool.fromEnvironment('dart.vm.product') ? _prodUrl : _devUrl;
 
   static const String tokenKey = 'access_token';
   static const String refreshTokenKey = 'refresh_token';

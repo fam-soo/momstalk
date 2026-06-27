@@ -316,21 +316,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ListTile(
                 leading: const Icon(Icons.description_outlined),
                 title: const Text('이용약관'),
-                trailing: const Icon(Icons.open_in_new, size: 16, color: Colors.grey),
-                onTap: () => launchUrl(
-                  Uri.parse(AppConstants.termsOfServiceUrl),
-                  mode: LaunchMode.externalApplication,
-                ),
+                trailing: const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+                onTap: () => context.push('/terms'),
               ),
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.privacy_tip_outlined),
                 title: const Text('개인정보처리방침'),
-                trailing: const Icon(Icons.open_in_new, size: 16, color: Colors.grey),
-                onTap: () => launchUrl(
-                  Uri.parse(AppConstants.privacyPolicyUrl),
-                  mode: LaunchMode.externalApplication,
-                ),
+                trailing: const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+                onTap: () => context.push('/privacy'),
               ),
               const Divider(height: 1),
               ListTile(

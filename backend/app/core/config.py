@@ -6,7 +6,6 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     DATABASE_URL: str
-    AUTH_DATABASE_URL: str
     REDIS_URL: str = "redis://localhost:6379/0"
 
     SECRET_KEY: str

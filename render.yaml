@@ -1,0 +1,43 @@
+services:
+  # FastAPI 백엔드
+  - type: web
+    name: momstalk-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: DATABASE_URL
+        sync: false          # Render 대시보드에서 Supabase URL 입력
+      - key: REDIS_URL
+        sync: false          # Upstash Redis URL 입력
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ANON_HASH_SECRET
+        generateValue: true
+      - key: DEBUG
+        value: false
+      - key: ALLOWED_ORIGINS
+        sync: false          # GitHub Pages URL 입력 (예: https://username.github.io)
+      - key: NEIS_API_KEY
+        sync: false
+      - key: SMS_API_KEY
+        sync: false
+      - key: SMS_API_SECRET
+        sync: false
+      - key: SMS_SENDER
+        sync: false
+      - key: FCM_SERVICE_ACCOUNT_JSON
+        sync: false
+    healthCheckPath: /health
+    autoDeploy: true
+
+  # Streamlit 관리자 대시보드
+  - type: web
+    name: momstalk-admin
+    runtime: docker
+    dockerfilePath: ./admin/Dockerfile
+    dockerContext: ./admin
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+    autoDeploy: true

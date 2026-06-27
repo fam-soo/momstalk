@@ -1,10 +1,10 @@
 version: "3.9"
 
 services:
-  # 서비스 DB (게시글, 유저, 댓글 등 — 신원 정보 없음)
-  db_service:
+  # 통합 DB (유저, 인증, 게시글, 댓글, 학원 등 모든 테이블)
+  db:
     image: postgres:16-alpine
-    container_name: momstalk_service_db
+    container_name: momstalk_db
     environment:
       POSTGRES_USER: momstalk
       POSTGRES_PASSWORD: momstalk_pass
@@ -12,32 +12,14 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata_service:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U momstalk -d momstalk_db"]
       interval: 5s
       timeout: 5s
       retries: 5
 
-  # 인증 DB (전화번호, 학부모 인증 레코드 — 서비스 DB와 물리적 분리)
-  db_auth:
-    image: postgres:16-alpine
-    container_name: momstalk_auth_db
-    environment:
-      POSTGRES_USER: momstalk_auth
-      POSTGRES_PASSWORD: momstalk_auth_pass
-      POSTGRES_DB: momstalk_auth_db
-    ports:
-      - "5433:5432"
-    volumes:
-      - pgdata_auth:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U momstalk_auth -d momstalk_auth_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  # Redis (세션 토큰, 캐시, Celery 브로커)
+  # Redis (Rate Limit, 향후 토큰 블랙리스트)
   redis:
     image: redis:7-alpine
     container_name: momstalk_redis
@@ -51,7 +33,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # FastAPI 백엔드 (nginx 뒤에 위치, 외부 포트 직접 노출 안 함)
+  # FastAPI 백엔드
   backend:
     build:
       context: ./backend
@@ -59,35 +41,18 @@ services:
     container_name: momstalk_backend
     env_file:
       - ./backend/.env
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     depends_on:
-      db_service:
-        condition: service_healthy
-      db_auth:
+      db:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
       - ./backend:/app
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-  # Nginx — HTTPS + SSE 역방향 프록시
-  nginx:
-    image: nginx:1.25-alpine
-    container_name: momstalk_nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/certs:/etc/letsencrypt:ro         # certbot 인증서
-      - certbot_www:/var/www/certbot:ro
-    depends_on:
-      - backend
-    restart: unless-stopped
-
-  # Streamlit 관리자 대시보드 (외부 직접 노출 안 함 — nginx /admin/ 통해서만)
+  # Streamlit 관리자 대시보드
   admin:
     build:
       context: ./admin
@@ -95,23 +60,12 @@ services:
     container_name: momstalk_admin
     env_file:
       - ./admin/.env
-    expose:
-      - "8501"
+    ports:
+      - "8501:8501"
     depends_on:
-      - db_service
+      - db
     restart: unless-stopped
 
-  # Certbot — Let's Encrypt 인증서 발급/갱신
-  certbot:
-    image: certbot/certbot:latest
-    container_name: momstalk_certbot
-    volumes:
-      - ./nginx/certs:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-
 volumes:
-  pgdata_service:
-  pgdata_auth:
+  pgdata:
   redisdata:
-  certbot_www:

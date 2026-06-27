@@ -36,6 +36,21 @@ async def get_blocked_ids(user_id: int, db: AsyncSession) -> set[int]:
     return {row for row in result.scalars()}
 
 
+async def list_blocks(user: User, db: AsyncSession) -> list[dict]:
+    """내가 차단한 유저 목록 반환."""
+    result = await db.execute(
+        select(Block, User)
+        .join(User, User.id == Block.blocked_user_id)
+        .where(Block.user_id == user.id)
+        .order_by(Block.created_at.desc())
+    )
+    rows = result.all()
+    return [
+        {"user_id": blocked_user.id, "nickname": blocked_user.nickname or f"익명{blocked_user.id}"}
+        for block, blocked_user in rows
+    ]
+
+
 # ── Conversation ─────────────────────────────────────
 
 
