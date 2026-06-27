@@ -74,6 +74,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/profile', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const ProfileScreen()),
       GoRoute(path: '/terms', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const TermsScreen()),
       GoRoute(path: '/privacy', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const PrivacyScreen()),
+      GoRoute(path: '/search', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const SearchScreen()),
 
       // ── 학원 후기 (Shell 밖) ──────────────────────────────
       GoRoute(
@@ -96,7 +97,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             navigatorKey: _shellNavKey,
             routes: [GoRoute(path: '/board', builder: (ctx, s) => const BoardScreen())],
           ),
-          StatefulShellBranch(routes: [GoRoute(path: '/search', builder: (ctx, s) => const SearchScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: '/academy', builder: (ctx, s) => const AcademyScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: '/dm', builder: (ctx, s) => const DmListScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: '/my', builder: (ctx, s) => const ProfileScreen())]),
@@ -119,7 +119,6 @@ class _MainShell extends StatelessWidget {
         onDestinationSelected: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.article_outlined), selectedIcon: Icon(Icons.article), label: '게시판'),
-          NavigationDestination(icon: Icon(Icons.search_outlined), selectedIcon: Icon(Icons.search), label: '검색'),
           NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: '학원'),
           NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: '대화'),
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '내정보'),

@@ -45,18 +45,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _kakaoLogin() async {
     setState(() => _loading = true);
     try {
-      // ── 웹: 카카오 SDK 미지원 ────────────────────────────
-      if (kIsWeb) {
-        if (AppConstants.devMode) {
-          await _devLurkerLogin();
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('카카오 로그인은 모바일 앱에서만 지원됩니다.')),
-          );
-        }
-        return;
-      }
-
       if (!_agreed) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('이용약관 및 개인정보처리방침에 동의해주세요.')),

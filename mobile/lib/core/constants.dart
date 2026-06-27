@@ -30,8 +30,8 @@ class AppConstants {
   static const String tokenKey = 'access_token';
   static const String refreshTokenKey = 'refresh_token';
 
-  static const bool devMode = true;  // 테스트 완료 후 false로 변경
-  static const bool mockMode = true; // 서버 없이 앱 테스트 시 true, 실서버 연결 시 false
+  static const bool devMode = false;
+  static const bool mockMode = false;
 
   /// 카카오 네이티브 앱 키 (AndroidManifest / Info.plist 에도 동일하게 등록)
   static const String kakaoNativeAppKey = '95593f4d0972be3dd5072657262c5602';

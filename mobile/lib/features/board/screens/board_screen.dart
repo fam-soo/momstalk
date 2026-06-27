@@ -153,6 +153,10 @@ class _BoardScreenState extends ConsumerState<BoardScreen> with SingleTickerProv
               },
             ),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.search),
+                onPressed: () => context.push('/search'),
+              ),
               if (!isMember)
                 TextButton.icon(
                   onPressed: () => _showAuthBottomSheet(isPending: isPending),
@@ -397,8 +401,10 @@ class _PostListState extends ConsumerState<_PostList> {
       };
       if (!reset && _nextCursor != null) params['cursor'] = _nextCursor;
       final resp = await dio.get('/posts', queryParameters: params);
-      final data = resp.data as Map<String, dynamic>;
-      final items = List<Map<String, dynamic>>.from(data['items'] as List);
+      final data = Map<String, dynamic>.from(resp.data as Map);
+      final items = (data['items'] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
       final next = data['next_cursor'] as int?;
       if (mounted) {
         setState(() {

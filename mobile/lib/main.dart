@@ -89,7 +89,12 @@ class _MomsTalkAppState extends ConsumerState<MomsTalkApp> {
       theme: appTheme,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
-
+      builder: (context, child) => Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: child!,
+        ),
+      ),
     );
   }
 }
