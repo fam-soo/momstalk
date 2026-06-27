@@ -58,17 +58,25 @@ class _AdminLoginScreenState extends ConsumerState<AdminLoginScreen> {
               const SizedBox(height: 12),
               const Text('MomsTalk 관리자', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 32),
-              TextField(
-                controller: _userCtrl,
-                decoration: const InputDecoration(labelText: '아이디', prefixIcon: Icon(Icons.person_outline)),
-                onSubmitted: (_) => _login(),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _pwCtrl,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: '비밀번호', prefixIcon: Icon(Icons.lock_outline)),
-                onSubmitted: (_) => _login(),
+              AutofillGroup(
+                child: Column(
+                  children: [
+                    TextField(
+                      controller: _userCtrl,
+                      autofillHints: const [AutofillHints.username],
+                      decoration: const InputDecoration(labelText: '아이디', prefixIcon: Icon(Icons.person_outline)),
+                      onSubmitted: (_) => _login(),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _pwCtrl,
+                      obscureText: true,
+                      autofillHints: const [AutofillHints.password],
+                      decoration: const InputDecoration(labelText: '비밀번호', prefixIcon: Icon(Icons.lock_outline)),
+                      onSubmitted: (_) => _login(),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 24),
               SizedBox(
