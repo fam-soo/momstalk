@@ -4,13 +4,11 @@ NEIS 학원 데이터 전국 동기화 서비스.
 - 최초 실행(DB에 학원 100건 미만) 시 전국 17개 시도 전체 다운로드
 - 이후 매주 1회 증분 업데이트 (NEIS upsert)
 """
-import json
 import logging
 from datetime import datetime, timezone
 
 import httpx
-from sqlalchemy import select, func, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 
 from app.db import SessionLocal
 from app.models.service_models import Academy
@@ -40,6 +38,14 @@ ALL_EDU_CODES: list[tuple[str, str]] = [
     ("T10", "제주"),
 ]
 
+# 서울은 학원 수가 방대(수만 건)해서 구 단위로 분할 조회
+SEOUL_DISTRICTS = [
+    "강남구", "강동구", "강북구", "강서구", "관악구", "광진구", "구로구", "금천구",
+    "노원구", "도봉구", "동대문구", "동작구", "마포구", "서대문구", "서초구",
+    "성동구", "성북구", "송파구", "양천구", "영등포구", "용산구", "은평구",
+    "종로구", "중구", "중랑구",
+]
+
 _SUBJECT_KEYWORDS: dict[str, list[str]] = {
     "수학": ["수학"],
     "영어": ["영어", "영어회화", "영어전문"],
@@ -66,20 +72,23 @@ async def _fetch_neis_page(
     api_key: str,
     edu_code: str,
     page: int,
+    district: str | None = None,
 ) -> list[dict]:
-    params = {
+    params: dict = {
         "KEY": api_key,
         "Type": "json",
         "ATPT_OFCDC_SC_CODE": edu_code,
         "pIndex": page,
         "pSize": 1000,
     }
+    if district:
+        params["ADMST_ZONE_NM"] = district
     try:
-        resp = await client.get(NEIS_ACADEMY_URL, params=params, timeout=20)
+        resp = await client.get(NEIS_ACADEMY_URL, params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        logger.warning("NEIS fetch error (edu=%s page=%d): %s", edu_code, page, e)
+        logger.warning("NEIS fetch error (edu=%s district=%s page=%d): %s", edu_code, district, page, e)
         return []
 
     if "RESULT" in data:
@@ -92,21 +101,22 @@ async def _fetch_neis_page(
     )
 
 
-async def _fetch_all_for_edu_code(
-    client: httpx.AsyncClient, api_key: str, edu_code: str, label: str
+async def _fetch_all(
+    client: httpx.AsyncClient,
+    api_key: str,
+    edu_code: str,
+    label: str,
+    district: str | None = None,
 ) -> list[dict]:
     all_rows: list[dict] = []
     page = 1
     while True:
-        rows = await _fetch_neis_page(client, api_key, edu_code, page)
+        rows = await _fetch_neis_page(client, api_key, edu_code, page, district)
         all_rows.extend(rows)
-        logger.debug("  %s p%d: %d건", label, page, len(rows))
+        logger.debug("  %s%s p%d: %d건", label, f"/{district}" if district else "", page, len(rows))
         if len(rows) < 1000:
             break
         page += 1
-        if page > 20:
-            logger.warning("%s: 20페이지 초과, 중단", label)
-            break
     return all_rows
 
 
@@ -189,17 +199,29 @@ async def sync_all_academies(api_key: str, full: bool = False) -> None:
 
     async with httpx.AsyncClient() as client:
         for edu_code, label in ALL_EDU_CODES:
-            logger.info("[%s %s] NEIS 조회 중...", edu_code, label)
-            rows = await _fetch_all_for_edu_code(client, api_key, edu_code, label)
-            if not rows:
-                logger.info("  → 데이터 없음")
-                continue
-
-            async with SessionLocal() as db:
-                ins, upd = await _upsert_rows(db, rows)
-                total_inserted += ins
-                total_updated  += upd
-                logger.info("  → %d건 수신 / 신규 %d / 갱신 %d", len(rows), ins, upd)
+            if edu_code == "B10":
+                # 서울: 구 단위로 분할 (전체 조회 시 수만 건으로 페이지 무한)
+                for district in SEOUL_DISTRICTS:
+                    logger.info("[서울/%s] NEIS 조회 중...", district)
+                    rows = await _fetch_all(client, api_key, edu_code, label, district)
+                    if not rows:
+                        continue
+                    async with SessionLocal() as db:
+                        ins, upd = await _upsert_rows(db, rows)
+                        total_inserted += ins
+                        total_updated  += upd
+                        logger.info("  → %d건 / 신규 %d / 갱신 %d", len(rows), ins, upd)
+            else:
+                logger.info("[%s %s] NEIS 조회 중...", edu_code, label)
+                rows = await _fetch_all(client, api_key, edu_code, label)
+                if not rows:
+                    logger.info("  → 데이터 없음")
+                    continue
+                async with SessionLocal() as db:
+                    ins, upd = await _upsert_rows(db, rows)
+                    total_inserted += ins
+                    total_updated  += upd
+                    logger.info("  → %d건 수신 / 신규 %d / 갱신 %d", len(rows), ins, upd)
 
     elapsed = (datetime.now(timezone.utc) - start).total_seconds()
     logger.info(
@@ -209,11 +231,11 @@ async def sync_all_academies(api_key: str, full: bool = False) -> None:
 
 
 async def initial_sync_if_needed(api_key: str) -> None:
-    """DB에 학원이 200건 미만이면 전국 전체 동기화 실행."""
+    """DB에 학원이 5만 건 미만이면 전국 전체 동기화 실행."""
     async with SessionLocal() as db:
         count = (await db.execute(select(func.count(Academy.id)))).scalar_one()
 
-    if count < 200:
+    if count < 50_000:
         logger.info("학원 DB %d건 → 전국 초기 동기화 시작", count)
         await sync_all_academies(api_key, full=True)
     else:

@@ -57,7 +57,7 @@ async def search_academies(
         filters.append(Academy.subjects.op("@>")(sa.type_coerce(json.dumps([subject]), PGJSONB)))
 
     result = await db.execute(
-        select(Academy).where(*filters).order_by(Academy.review_count.desc(), Academy.id.asc()).limit(300)
+        select(Academy).where(*filters).order_by(Academy.review_count.desc(), Academy.id.asc()).limit(2000)
     )
     academies = result.scalars().all()
 
@@ -102,7 +102,7 @@ async def search_academies(
             await db.commit()
 
         result2 = await db.execute(
-            select(Academy).where(*filters).order_by(Academy.review_count.desc(), Academy.id.asc()).limit(300)
+            select(Academy).where(*filters).order_by(Academy.review_count.desc(), Academy.id.asc()).limit(2000)
         )
         academies = result2.scalars().all()
 
