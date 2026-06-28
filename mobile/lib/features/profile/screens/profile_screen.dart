@@ -71,19 +71,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       final dio = ref.read(dioProvider);
       await dio.delete('/auth/me');
+    } catch (_) {
+      // 서버 오류여도 로컬 토큰은 삭제하고 로그인 화면으로 이동
+    } finally {
       await ref.read(tokenStorageProvider).deleteAll();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('탈퇴가 완료되었습니다.')),
-        );
-        context.go('/auth/login');
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('탈퇴 처리 중 오류가 발생했습니다: $e')),
-        );
-      }
+      if (mounted) context.go('/auth/login');
     }
   }
 
@@ -339,6 +331,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 8),
+
+        // ── 관리자 패널 (is_admin 계정만 표시) ──────────────
+        if (_profile?['is_admin'] == true)
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: const Icon(Icons.admin_panel_settings, color: Color(0xFF4A90D9)),
+              title: const Text('관리자 패널', style: TextStyle(color: Color(0xFF4A90D9), fontWeight: FontWeight.bold)),
+              trailing: const Icon(Icons.chevron_right, color: Color(0xFF4A90D9)),
+              onTap: () => context.go('/admin'),
+            ),
+          ),
+
+        if (_profile?['is_admin'] == true) const SizedBox(height: 8),
 
         // ── 로그아웃 / 탈퇴 ──────────────────────────────
         Card(

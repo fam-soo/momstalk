@@ -1,8 +1,7 @@
 """
 관리자 API — MVP.
 
-인증: POST /admin/login → admin_token (별도 JWT, sub prefix "admin:")
-이후 Authorization: Bearer admin_token 으로 모든 /admin/* 호출.
+인증: 일반 유저 JWT + users.is_admin = true
 """
 from datetime import datetime, timedelta
 from typing import Optional
@@ -12,11 +11,9 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
-from app.core.config import settings
 from app.db import get_service_db
 from app.models.service_models import (
     AdminAction,
-    AdminUser,
     AuthCapture,
     Comment,
     Post,
@@ -25,100 +22,22 @@ from app.models.service_models import (
     UserWarning,
 )
 from app.services import capture_service
-
-import bcrypt as _bcrypt
-from jose import jwt as jose_jwt, JWTError
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-
-def _hash_password(plain: str) -> str:
-    return _bcrypt.hashpw(plain.encode(), _bcrypt.gensalt()).decode()
-
-
-def _verify_password(plain: str, hashed: str) -> bool:
-    return _bcrypt.checkpw(plain.encode(), hashed.encode())
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-_bearer = HTTPBearer()
 
 
-# ── 관리자 JWT 헬퍼 ──────────────────────────────────
-
-def _create_admin_token(admin_id: int) -> str:
-    payload = {
-        "sub": f"admin:{admin_id}",
-        "type": "admin_access",
-        "exp": datetime.utcnow() + timedelta(hours=8),
-    }
-    return jose_jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-
-
-async def _get_admin(
-    cred: HTTPAuthorizationCredentials = Depends(_bearer),
-    db: AsyncSession = Depends(get_service_db),
-) -> AdminUser:
-    try:
-        payload = jose_jwt.decode(cred.credentials, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        if payload.get("type") != "admin_access":
-            raise JWTError()
-        sub: str = payload["sub"]
-        if not sub.startswith("admin:"):
-            raise JWTError()
-        admin_id = int(sub.split(":")[1])
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="관리자 인증이 필요합니다.")
-
-    admin = (await db.execute(select(AdminUser).where(AdminUser.id == admin_id, AdminUser.is_active == True))).scalar_one_or_none()
-    if not admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="비활성 관리자 계정입니다.")
-    return admin
-
-
-# ── 로그인 ────────────────────────────────────────────
-
-class AdminLoginRequest(BaseModel):
-    username: str
-    password: str
-
-
-@router.post("/login")
-async def admin_login(req: AdminLoginRequest, db: AsyncSession = Depends(get_service_db)):
-    admin = (await db.execute(
-        select(AdminUser).where(AdminUser.username == req.username, AdminUser.is_active == True)
-    )).scalar_one_or_none()
-    if not admin or not _verify_password(req.password, admin.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="잘못된 자격증명입니다.")
-    return {"admin_token": _create_admin_token(admin.id), "role": admin.role}
-
-
-# ── 관리자 계정 생성 (superadmin 전용, 최초 1회 seed용) ──
-
-class CreateAdminRequest(BaseModel):
-    username: str
-    password: str
-    role: str = "moderator"
-
-
-@router.post("/users", status_code=status.HTTP_201_CREATED)
-async def create_admin(
-    req: CreateAdminRequest,
-    admin: AdminUser = Depends(_get_admin),
-    db: AsyncSession = Depends(get_service_db),
-):
-    if admin.role != "superadmin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="superadmin 권한이 필요합니다.")
-    hashed = _hash_password(req.password)
-    new_admin = AdminUser(username=req.username, hashed_password=hashed, role=req.role)
-    db.add(new_admin)
-    await db.commit()
-    return {"id": new_admin.id, "username": new_admin.username, "role": new_admin.role}
+async def _require_admin(user: User = Depends(get_current_user)) -> User:
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자 권한이 필요합니다.")
+    return user
 
 
 # ── 캡처 심사 ─────────────────────────────────────────
 
 @router.get("/captures")
 async def list_captures(
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     captures = await capture_service.list_pending_captures(db)
@@ -142,7 +61,7 @@ async def list_captures(
 @router.post("/captures/{capture_id}/approve", status_code=status.HTTP_204_NO_CONTENT)
 async def approve_capture(
     capture_id: int,
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     try:
@@ -159,7 +78,7 @@ class RejectRequest(BaseModel):
 async def reject_capture(
     capture_id: int,
     req: RejectRequest,
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     try:
@@ -182,7 +101,7 @@ class WarnRequest(BaseModel):
 @router.get("/users")
 async def list_users(
     q: Optional[str] = Query(None),
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     query = select(User).order_by(User.created_at.desc()).limit(100)
@@ -211,7 +130,7 @@ async def list_users(
 @router.get("/users/{user_id}")
 async def get_user_detail(
     user_id: int,
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
@@ -251,7 +170,7 @@ async def get_user_detail(
 async def warn_user(
     user_id: int,
     req: WarnRequest,
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
@@ -267,7 +186,7 @@ async def warn_user(
 async def suspend_user(
     user_id: int,
     req: SuspendRequest,
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
@@ -284,7 +203,7 @@ async def suspend_user(
 async def ban_user(
     user_id: int,
     req: WarnRequest,
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
@@ -299,7 +218,7 @@ async def ban_user(
 @router.post("/users/{user_id}/unban", status_code=status.HTTP_204_NO_CONTENT)
 async def unban_user(
     user_id: int,
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
@@ -316,7 +235,7 @@ async def unban_user(
 @router.post("/posts/{post_id}/hide", status_code=status.HTTP_204_NO_CONTENT)
 async def hide_post(
     post_id: int,
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     post = (await db.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
@@ -330,7 +249,7 @@ async def hide_post(
 @router.post("/posts/{post_id}/unhide", status_code=status.HTTP_204_NO_CONTENT)
 async def unhide_post(
     post_id: int,
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     post = (await db.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
@@ -344,7 +263,7 @@ async def unhide_post(
 @router.delete("/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def force_delete_post(
     post_id: int,
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     post = (await db.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
@@ -361,7 +280,7 @@ async def force_delete_post(
 @router.get("/reports")
 async def list_reports(
     status_filter: str = "pending",
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     result = await db.execute(
@@ -403,7 +322,7 @@ class ReviewReportRequest(BaseModel):
 async def review_report(
     report_id: int,
     req: ReviewReportRequest,
-    admin: AdminUser = Depends(_get_admin),
+    admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
     report = (await db.execute(select(Report).where(Report.id == report_id))).scalar_one_or_none()

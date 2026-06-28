@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../../core/api_client.dart' show tokenStorageProvider;
+import '../../../core/constants.dart';
 import '../admin_api.dart';
 
 class AdminHomeScreen extends ConsumerStatefulWidget {
@@ -16,8 +18,8 @@ class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen> {
   int _tab = 0;
 
   Future<void> _logout() async {
-    await deleteAdminToken();
-    if (mounted) context.go('/admin/login');
+    await ref.read(tokenStorageProvider).deleteAll();
+    if (mounted) context.go('/auth/login');
   }
 
   @override

@@ -13,6 +13,7 @@ class UserProfile(BaseModel):
     manner_score: int
     member_grade: str = "lurker"   # lurker / member
     auth_pending: bool = False
+    is_admin: bool = False
     profile_updated_at: Optional[datetime] = None
     created_at: datetime
 

@@ -61,6 +61,7 @@ class User(Base):
     manner_score = Column(Integer, default=36)          # 블라인드 매너온도 유사
     fcm_token = Column(String(256), nullable=True)      # Firebase 푸시 토큰 (기기별 갱신)
     is_banned = Column(Boolean, default=False)
+    is_admin = Column(Boolean, default=False)
     suspended_until = Column(DateTime, nullable=True)   # 기간 정지 해제 시각 (NULL이면 정지 없음)
     warning_count = Column(Integer, default=0)          # 누적 경고 횟수
     # 선택적 실명제 (v0.5)

@@ -10,8 +10,8 @@
 """
 import os
 import getpass
+import bcrypt
 from dotenv import load_dotenv
-from passlib.context import CryptContext
 from sqlalchemy import create_engine, text
 
 load_dotenv()
@@ -25,8 +25,6 @@ _sync_url = (
     .replace("postgresql+asyncpg://", "postgresql://")
     .replace("asyncpg://", "postgresql://")
 )
-
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def main() -> None:
@@ -44,7 +42,7 @@ def main() -> None:
     if role not in ("superadmin", "moderator"):
         raise SystemExit("❌ 역할은 superadmin 또는 moderator만 허용됩니다.")
 
-    hashed = _pwd_ctx.hash(password)
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
     engine = create_engine(_sync_url, future=True)
     with engine.begin() as conn:
