@@ -14,10 +14,21 @@ logger = logging.getLogger(__name__)
 _scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
 
 
+async def _run_sync():
+    from app.services.academy_sync_service import initial_sync_if_needed
+    try:
+        await initial_sync_if_needed(settings.NEIS_API_KEY)
+    except Exception as e:
+        logger.error("학원 동기화 실패: %s", e)
+
+
 async def _weekly_sync():
     from app.services.academy_sync_service import sync_all_academies
     logger.info("주간 학원 동기화 시작")
-    await sync_all_academies(settings.NEIS_API_KEY, full=True)
+    try:
+        await sync_all_academies(settings.NEIS_API_KEY, full=True)
+    except Exception as e:
+        logger.error("주간 동기화 실패: %s", e)
 
 
 @asynccontextmanager
@@ -26,22 +37,15 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-    # 최초 동기화: 백그라운드로 실행 (Render 포트 감지 차단 방지)
-    import asyncio
-    from app.services.academy_sync_service import initial_sync_if_needed
-
-    async def _bg_initial_sync():
-        try:
-            await initial_sync_if_needed(settings.NEIS_API_KEY)
-        except Exception as e:
-            logger.error("초기 학원 동기화 실패: %s", e)
-
-    asyncio.get_event_loop().create_task(_bg_initial_sync())
-
+    # 초기 동기화: 앱 시작 10초 후 백그라운드 실행 (포트 바인딩 먼저 완료)
+    _scheduler.add_job(_run_sync, "date", id="initial_sync",
+                       run_date=None,  # 즉시이지만 scheduler 루프 안에서 실행
+                       misfire_grace_time=600)
     # 매주 일요일 새벽 3시 전국 업데이트
-    _scheduler.add_job(_weekly_sync, "cron", day_of_week="sun", hour=3, minute=0)
+    _scheduler.add_job(_weekly_sync, "cron", day_of_week="sun", hour=3, minute=0,
+                       misfire_grace_time=3600)
     _scheduler.start()
-    logger.info("APScheduler 시작 (매주 일 03:00 학원 동기화)")
+    logger.info("APScheduler 시작 — 초기 동기화 및 매주 일 03:00 예약됨")
 
     yield
 
