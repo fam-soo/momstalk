@@ -82,16 +82,14 @@ async def search_academies(
                 if existing.scalar_one_or_none():
                     continue
             academy_name = r["name"]
-            neis_subjects = r.get("subjects") or []
             detected = _detect_subjects_from_name(academy_name)
-            merged_subjects = list(dict.fromkeys(detected + [s for s in neis_subjects if s not in detected]))
             academy = Academy(
                 neis_academy_code=neis_code,
                 name=academy_name,
                 region=r.get("region"),
                 address=r.get("address"),
                 phone=r.get("phone"),
-                subjects=merged_subjects if merged_subjects else neis_subjects,
+                subjects=detected,
                 school_type=r.get("school_type"),
             )
             db.add(academy)

@@ -131,10 +131,8 @@ async def _upsert_rows(db: AsyncSession, rows: list[dict]) -> tuple[int, int]:
         region    = (row.get("ADMST_ZONE_NM") or "").strip()
         address   = (row.get("FA_RDNMA") or "").strip()
         phone     = (row.get("ACA_PONE_NO") or "").strip()
-        raw_subj  = row.get("LE_ORD_NM") or ""
-        neis_subjs = [s.strip() for s in raw_subj.split(",") if s.strip()]
-        detected   = _detect_subjects(name)
-        subjects   = list(dict.fromkeys(detected + [s for s in neis_subjs if s not in detected]))
+        # LE_ORD_NM은 "보통교과","예체능" 같은 계열명이라 과목명으로 부적합 → 이름 감지만 사용
+        subjects = _detect_subjects(name)
 
         if not name:
             continue

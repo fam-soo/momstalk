@@ -114,46 +114,52 @@ async def search_schools(
         return _dummy_schools(keyword, region_code, school_type, district_filter)
 
     is_sample = settings.NEIS_API_KEY.lower() == "sample"
-    p_size = 5 if is_sample else (100 if not keyword else 30)
+    p_size = 5 if is_sample else 1000
 
-    params = {
+    base_params: dict = {
         "KEY": settings.NEIS_API_KEY,
         "Type": "json",
-        "pIndex": 1,
         "pSize": p_size,
     }
     if keyword:
-        params["SCHUL_NM"] = keyword
+        base_params["SCHUL_NM"] = keyword
     if region_code:
-        params["ATPT_OFCDC_SC_CODE"] = region_code
+        base_params["ATPT_OFCDC_SC_CODE"] = region_code
     if school_type and school_type in SCHOOL_TYPE_KR:
-        params["SCHUL_KND_SC_NM"] = SCHOOL_TYPE_KR[school_type]
+        base_params["SCHUL_KND_SC_NM"] = SCHOOL_TYPE_KR[school_type]
 
+    all_rows: list[dict] = []
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(NEIS_ENDPOINT, params=params)
-            resp.raise_for_status()
-            data = resp.json()
+        async with httpx.AsyncClient(timeout=15) as client:
+            page = 1
+            while True:
+                params = {**base_params, "pIndex": page}
+                resp = await client.get(NEIS_ENDPOINT, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                if "RESULT" in data:
+                    break
+                rows = (
+                    data.get("schoolInfo", [{}])[1].get("row", [])
+                    if "schoolInfo" in data and len(data["schoolInfo"]) > 1
+                    else []
+                )
+                all_rows.extend(rows)
+                if len(rows) < p_size:
+                    break
+                page += 1
+                if page > 10:
+                    break
     except Exception:
         return _dummy_schools(keyword, region_code, school_type, district_filter)
 
-    if "RESULT" in data:
-        return []
-
-    rows = (
-        data.get("schoolInfo", [{}])[1].get("row", [])
-        if "schoolInfo" in data and len(data["schoolInfo"]) > 1
-        else []
-    )
-
     results = []
-    for row in rows:
+    for row in all_rows:
         school_type_kr = row.get("SCHUL_KND_SC_NM", "")
         st = SCHOOL_TYPE_MAP.get(school_type_kr)
         if not st:
             continue
         address = row.get("ORG_RDNMA", "")
-        # 지역 필터: 주소에 district_filter가 포함돼야 함
         if district_filter and district_filter not in address:
             continue
         results.append(SchoolSearchResult(
