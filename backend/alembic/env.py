@@ -1,6 +1,7 @@
 import asyncio
 from logging.config import fileConfig
 
+from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 from alembic import context
@@ -13,12 +14,18 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
-db_url = settings.DATABASE_URL
+
+# asyncpg URL → psycopg2 URL (PgBouncer 호환)
+_sync_url = (
+    settings.DATABASE_URL
+    .replace("postgresql+asyncpg://", "postgresql://")
+    .replace("asyncpg://", "postgresql://")
+)
 
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=db_url,
+        url=_sync_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -33,14 +40,14 @@ def do_run_migrations(connection):
         context.run_migrations()
 
 
-async def run_migrations_online() -> None:
-    engine = create_async_engine(db_url, poolclass=NullPool, connect_args={"statement_cache_size": 0})
-    async with engine.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-    await engine.dispose()
+def run_migrations_online() -> None:
+    engine = create_engine(_sync_url)
+    with engine.connect() as connection:
+        do_run_migrations(connection)
+    engine.dispose()
 
 
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    asyncio.run(run_migrations_online())
+    run_migrations_online()
