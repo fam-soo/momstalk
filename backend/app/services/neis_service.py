@@ -217,47 +217,51 @@ async def search_academies(
     if not settings.NEIS_API_KEY:
         return _dummy_academies(name, region, subject)
 
-    params: dict = {
+    base_params: dict = {
         "KEY": settings.NEIS_API_KEY,
         "Type": "json",
-        "pIndex": 1,
-        "pSize": 50,
+        "pSize": 1000,
     }
 
     if name:
-        params["ACA_NM"] = name
-        # 이름 검색 시 지역 제한 없이 전국에서 조회
+        base_params["ACA_NM"] = name
     else:
-        # 지역 기반 조회: 시도코드 필수
         edu_code = _infer_edu_code(region or "") or "B10"
-        params["ATPT_OFCDC_SC_CODE"] = edu_code
+        base_params["ATPT_OFCDC_SC_CODE"] = edu_code
 
-    if region:
-        # 구/군 단위면 ADMST_ZONE_NM (행정구역명)에 삽입
-        if any(region.endswith(s) for s in ("구", "군", "시")):
-            params["ADMST_ZONE_NM"] = region
+    if region and any(region.endswith(s) for s in ("구", "군", "시")):
+        base_params["ADMST_ZONE_NM"] = region
     if subject:
-        params["LE_ORD_NM"] = subject  # 계열명 (예: 국어, 수학)
+        base_params["LE_ORD_NM"] = subject
 
+    all_rows: list[dict] = []
+    page = 1
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(NEIS_ACADEMY_ENDPOINT, params=params)
-            resp.raise_for_status()
-            data = resp.json()
+        async with httpx.AsyncClient(timeout=15) as client:
+            while True:
+                params = {**base_params, "pIndex": page}
+                resp = await client.get(NEIS_ACADEMY_ENDPOINT, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                if "RESULT" in data:
+                    break
+                rows = (
+                    data.get("acaInsTiInfo", [{}])[1].get("row", [])
+                    if "acaInsTiInfo" in data and len(data["acaInsTiInfo"]) > 1
+                    else []
+                )
+                all_rows.extend(rows)
+                # 결과가 pSize 미만이면 마지막 페이지
+                if len(rows) < 1000:
+                    break
+                page += 1
+                if page > 5:  # 최대 5페이지(5000건) 제한
+                    break
     except Exception:
         return _dummy_academies(name, region, subject)
 
-    if "RESULT" in data:
-        return []
-
-    rows = (
-        data.get("acaInsTiInfo", [{}])[1].get("row", [])
-        if "acaInsTiInfo" in data and len(data["acaInsTiInfo"]) > 1
-        else []
-    )
-
     results = []
-    for row in rows:
+    for row in all_rows:
         results.append({
             "neis_academy_code": row.get("ACA_INSTI_SC_CODE"),
             "name": row.get("ACA_NM", ""),

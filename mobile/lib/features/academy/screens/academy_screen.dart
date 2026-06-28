@@ -16,10 +16,12 @@ class AcademyScreen extends ConsumerStatefulWidget {
 class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   final _searchCtrl = TextEditingController();
   final _searchFocus = FocusNode();
+  bool _searchActive = false;   // AppBar 검색 모드 여부
+
   String _selectedSubject = '';
   String _userRegion = '';
-  List<Map<String, dynamic>> _allResults = [];  // 전체 로드 결과
-  List<Map<String, dynamic>> _results = [];     // 표시 결과 (클라이언트 필터)
+  List<Map<String, dynamic>> _allResults = [];
+  List<Map<String, dynamic>> _results = [];
   bool _loading = true;
   bool _searched = false;
   String? _error;
@@ -39,7 +41,6 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
     super.dispose();
   }
 
-  // 과목별 학원 수 (전체 결과 기준)
   Map<String, int> get _subjectCounts {
     final counts = <String, int>{};
     for (final a in _allResults) {
@@ -94,7 +95,6 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       final params = <String, dynamic>{};
       if (q.isNotEmpty) params['name'] = q;
       if (searchRegion.isNotEmpty) params['region'] = searchRegion;
-      // subject 필터는 서버에 보내지 않고 클라이언트에서 처리
 
       final resp = await dio.get('/academies', queryParameters: params);
       final list = resp.data as List;
@@ -103,6 +103,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
         setState(() {
           _allResults = all;
           _applySubjectFilter();
+          _searchActive = false; // 검색 완료 후 AppBar 복원
         });
       }
     } on DioException catch (e) {
@@ -124,108 +125,70 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
     });
   }
 
+  void _openSearch() {
+    setState(() => _searchActive = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _searchFocus.requestFocus();
+    });
+  }
+
+  void _cancelSearch() {
+    _searchCtrl.clear();
+    setState(() => _searchActive = false);
+    _searchFocus.unfocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final counts = _subjectCounts;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('학원 후기'),
-        centerTitle: false,
-      ),
+      appBar: _searchActive ? _buildSearchAppBar(theme) : _buildNormalAppBar(),
       body: Column(
         children: [
-          // ── 검색 영역 ─────────────────────────────────
-          // Material 대신 ColoredBox 사용 — Flutter Web에서 Material이 포인터 이벤트 차단하는 버그 회피
-          ColoredBox(
-            color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.35),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          // ── 과목 필터 칩 ──────────────────────────────
+          Container(
+            color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.3),
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _searchCtrl,
-                          focusNode: _searchFocus,
-                          keyboardType: TextInputType.text,
-                          textInputAction: TextInputAction.search,
-                          enableInteractiveSelection: true,
-                          decoration: InputDecoration(
-                            hintText: _userRegion.isNotEmpty
-                                ? '$_userRegion 학원명 검색'
-                                : '학원명 검색',
-                            prefixIcon: const Icon(Icons.search, size: 20),
-                            isDense: true,
-                            border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(10)),
-                            filled: true,
-                            fillColor: theme.colorScheme.surface,
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          ),
-                          onSubmitted: (_) => _search(),
-                        ),
+                  // 전체 칩
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: FilterChip(
+                      label: Text(
+                        '전체${_allResults.isNotEmpty ? " ${_allResults.length}" : ""}',
+                        style: const TextStyle(fontSize: 12),
                       ),
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        onPressed: () => _search(),
-                        icon: const Icon(Icons.search, size: 18),
-                        label: const Text('검색'),
-                        style: FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  // 과목 필터 칩 — 카운트 표시, 토글 가능
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        // 전체 칩
-                        Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: FilterChip(
-                            label: Text(
-                              '전체${_allResults.isNotEmpty ? " ${_allResults.length}" : ""}',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            selected: _selectedSubject.isEmpty,
-                            onSelected: (_) {
-                              setState(() {
-                                _selectedSubject = '';
-                                _applySubjectFilter();
-                              });
-                            },
-                            visualDensity: VisualDensity.compact,
-                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                        ),
-                        ..._subjects.map((s) {
-                          final count = counts[s] ?? 0;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: FilterChip(
-                              label: Text(
-                                count > 0 ? '$s $count' : s,
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                              selected: _selectedSubject == s,
-                              onSelected: count > 0 ? (_) => _onChipTap(s) : null,
-                              visualDensity: VisualDensity.compact,
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              disabledColor: theme.colorScheme.surfaceContainerHighest,
-                            ),
-                          );
-                        }),
-                      ],
+                      selected: _selectedSubject.isEmpty,
+                      onSelected: (_) => setState(() {
+                        _selectedSubject = '';
+                        _applySubjectFilter();
+                      }),
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
+                  ..._subjects.map((s) {
+                    final count = counts[s] ?? 0;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: FilterChip(
+                        label: Text(
+                          count > 0 ? '$s $count' : s,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        selected: _selectedSubject == s,
+                        onSelected: count > 0 ? (_) => _onChipTap(s) : null,
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        disabledColor: theme.colorScheme.surfaceContainerHighest,
+                      ),
+                    );
+                  }),
                 ],
               ),
             ),
@@ -311,6 +274,62 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       ),
     );
   }
+
+  // 일반 AppBar: 제목 + 우측 검색 아이콘
+  PreferredSizeWidget _buildNormalAppBar() {
+    return AppBar(
+      title: Text(
+        _userRegion.isNotEmpty ? '$_userRegion 학원 후기' : '학원 후기',
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
+      centerTitle: false,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.search),
+          tooltip: '학원명 검색',
+          onPressed: _openSearch,
+        ),
+      ],
+    );
+  }
+
+  // 검색 모드 AppBar: 텍스트 필드 + 취소
+  PreferredSizeWidget _buildSearchAppBar(ThemeData theme) {
+    return AppBar(
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back),
+        onPressed: _cancelSearch,
+      ),
+      title: TextField(
+        controller: _searchCtrl,
+        focusNode: _searchFocus,
+        keyboardType: TextInputType.text,
+        textInputAction: TextInputAction.search,
+        autofocus: true,
+        decoration: InputDecoration(
+          hintText: '학원명 검색',
+          border: InputBorder.none,
+          hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.5)),
+        ),
+        style: const TextStyle(fontSize: 16),
+        onSubmitted: (_) => _search(),
+      ),
+      actions: [
+        if (_searchCtrl.text.isNotEmpty)
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () {
+              _searchCtrl.clear();
+              setState(() {});
+            },
+          ),
+        TextButton(
+          onPressed: _search,
+          child: const Text('검색'),
+        ),
+      ],
+    );
+  }
 }
 
 class _AcademyTile extends StatelessWidget {
@@ -323,7 +342,6 @@ class _AcademyTile extends StatelessWidget {
     final rating = (academy['avg_rating'] as num?)?.toDouble() ?? 0.0;
     final reviewCount = academy['review_count'] as int? ?? 0;
     final rawSubjects = (academy['subjects'] as List?)?.cast<String>() ?? [];
-    // NEIS 계열명("보통교과" 등)은 표시하지 않고 실제 과목만 표시
     const knownSubjects = ['수학', '영어', '과학', '국어', '음악', '미술', '체육', '코딩', '기타'];
     final subjects = rawSubjects.where((s) => knownSubjects.contains(s)).toList();
     final isB2b = academy['is_b2b'] as bool? ?? false;
@@ -373,7 +391,6 @@ class _AcademyTile extends StatelessWidget {
             ),
           const SizedBox(height: 4),
           Row(children: [
-            // 별점
             ...List.generate(5, (i) => Icon(
               i < rating.round() ? Icons.star_rounded : Icons.star_outline_rounded,
               size: 14,

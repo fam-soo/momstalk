@@ -57,17 +57,18 @@ async def search_academies(
         filters.append(Academy.subjects.op("@>")(sa.type_coerce(json.dumps([subject]), PGJSONB)))
 
     result = await db.execute(
-        select(Academy).where(*filters).order_by(Academy.review_count.desc()).limit(50)
+        select(Academy).where(*filters).order_by(Academy.review_count.desc(), Academy.id.asc()).limit(300)
     )
     academies = result.scalars().all()
 
-    if not academies:
-        # NEIS API 조회 후 DB 저장 — 이름 검색 시 region 없이 전국 조회
+    # DB에 결과가 없거나 이름 검색 시 NEIS에서 추가 데이터 가져오기
+    if not academies or name:
         neis_results = await neis_service.search_academies(
             name=name,
-            region=None if name else region,  # 이름 검색 시 region 제한 해제
+            region=None if name else region,
             subject=subject,
         )
+        added = False
         for r in neis_results:
             neis_code = r.get("neis_academy_code")
             if neis_code:
@@ -77,7 +78,6 @@ async def search_academies(
                 if existing.scalar_one_or_none():
                     continue
             else:
-                # neis_code 없는 경우 이름+지역으로 중복 체크
                 existing = await db.execute(
                     select(Academy).where(Academy.name == r["name"], Academy.region == r.get("region"))
                 )
@@ -97,10 +97,12 @@ async def search_academies(
                 school_type=r.get("school_type"),
             )
             db.add(academy)
-        await db.commit()
+            added = True
+        if added:
+            await db.commit()
 
         result2 = await db.execute(
-            select(Academy).where(*filters).order_by(Academy.review_count.desc()).limit(50)
+            select(Academy).where(*filters).order_by(Academy.review_count.desc(), Academy.id.asc()).limit(300)
         )
         academies = result2.scalars().all()
 
