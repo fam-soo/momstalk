@@ -86,3 +86,25 @@ app.include_router(api_router, prefix="/api/v1")
 @app.get("/health")
 async def health():
     return {"status": "ok", "app": settings.APP_NAME}
+
+
+@app.post("/internal/sync")
+async def trigger_sync(secret: str = ""):
+    """수동 동기화 트리거 — Render Shell 또는 curl로 호출."""
+    if secret != settings.SECRET_KEY[:16]:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="forbidden")
+    task = asyncio.create_task(_run_initial_sync())
+    return {"ok": True, "message": "동기화 시작됨 (백그라운드)"}
+
+
+@app.get("/internal/db-count")
+async def db_count():
+    """DB 학교·학원 수 확인."""
+    from sqlalchemy import select, func
+    from app.db import SessionLocal
+    from app.models.service_models import School, Academy
+    async with SessionLocal() as db:
+        school_cnt = (await db.execute(select(func.count(School.id)))).scalar_one()
+        academy_cnt = (await db.execute(select(func.count(Academy.id)))).scalar_one()
+    return {"schools": school_cnt, "academies": academy_cnt}
