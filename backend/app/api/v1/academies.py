@@ -17,9 +17,11 @@ router = APIRouter(prefix="/academies", tags=["academies"])
 async def search_academies(
     name: Optional[str] = Query(None),
     region: Optional[str] = Query(None),
-    subject: Optional[str] = Query(None),        # 단일 과목 (레거시)
-    subjects: Optional[str] = Query(None),        # 복수 과목 콤마 구분 "수학,영어"
-    school_level: Optional[str] = Query(None),    # 초등|중등|고등
+    subject: Optional[str] = Query(None),            # 단일 과목 (레거시)
+    subjects: Optional[str] = Query(None),            # 복수 과목 콤마 구분 "수학,영어"
+    school_level: Optional[str] = Query(None),        # 초등|중등|고등
+    reviewer_school: Optional[str] = Query(None),     # 후기 작성자 아이 학교명
+    reviewer_grades: Optional[str] = Query(None),     # 후기 작성자 아이 학년 콤마 구분 "1,2,3"
     user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_service_db),
 ):
@@ -28,8 +30,19 @@ async def search_academies(
         subject_list = [s.strip() for s in subjects.split(",") if s.strip()]
     elif subject:
         subject_list = [subject]
+
+    grade_list: Optional[list[int]] = None
+    if reviewer_grades:
+        grade_list = [int(g.strip()) for g in reviewer_grades.split(",") if g.strip().isdigit()]
+
     return await academy_service.search_academies(
-        db, name=name, region=region, subjects=subject_list, school_level=school_level
+        db,
+        name=name,
+        region=region,
+        subjects=subject_list,
+        school_level=school_level,
+        reviewer_school=reviewer_school,
+        reviewer_grades=grade_list,
     )
 
 

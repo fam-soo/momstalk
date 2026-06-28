@@ -20,9 +20,15 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
 
   // 필터 상태
   final Set<String> _selectedSubjects = {};
-  String _selectedLevel = ''; // 초등|중등|고등|''
+  String _selectedLevel = '';       // 초등|중등|고등|''
+  String _reviewerSchool = '';      // 후기 작성자 아이 학교명
+  final Set<int> _reviewerGrades = {}; // 후기 작성자 아이 학년
 
+  // 사용자 프로필 (필터 기본값 제공용)
   String _userRegion = '';
+  String _userSchoolName = '';
+  int _userGrade = 0;
+
   List<Map<String, dynamic>> _results = [];
   bool _loading = true;
   bool _searched = false;
@@ -30,8 +36,13 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
 
   static const _subjects = ['수학', '영어', '과학', '국어', '음악', '미술', '체육', '코딩', '기타'];
   static const _levels = ['초등', '중등', '고등'];
+  static const _grades = [1, 2, 3, 4, 5, 6];
 
-  bool get _hasFilter => _selectedSubjects.isNotEmpty || _selectedLevel.isNotEmpty;
+  bool get _hasFilter =>
+      _selectedSubjects.isNotEmpty ||
+      _selectedLevel.isNotEmpty ||
+      _reviewerSchool.isNotEmpty ||
+      _reviewerGrades.isNotEmpty;
 
   @override
   void initState() {
@@ -54,8 +65,17 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       if (token != null) {
         try {
           final resp = await dio.get('/auth/me');
-          final r = (resp.data as Map<String, dynamic>)['region'] as String? ?? '';
+          final p = resp.data as Map<String, dynamic>;
+          final r = p['region'] as String? ?? '';
           region = r.isNotEmpty ? r : '양천구';
+          final schoolName = p['school_name'] as String? ?? '';
+          final grade = p['grade'] as int? ?? 0;
+          if (mounted) {
+            setState(() {
+              _userSchoolName = schoolName;
+              _userGrade = grade;
+            });
+          }
         } catch (_) {}
       }
       if (region.isEmpty) region = '양천구';
@@ -78,6 +98,8 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       if (searchRegion.isNotEmpty) params['region'] = searchRegion;
       if (_selectedSubjects.isNotEmpty) params['subjects'] = _selectedSubjects.join(',');
       if (_selectedLevel.isNotEmpty) params['school_level'] = _selectedLevel;
+      if (_reviewerSchool.isNotEmpty) params['reviewer_school'] = _reviewerSchool;
+      if (_reviewerGrades.isNotEmpty) params['reviewer_grades'] = _reviewerGrades.join(',');
 
       final resp = await dio.get('/academies', queryParameters: params);
       final list = resp.data as List;
@@ -114,6 +136,9 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   Future<void> _openFilter() async {
     final tempSubjects = Set<String>.from(_selectedSubjects);
     var tempLevel = _selectedLevel;
+    var tempSchool = _reviewerSchool.isNotEmpty ? _reviewerSchool : _userSchoolName;
+    final tempGrades = Set<int>.from(_reviewerGrades);
+    final schoolCtrl = TextEditingController(text: tempSchool);
 
     await showModalBottomSheet(
       context: context,
@@ -125,9 +150,9 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       builder: (ctx) {
         return StatefulBuilder(builder: (ctx, setBS) {
           return DraggableScrollableSheet(
-            initialChildSize: 0.75,
+            initialChildSize: 0.85,
             minChildSize: 0.5,
-            maxChildSize: 0.9,
+            maxChildSize: 0.95,
             expand: false,
             builder: (_, scrollCtrl) => Column(
               children: [
@@ -150,7 +175,12 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                     const Spacer(),
                     TextButton(
                       onPressed: () {
-                        setBS(() { tempSubjects.clear(); tempLevel = ''; });
+                        setBS(() {
+                          tempSubjects.clear();
+                          tempLevel = '';
+                          tempGrades.clear();
+                          schoolCtrl.clear();
+                        });
                       },
                       child: const Text('초기화'),
                     ),
@@ -162,45 +192,93 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                     controller: scrollCtrl,
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                     children: [
-                      // ── 과목 (복수 선택) ────────────────
+                      // ── 과목 (복수 선택, 3개씩) ──────────
                       const Text('과목', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 4),
-                      ..._subjects.map((s) {
-                        final sel = tempSubjects.contains(s);
-                        return CheckboxListTile(
-                          value: sel,
-                          onChanged: (_) => setBS(() {
-                            sel ? tempSubjects.remove(s) : tempSubjects.add(s);
-                          }),
-                          title: Text(s),
-                          dense: true,
-                          contentPadding: EdgeInsets.zero,
-                          controlAffinity: ListTileControlAffinity.leading,
-                        );
-                      }),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: _subjects.map((s) {
+                          final sel = tempSubjects.contains(s);
+                          return FilterChip(
+                            label: Text(s),
+                            selected: sel,
+                            onSelected: (_) => setBS(() {
+                              sel ? tempSubjects.remove(s) : tempSubjects.add(s);
+                            }),
+                            visualDensity: VisualDensity.compact,
+                          );
+                        }).toList(),
+                      ),
                       const SizedBox(height: 16),
                       const Divider(),
                       const SizedBox(height: 12),
 
-                      // ── 학교급 (단일 선택) ──────────────
+                      // ── 학교급 (단일 선택, 한 줄) ────────
                       const Text('학교급', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 4),
-                      RadioListTile<String>(
-                        value: '',
-                        groupValue: tempLevel,
-                        onChanged: (v) => setBS(() => tempLevel = v ?? ''),
-                        title: const Text('전체'),
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('전체'),
+                            selected: tempLevel.isEmpty,
+                            onSelected: (_) => setBS(() => tempLevel = ''),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          ..._levels.map((l) => ChoiceChip(
+                            label: Text(l),
+                            selected: tempLevel == l,
+                            onSelected: (_) => setBS(() => tempLevel = l),
+                            visualDensity: VisualDensity.compact,
+                          )),
+                        ],
                       ),
-                      ..._levels.map((l) => RadioListTile<String>(
-                        value: l,
-                        groupValue: tempLevel,
-                        onChanged: (v) => setBS(() => tempLevel = v ?? ''),
-                        title: Text(l),
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                      )),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 12),
+
+                      // ── 후기 작성자 아이 정보 ────────────
+                      const Text('후기 작성자 아이 정보', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 4),
+                      Text(
+                        '해당 학교·학년 아이를 가진 학부모의 후기가 있는 학원만 표시됩니다.',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: schoolCtrl,
+                        onChanged: (_) => setBS(() {}),
+                        decoration: InputDecoration(
+                          labelText: '학교명',
+                          hintText: _userSchoolName.isNotEmpty ? _userSchoolName : '예: 양천초등학교',
+                          isDense: true,
+                          border: const OutlineInputBorder(),
+                          suffixIcon: schoolCtrl.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.close, size: 16),
+                                  onPressed: () => setBS(() => schoolCtrl.clear()),
+                                )
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      const Text('학년', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        children: _grades.map((g) {
+                          final sel = tempGrades.contains(g);
+                          return FilterChip(
+                            label: Text('$g학년'),
+                            selected: sel,
+                            onSelected: (_) => setBS(() {
+                              sel ? tempGrades.remove(g) : tempGrades.add(g);
+                            }),
+                            visualDensity: VisualDensity.compact,
+                          );
+                        }).toList(),
+                      ),
                     ],
                   ),
                 ),
@@ -212,23 +290,23 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                       width: double.infinity,
                       child: FilledButton(
                         onPressed: () {
+                          final school = schoolCtrl.text.trim();
                           Navigator.pop(ctx);
                           setState(() {
                             _selectedSubjects
                               ..clear()
                               ..addAll(tempSubjects);
                             _selectedLevel = tempLevel;
+                            _reviewerSchool = school;
+                            _reviewerGrades
+                              ..clear()
+                              ..addAll(tempGrades);
                           });
                           _search();
                         },
                         style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
                         child: Text(
-                          tempSubjects.isEmpty && tempLevel.isEmpty
-                              ? '전체 조회'
-                              : '필터 적용 (${[
-                                  if (tempSubjects.isNotEmpty) '과목 ${tempSubjects.length}개',
-                                  if (tempLevel.isNotEmpty) tempLevel,
-                                ].join(', ')})',
+                          _buildFilterLabel(tempSubjects, tempLevel, schoolCtrl.text.trim(), tempGrades),
                         ),
                       ),
                     ),
@@ -240,6 +318,17 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
         });
       },
     );
+    schoolCtrl.dispose();
+  }
+
+  String _buildFilterLabel(Set<String> subjects, String level, String school, Set<int> grades) {
+    final parts = <String>[
+      if (subjects.isNotEmpty) '과목 ${subjects.length}개',
+      if (level.isNotEmpty) level,
+      if (school.isNotEmpty) school,
+      if (grades.isNotEmpty) '${grades.toList()..sort()}학년'.replaceAll('[', '').replaceAll(']', ''),
+    ];
+    return parts.isEmpty ? '전체 조회' : '필터 적용 (${parts.join(', ')})';
   }
 
   @override
@@ -265,6 +354,8 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                       [
                         if (_selectedSubjects.isNotEmpty) '과목: ${_selectedSubjects.join(', ')}',
                         if (_selectedLevel.isNotEmpty) '학교급: $_selectedLevel',
+                        if (_reviewerSchool.isNotEmpty) '학교: $_reviewerSchool',
+                        if (_reviewerGrades.isNotEmpty) '${(_reviewerGrades.toList()..sort()).join('·')}학년',
                       ].join(' · '),
                       style: TextStyle(fontSize: 12, color: theme.colorScheme.primary, fontWeight: FontWeight.w500),
                       overflow: TextOverflow.ellipsis,
@@ -273,7 +364,12 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                   IconButton(
                     icon: const Icon(Icons.close, size: 16),
                     onPressed: () {
-                      setState(() { _selectedSubjects.clear(); _selectedLevel = ''; });
+                      setState(() {
+                        _selectedSubjects.clear();
+                        _selectedLevel = '';
+                        _reviewerSchool = '';
+                        _reviewerGrades.clear();
+                      });
                       _search();
                     },
                     visualDensity: VisualDensity.compact,

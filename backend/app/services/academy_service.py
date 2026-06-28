@@ -41,6 +41,8 @@ async def search_academies(
     region: Optional[str] = None,
     subjects: Optional[list[str]] = None,   # 복수 과목 필터
     school_level: Optional[str] = None,      # 초등|중등|고등
+    reviewer_school: Optional[str] = None,   # 후기 작성자 아이의 학교명
+    reviewer_grades: Optional[list[int]] = None,  # 후기 작성자 아이의 학년(들)
 ) -> list[AcademyResponse]:
     """DB 우선 검색 → 결과 없으면 NEIS API 조회 후 DB 캐싱.
 
@@ -67,6 +69,22 @@ async def search_academies(
         level_map = {"초등": "초등학교", "중등": "중학교", "고등": "고등학교"}
         mapped = level_map.get(school_level, school_level)
         filters.append(Academy.school_type.ilike(f"%{mapped}%"))
+
+    # 후기 작성자 아이 정보 필터 (학교명 / 학년)
+    # → 해당 조건의 학부모가 후기를 남긴 학원만 표시
+    if reviewer_school or reviewer_grades:
+        reviewer_filter_parts = []
+        if reviewer_school:
+            reviewer_filter_parts.append(User.school_name.ilike(f"%{reviewer_school}%"))
+        if reviewer_grades:
+            reviewer_filter_parts.append(User.grade.in_(reviewer_grades))
+        reviewer_subq = (
+            select(AcademyReview.academy_id)
+            .join(User, User.id == AcademyReview.author_id)
+            .where(*reviewer_filter_parts)
+            .correlate(Academy)
+        )
+        filters.append(Academy.id.in_(reviewer_subq))
 
     result = await db.execute(
         select(Academy).where(*filters).order_by(
