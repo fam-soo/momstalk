@@ -26,12 +26,17 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
-    # 최초 동기화 (DB에 학원 데이터 부족 시)
-    try:
-        from app.services.academy_sync_service import initial_sync_if_needed
-        await initial_sync_if_needed(settings.NEIS_API_KEY)
-    except Exception as e:
-        logger.error("초기 학원 동기화 실패: %s", e)
+    # 최초 동기화: 백그라운드로 실행 (Render 포트 감지 차단 방지)
+    import asyncio
+    from app.services.academy_sync_service import initial_sync_if_needed
+
+    async def _bg_initial_sync():
+        try:
+            await initial_sync_if_needed(settings.NEIS_API_KEY)
+        except Exception as e:
+            logger.error("초기 학원 동기화 실패: %s", e)
+
+    asyncio.get_event_loop().create_task(_bg_initial_sync())
 
     # 매주 일요일 새벽 3시 전국 업데이트
     _scheduler.add_job(_weekly_sync, "cron", day_of_week="sun", hour=3, minute=0)
