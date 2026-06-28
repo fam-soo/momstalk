@@ -68,6 +68,14 @@ class _BoardScreenState extends ConsumerState<BoardScreen> with SingleTickerProv
     final school = profile['school_name'] as String? ?? '';
     final grade = profile['grade'] as int? ?? 1;
 
+    if (isAdmin) {
+      return [
+        ('전체', 'free', false),
+        ('전지역 게시판', 'region', false),
+        ('전학교 게시판', 'school', false),
+        ('전학년', 'grade', false),
+      ];
+    }
     if (isMember) {
       return [
         ('전체', 'free', false),
@@ -174,7 +182,7 @@ class _BoardScreenState extends ConsumerState<BoardScreen> with SingleTickerProv
                   onCertify: () => _showAuthBottomSheet(isPending: isPending),
                 );
               }
-              return PostListWidget(boardType: t.$2);
+              return PostListWidget(boardType: t.$2, isAdmin: isAdmin);
             }).toList(),
           ),
           floatingActionButton: FloatingActionButton.extended(

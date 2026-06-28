@@ -151,12 +151,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildBody() {
-    final isMember = (_profile!['member_grade'] as String? ?? 'lurker') == 'member';
-    final isPending = _profile!['auth_pending'] as bool? ?? false;
+    final isAdmin = _profile!['is_admin'] as bool? ?? false;
+    final isMember = isAdmin || (_profile!['member_grade'] as String? ?? 'lurker') == 'member';
+    final isPending = !isAdmin && (_profile!['auth_pending'] as bool? ?? false);
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // ── 관리자 패널 (최상단) ──────────────────────────
+        if (isAdmin) ...[
+          Card(
+            clipBehavior: Clip.antiAlias,
+            color: const Color(0xFFE8F0FE),
+            child: ListTile(
+              leading: const Icon(Icons.admin_panel_settings, color: Color(0xFF4A90D9)),
+              title: const Text('관리자 패널', style: TextStyle(color: Color(0xFF4A90D9), fontWeight: FontWeight.bold)),
+              subtitle: const Text('대시보드, 신고 관리, 회원 관리', style: TextStyle(fontSize: 12, color: Color(0xFF6A9CC9))),
+              trailing: const Icon(Icons.chevron_right, color: Color(0xFF4A90D9)),
+              onTap: () => context.go('/admin'),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+
         // ── 기본 프로필 카드 ──────────────────────────────
         Card(
           child: Padding(
@@ -170,8 +187,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   Expanded(child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(_profile!['nickname'] ?? '닉네임 없음',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Row(children: [
+                        Text(_profile!['nickname'] ?? '닉네임 없음',
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        if (isAdmin) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(color: const Color(0xFF4A90D9), borderRadius: BorderRadius.circular(4)),
+                            child: const Text('관리자', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ]),
                       const SizedBox(height: 4),
                       _TemperatureChip(
                         celsius: (_profile!['temperature'] as num?)?.toDouble() ?? 36.5,
@@ -179,86 +206,90 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ],
                   )),
                 ]),
-                const Divider(height: 24),
-                _row(Icons.location_on_outlined, '지역',
-                    isMember ? (_profile!['region'] ?? '-') : '미인증'),
-                const SizedBox(height: 8),
-                _row(Icons.school_outlined, '학교',
-                    isMember
-                        ? '${_profile!['school_name'] ?? '-'} (${_schoolTypeLabel(_profile!['school_type'])})'
-                        : '미인증'),
-                const SizedBox(height: 8),
-                _row(Icons.grade_outlined, '학년',
-                    isMember ? '${_profile!['grade'] ?? '-'}학년' : '미인증'),
+                if (!isAdmin) ...[
+                  const Divider(height: 24),
+                  _row(Icons.location_on_outlined, '지역',
+                      isMember ? (_profile!['region'] ?? '-') : '미인증'),
+                  const SizedBox(height: 8),
+                  _row(Icons.school_outlined, '학교',
+                      isMember
+                          ? '${_profile!['school_name'] ?? '-'} (${_schoolTypeLabel(_profile!['school_type'])})'
+                          : '미인증'),
+                  const SizedBox(height: 8),
+                  _row(Icons.grade_outlined, '학년',
+                      isMember ? '${_profile!['grade'] ?? '-'}학년' : '미인증'),
+                ],
               ],
             ),
           ),
         ),
         const SizedBox(height: 12),
 
-        // ── 지역·학교·학년 변경 + 심사 상태 통합 카드 ──────
-        Card(
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              ListTile(
-                leading: Icon(
-                  isPending
-                      ? Icons.hourglass_top_rounded
-                      : isMember
-                          ? Icons.edit_location_outlined
-                          : Icons.verified_outlined,
-                  color: isPending ? Colors.orange : null,
-                ),
-                title: Text(
-                  isMember ? '지역·학교·학년 변경' : '학부모 인증 (학교 선택)',
-                  style: isPending ? const TextStyle(color: Colors.orange) : null,
-                ),
-                subtitle: Text(
-                  isPending
-                      ? '심사 진행 중 — 탭하여 현황 확인'
-                      : isMember
-                          ? '월 1회 변경 가능'
-                          : '학교를 검색하여 인증을 시작하세요',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isPending ? Colors.orange.shade700 : Colors.grey,
+        // ── 지역·학교·학년 변경 + 심사 상태 통합 카드 (관리자 제외) ──────
+        if (!isAdmin) ...[
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: Icon(
+                    isPending
+                        ? Icons.hourglass_top_rounded
+                        : isMember
+                            ? Icons.edit_location_outlined
+                            : Icons.verified_outlined,
+                    color: isPending ? Colors.orange : null,
                   ),
-                ),
-                trailing: isPending
-                    ? Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.orange.shade200),
-                        ),
-                        child: const Text('심사 중', style: TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.w600)),
-                      )
-                    : const Icon(Icons.chevron_right),
-                onTap: () => _onTapSchoolChange(isPending, isMember),
-              ),
-              if (isPending) ...[
-                const Divider(height: 1),
-                Container(
-                  color: Colors.orange.shade50,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  child: Row(children: [
-                    Icon(Icons.info_outline, size: 14, color: Colors.orange.shade700),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '알림장 캡처 검토 중입니다. 승인 시 푸시 알림으로 안내드립니다.',
-                        style: TextStyle(fontSize: 12, color: Colors.orange.shade700),
-                      ),
+                  title: Text(
+                    isMember ? '지역·학교·학년 변경' : '학부모 인증 (학교 선택)',
+                    style: isPending ? const TextStyle(color: Colors.orange) : null,
+                  ),
+                  subtitle: Text(
+                    isPending
+                        ? '심사 진행 중 — 탭하여 현황 확인'
+                        : isMember
+                            ? '월 1회 변경 가능'
+                            : '학교를 검색하여 인증을 시작하세요',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isPending ? Colors.orange.shade700 : Colors.grey,
                     ),
-                  ]),
+                  ),
+                  trailing: isPending
+                      ? Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.orange.shade200),
+                          ),
+                          child: const Text('심사 중', style: TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.w600)),
+                        )
+                      : const Icon(Icons.chevron_right),
+                  onTap: () => _onTapSchoolChange(isPending, isMember),
                 ),
+                if (isPending) ...[
+                  const Divider(height: 1),
+                  Container(
+                    color: Colors.orange.shade50,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    child: Row(children: [
+                      Icon(Icons.info_outline, size: 14, color: Colors.orange.shade700),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '알림장 캡처 검토 중입니다. 승인 시 푸시 알림으로 안내드립니다.',
+                          style: TextStyle(fontSize: 12, color: Colors.orange.shade700),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
+          const SizedBox(height: 8),
+        ],
 
         // ── 스크랩 ────────────────────────────────────────
         Card(
@@ -273,8 +304,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
 
-        // ── 초대 링크 (정회원만) ──────────────────────────
-        if (isMember) ...[
+        // ── 초대 링크 (정회원, 비관리자만) ──────────────
+        if (isMember && !isAdmin) ...[
           const SizedBox(height: 8),
           Card(
             child: ListTile(
@@ -337,20 +368,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
         const SizedBox(height: 8),
-
-        // ── 관리자 패널 (is_admin 계정만 표시) ──────────────
-        if (_profile?['is_admin'] == true)
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: ListTile(
-              leading: const Icon(Icons.admin_panel_settings, color: Color(0xFF4A90D9)),
-              title: const Text('관리자 패널', style: TextStyle(color: Color(0xFF4A90D9), fontWeight: FontWeight.bold)),
-              trailing: const Icon(Icons.chevron_right, color: Color(0xFF4A90D9)),
-              onTap: () => context.go('/admin'),
-            ),
-          ),
-
-        if (_profile?['is_admin'] == true) const SizedBox(height: 8),
 
         // ── 로그아웃 / 탈퇴 ──────────────────────────────
         Card(

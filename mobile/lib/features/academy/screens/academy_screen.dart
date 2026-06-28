@@ -28,6 +28,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   String _userRegion = '';
   String _userSchoolName = '';
   int _userGrade = 0;
+  bool _isAdmin = false;
 
   List<Map<String, dynamic>> _results = [];
   bool _loading = true;
@@ -67,13 +68,15 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
           final resp = await dio.get('/auth/me');
           final p = resp.data as Map<String, dynamic>;
           final r = p['region'] as String? ?? '';
-          region = r.isNotEmpty ? r : '양천구';
+          final adminFlag = p['is_admin'] as bool? ?? false;
+          region = adminFlag ? '' : (r.isNotEmpty ? r : '양천구');
           final schoolName = p['school_name'] as String? ?? '';
           final grade = p['grade'] as int? ?? 0;
           if (mounted) {
             setState(() {
               _userSchoolName = schoolName;
               _userGrade = grade;
+              _isAdmin = adminFlag;
             });
           }
         } catch (_) {}
@@ -457,7 +460,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   PreferredSizeWidget _buildNormalAppBar(ThemeData theme) {
     return AppBar(
       title: Text(
-        _userRegion.isNotEmpty ? '$_userRegion 학원 후기' : '학원 후기',
+        _isAdmin ? '전지역 학원 후기' : (_userRegion.isNotEmpty ? '$_userRegion 학원 후기' : '학원 후기'),
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
       centerTitle: false,

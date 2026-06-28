@@ -8,7 +8,8 @@ import 'post_detail_screen.dart' show showReportDialog;
 
 class PostListWidget extends ConsumerStatefulWidget {
   final String boardType;
-  const PostListWidget({super.key, required this.boardType});
+  final bool isAdmin;
+  const PostListWidget({super.key, required this.boardType, this.isAdmin = false});
 
   @override
   ConsumerState<PostListWidget> createState() => _PostListWidgetState();
@@ -127,7 +128,7 @@ class _PostListWidgetState extends ConsumerState<PostListWidget> {
                                   child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
                                 );
                               }
-                              return PostCard(post: _posts[i], onRefresh: () => _load(reset: true));
+                              return PostCard(post: _posts[i], onRefresh: () => _load(reset: true), isAdmin: widget.isAdmin);
                             },
                           ),
                         ),
@@ -160,7 +161,8 @@ class _SortChip extends StatelessWidget {
 class PostCard extends StatelessWidget {
   final Map<String, dynamic> post;
   final VoidCallback onRefresh;
-  const PostCard({super.key, required this.post, required this.onRefresh});
+  final bool isAdmin;
+  const PostCard({super.key, required this.post, required this.onRefresh, this.isAdmin = false});
 
   String _relativeTime(String? iso) {
     if (iso == null) return '';
@@ -171,6 +173,25 @@ class PostCard extends StatelessWidget {
     if (diff.inMinutes < 60) return '${diff.inMinutes}분';
     if (diff.inHours < 24) return '${diff.inHours}시간';
     return DateFormat('MM.dd').format(dt);
+  }
+
+  Widget _adminLocationLabel(BuildContext ctx) {
+    final boardType = post['board_type'] as String? ?? '';
+    String? label;
+    if (boardType == 'region') {
+      label = post['author_region'] as String?;
+    } else if (boardType == 'school') {
+      label = post['author_school'] as String?;
+    }
+    if (label == null || label.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: Theme.of(ctx).colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text('($label)', style: TextStyle(fontSize: 10, color: Theme.of(ctx).colorScheme.onSecondaryContainer)),
+    );
   }
 
   void _showOptions(BuildContext context, WidgetRef ref) {
@@ -204,9 +225,13 @@ class PostCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  post['is_anonymous'] == true ? '익명' : '작성자',
+                  post['is_anonymous'] == true ? '익명' : (post['author_display_name'] as String? ?? '작성자'),
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
+                if (isAdmin) ...[
+                  const SizedBox(width: 4),
+                  _adminLocationLabel(ctx),
+                ],
                 const Text(' · ', style: TextStyle(color: Colors.grey, fontSize: 12)),
                 Text(time, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 const Spacer(),

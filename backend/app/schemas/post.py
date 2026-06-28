@@ -68,6 +68,8 @@ class PostListItem(BaseModel):
     is_anonymous: bool
     nickname_type: str = "anon"
     author_display_name: Optional[str] = None
+    author_region: Optional[str] = None    # 관리자용: 작성자 지역
+    author_school: Optional[str] = None    # 관리자용: 작성자 학교명
     view_count: int
     like_count: int
     scrap_count: int

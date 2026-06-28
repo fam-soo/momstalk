@@ -232,6 +232,8 @@ async def list_posts(
             is_anonymous=post.is_anonymous,
             nickname_type=getattr(post, "nickname_type", "anon"),
             author_display_name=display_name,
+            author_region=author.region if author else None,
+            author_school=author.school_name if author else None,
             view_count=post.view_count,
             like_count=post.like_count,
             scrap_count=post.scrap_count,
