@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 import httpx
 from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import SessionLocal
 from app.models.service_models import Academy
