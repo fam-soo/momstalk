@@ -13,6 +13,84 @@ from app.schemas.academy import AcademyReviewCreate, AcademyReviewResponse, Acad
 from app.services import neis_service
 
 
+# 한글 표기 ↔ 영문 표기 양방향 매핑
+# 검색어가 어느 쪽으로 입력되어도 두 표기 모두 검색
+_BRAND_ALIASES: list[tuple[str, ...]] = [
+    # 수학·과학 전문
+    ("씨엠에스", "CMS", "C.M.S"),
+    ("시매쓰", "CMATH", "C-MATH", "씨매쓰"),
+    ("와이즈만", "Wiseman", "WISEMAN"),
+    ("에이매쓰", "AMATH", "A-MATH"),
+    ("매쓰플렉스", "MathFlex", "MATHFLEX"),
+    ("매쓰피아", "MathPia", "MATHPIA"),
+    ("에이치엠에스", "HMS"),
+    ("에스엠씨", "SMC"),
+
+    # 영어 전문
+    ("씨앤씨", "CNC", "C&C"),
+    ("아발론", "Avalon", "AVALON"),
+    ("에스엘피", "SLP"),
+    ("청담어학원", "Chungdahm", "CDI"),
+    ("윤선생", "YBM", "Yoon"),
+    ("에이프릴", "April", "APRIL"),
+    ("파고다", "PAGODA"),
+    ("폴리어학원", "Poly", "POLY"),
+    ("정상어학원", "JungSang", "JS"),
+    ("에이원", "A1", "A-ONE", "AONE"),
+    ("씨에스아이", "CSI"),
+    ("에스아이에이", "SIA"),
+    ("에이치에스씨", "HSC"),
+
+    # 종합·대형 프랜차이즈
+    ("메가스터디", "MegaStudy", "MEGA"),
+    ("이투스", "ETOOS", "E-TOOS", "E2US"),
+    ("스카이에듀", "SkyEdu", "SKY EDU"),
+    ("엠베스트", "M-Best", "MBEST"),
+    ("대성", "Daesung", "DaeSeong"),
+    ("시대인재", "SDJ"),
+    ("종로학원", "Jongno"),
+    ("한솔교육", "Hansol"),
+    ("교원", "Kyowon", "KYOWON"),
+    ("웅진씽크빅", "Woongjin", "ThinkBig"),
+    ("눈높이", "Daekyo", "대교"),
+    ("재능교육", "Jaenung", "JAENEUNG"),
+    ("빨간펜", "RedPen", "RED PEN"),
+    ("에듀플렉스", "EduPlex", "EDUPLEX", "에듀"),
+    ("에이치에스", "HS"),
+    ("피엠에스", "PMS"),
+    ("와이즈", "Wise", "WISE"),
+
+    # 코딩·로봇
+    ("씨알에스", "CRS"),
+    ("아이코딩", "iCoding", "I-CODING"),
+    ("로보로보", "Robo", "ROBOROBO"),
+    ("알고리짐", "Algorhythm"),
+
+    # 예체능
+    ("아트원", "Art1", "ART ONE"),
+    ("에이알에스", "ARS"),
+]
+
+# 검색어 → 같은 그룹의 모든 표기 반환용 역방향 인덱스
+_ALIAS_INDEX: dict[str, list[str]] = {}
+for _group in _BRAND_ALIASES:
+    for _term in _group:
+        _ALIAS_INDEX[_term.lower()] = [t for t in _group if t != _term]
+
+
+def _expand_name_aliases(name: str) -> list[str]:
+    """검색어에 매핑된 다른 표기들을 반환 (자기 자신 제외)."""
+    key = name.lower()
+    # 완전일치 우선
+    if key in _ALIAS_INDEX:
+        return _ALIAS_INDEX[key]
+    # 부분 포함 검사 — 검색어가 그룹 키워드 중 하나를 포함하면 그 그룹 전체 반환
+    for alias_key, aliases in _ALIAS_INDEX.items():
+        if alias_key in key or key in alias_key:
+            return aliases
+    return []
+
+
 _SUBJECT_KEYWORDS: dict[str, list[str]] = {
     "수학": ["수학"],
     "영어": ["영어", "영어회화", "영어전문"],
@@ -50,7 +128,15 @@ async def search_academies(
     """
     filters = []
     if name:
-        filters.append(Academy.name.ilike(f"%{name}%"))
+        # 입력 검색어 + 브랜드 alias 확장 (한글↔영문 양방향)
+        aliases = _expand_name_aliases(name)
+        if aliases:
+            name_filters = [Academy.name.ilike(f"%{name}%")] + [
+                Academy.name.ilike(f"%{a}%") for a in aliases
+            ]
+            filters.append(sa.or_(*name_filters))
+        else:
+            filters.append(Academy.name.ilike(f"%{name}%"))
     if region:
         filters.append(Academy.region.ilike(f"%{region}%"))
     if subjects:
