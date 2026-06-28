@@ -47,10 +47,8 @@ async def search_academies(
     """
     filters = []
     if name:
-        # 이름으로 검색할 때는 지역 제한 없이 전체에서 LIKE 검색
         filters.append(Academy.name.ilike(f"%{name}%"))
-    elif region:
-        # 이름 없이 지역만 있을 때만 region 필터 적용
+    if region:
         filters.append(Academy.region.ilike(f"%{region}%"))
     if subject:
         # JSONB 배열 포함 검사 (@>) — cast(Text) ilike는 한글 유니코드 escape로 매칭 실패
@@ -61,11 +59,11 @@ async def search_academies(
     )
     academies = result.scalars().all()
 
-    # DB에 결과가 없거나 이름 검색 시 NEIS에서 추가 데이터 가져오기
-    if not academies or name:
+    # DB에 결과 없을 때만 NEIS에서 추가 데이터 가져오기
+    if not academies:
         neis_results = await neis_service.search_academies(
             name=name,
-            region=None if name else region,
+            region=region,
             subject=subject,
         )
         added = False
