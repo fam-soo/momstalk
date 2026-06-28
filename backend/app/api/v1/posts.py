@@ -53,6 +53,31 @@ async def create_post(
     return await post_service.get_post_response(post, user, db)
 
 
+@router.get("/notices")
+async def get_notices(db: AsyncSession = Depends(get_service_db)):
+    """공지사항 목록 (인증 불필요). 지역 게시판 상단 고정 및 첫 로그인 팝업용."""
+    from sqlalchemy import select as sa_select
+    from app.models.service_models import Post as PostModel
+
+    stmt = (
+        sa_select(PostModel)
+        .where(PostModel.board_type == "notice", PostModel.is_hidden == False, PostModel.is_deleted == False)  # noqa: E712
+        .order_by(PostModel.created_at.desc())
+        .limit(5)
+    )
+    result = await db.execute(stmt)
+    posts = result.scalars().all()
+    return [
+        {
+            "id": p.id,
+            "title": p.title,
+            "content": p.content,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in posts
+    ]
+
+
 @router.get("/preview")
 async def preview_posts(
     board_type: str = Query("region", description="region | school | free"),

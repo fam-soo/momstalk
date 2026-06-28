@@ -82,7 +82,7 @@ async def capture_image(
         raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
 
     if not settings.AWS_ACCESS_KEY_ID:
-        raise HTTPException(status_code=404, detail="개발 환경: S3 미설정")
+        raise HTTPException(status_code=503, detail="S3 미설정: Render 환경변수(AWS_ACCESS_KEY_ID)를 확인하세요.")
 
     def _fetch():
         s3 = boto3.client(
@@ -99,6 +99,8 @@ async def capture_image(
     try:
         data, content_type = await run_in_threadpool(_fetch)
     except Exception as e:
+        import logging
+        logging.getLogger("momstalk.admin").error("S3 캡처 조회 실패: key=%s err=%s", capture.s3_key, e)
         raise HTTPException(status_code=502, detail=f"S3 조회 실패: {e}")
 
     return Response(content=data, media_type=content_type, headers={

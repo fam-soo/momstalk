@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -159,6 +160,7 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
   List<dynamic> _items = [];
   bool _loading = true;
   final Map<int, Uint8List> _imageCache = {};
+  final Map<int, String?> _imageFetchError = {};
 
   Future<Uint8List?> _fetchImage(int captureId) async {
     if (_imageCache.containsKey(captureId)) return _imageCache[captureId];
@@ -172,7 +174,14 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
         _imageCache[captureId] = bytes;
         return bytes;
       }
-    } catch (_) {}
+    } on DioException catch (e) {
+      final detail = (e.response?.data is Map)
+          ? (e.response!.data as Map)['detail']?.toString()
+          : null;
+      _imageFetchError[captureId] = detail ?? 'HTTP ${e.response?.statusCode}';
+    } catch (e) {
+      _imageFetchError[captureId] = e.toString();
+    }
     return null;
   }
 
@@ -260,6 +269,7 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
         itemBuilder: (ctx, i) {
           final c = Map<String, dynamic>.from(_items[i] as Map);
           final captureId = c['id'] as int;
+          final fallbackUrl = c['image_url'] as String?;
           return Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -283,10 +293,27 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
                     }
                     final bytes = snap.data;
                     if (bytes == null) {
+                      final errMsg = _imageFetchError[captureId];
                       return Container(
-                        height: 60,
-                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-                        child: const Center(child: Text('이미지 없음', style: TextStyle(color: Colors.grey, fontSize: 12))),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange.shade200)),
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.image_not_supported_outlined, color: Colors.orange.shade700, size: 28),
+                          const SizedBox(height: 4),
+                          Text(errMsg ?? '이미지 로드 실패',
+                              style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
+                              textAlign: TextAlign.center),
+                          if (fallbackUrl != null && !fallbackUrl.startsWith('/dev')) ...[
+                            const SizedBox(height: 6),
+                            TextButton.icon(
+                              onPressed: () => launchUrl(Uri.parse(fallbackUrl), mode: LaunchMode.externalApplication),
+                              icon: const Icon(Icons.open_in_new, size: 14),
+                              label: const Text('브라우저에서 열기', style: TextStyle(fontSize: 12)),
+                              style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                            ),
+                          ],
+                        ]),
                       );
                     }
                     return GestureDetector(
@@ -575,8 +602,7 @@ class _PostWriteTab extends ConsumerStatefulWidget {
 class _PostWriteTabState extends ConsumerState<_PostWriteTab> {
   late final TextEditingController _titleCtrl;
   late final TextEditingController _contentCtrl;
-  String _boardType = 'free';
-  bool _pinned = true;
+  String _boardType = 'notice';
 
   static const _defaultTitle = 'MomsTalk 서비스 이용 안내 및 주요 기능 소개';
   static const _defaultContent = '''안녕하세요, MomsTalk 운영팀입니다 👋
@@ -670,7 +696,6 @@ MomsTalk 운영팀''';
         'title': _titleCtrl.text.trim(),
         'content': _contentCtrl.text.trim(),
         'is_anonymous': false,
-        'is_pinned': _pinned,
       }, options: Options(headers: {'Authorization': 'Bearer $token'}));
       if (mounted) {
         _titleCtrl.clear();
@@ -699,13 +724,28 @@ MomsTalk 운영팀''';
           value: _boardType,
           decoration: const InputDecoration(labelText: '게시판'),
           items: const [
-            DropdownMenuItem(value: 'free', child: Text('전체 (공지)')),
-            DropdownMenuItem(value: 'region', child: Text('지역')),
-            DropdownMenuItem(value: 'school', child: Text('학교')),
-            DropdownMenuItem(value: 'grade', child: Text('학년')),
+            DropdownMenuItem(value: 'notice', child: Text('📢 공지 (지역 게시판 상단 고정)')),
+            DropdownMenuItem(value: 'free', child: Text('전체 게시판')),
+            DropdownMenuItem(value: 'region', child: Text('지역 게시판')),
+            DropdownMenuItem(value: 'school', child: Text('학교 게시판')),
+            DropdownMenuItem(value: 'grade', child: Text('학년 게시판')),
           ],
           onChanged: (v) => setState(() => _boardType = v!),
         ),
+        if (_boardType == 'notice')
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(children: [
+              Icon(Icons.info_outline, size: 14, color: Colors.orange.shade700),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '공지글은 지역 게시판 최상단에 고정되며, 첫 로그인 시 팝업으로 표시됩니다.',
+                  style: TextStyle(fontSize: 12, color: Colors.orange.shade700),
+                ),
+              ),
+            ]),
+          ),
         const SizedBox(height: 12),
         TextField(
           controller: _titleCtrl,
@@ -716,13 +756,6 @@ MomsTalk 운영팀''';
           controller: _contentCtrl,
           maxLines: 10,
           decoration: const InputDecoration(labelText: '내용', alignLabelWithHint: true),
-        ),
-        const SizedBox(height: 8),
-        SwitchListTile(
-          value: _pinned,
-          onChanged: (v) => setState(() => _pinned = v),
-          title: const Text('상단 고정 (공지)'),
-          contentPadding: EdgeInsets.zero,
         ),
         const SizedBox(height: 16),
         FilledButton(

@@ -12,8 +12,8 @@ class PostCreate(BaseModel):
     mention_tags: list[str] = []  # free 게시판 전용: ["region:기장군", "school:B100", "grade:1"]
 
     def model_post_init(self, __context) -> None:
-        if self.board_type not in ("grade", "school", "free", "region"):
-            raise ValueError("board_type은 grade / school / free / region 중 하나여야 합니다.")
+        if self.board_type not in ("grade", "school", "free", "region", "notice"):
+            raise ValueError("board_type은 grade / school / free / region / notice 중 하나여야 합니다.")
         if self.nickname_type not in ("anon", "certified"):
             raise ValueError("nickname_type은 anon / certified 중 하나여야 합니다.")
         if self.nickname_type == "certified":

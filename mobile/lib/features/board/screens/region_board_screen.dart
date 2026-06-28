@@ -20,9 +20,11 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
   bool _isMember = false;
   String _region = '';
   List<Map<String, dynamic>> _previewPosts = [];
+  List<Map<String, dynamic>> _notices = [];
   int _previewTaps = 0;
   static const _tapLimit = 2;
   static const _prefKey = 'preview_taps_region';
+  static const _seenNoticePref = 'seen_notice_id';
 
   @override
   void initState() {
@@ -30,9 +32,54 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
     _init();
   }
 
+  Future<void> _loadNotices() async {
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.get('/posts/notices');
+      _notices = (resp.data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {}
+  }
+
+  Future<void> _maybeShowNoticePopup() async {
+    if (_notices.isEmpty || !mounted) return;
+    final latest = _notices.first;
+    final latestId = latest['id'] as int? ?? 0;
+    final prefs = await SharedPreferences.getInstance();
+    final seenId = prefs.getInt(_seenNoticePref) ?? 0;
+    if (latestId <= seenId) return;
+    await prefs.setInt(_seenNoticePref, latestId);
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => AlertDialog(
+        title: Row(children: [
+          const Icon(Icons.campaign_outlined, color: Color(0xFF4A90D9)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(latest['title'] as String? ?? '공지사항',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        content: SingleChildScrollView(
+          child: Text(latest['content'] as String? ?? '',
+              style: const TextStyle(height: 1.6, fontSize: 14)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _init() async {
     final prefs = await SharedPreferences.getInstance();
     _previewTaps = prefs.getInt(_prefKey) ?? 0;
+
+    await _loadNotices();
 
     try {
       final storage = ref.read(tokenStorageProvider);
@@ -52,6 +99,9 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
           _region = profile['region'] as String? ?? '';
           _loading = false;
         });
+        if (_isMember) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowNoticePopup());
+        }
       }
     } catch (_) {
       await _loadPreview();
@@ -94,7 +144,12 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
             IconButton(icon: const Icon(Icons.search), onPressed: () => context.push('/search')),
           ],
         ),
-        body: const PostListWidget(boardType: 'region'),
+        body: Column(
+          children: [
+            if (_notices.isNotEmpty) _NoticeBar(notices: _notices),
+            const Expanded(child: PostListWidget(boardType: 'region')),
+          ],
+        ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => context.push('/board/write?board_type=region'),
           icon: const Icon(Icons.edit_outlined),
@@ -224,6 +279,97 @@ class _PreviewBoard extends StatelessWidget {
                 ),
         ),
       ],
+    );
+  }
+}
+
+// ── 공지 상단 고정 바 ─────────────────────────────────────────────
+
+class _NoticeBar extends StatefulWidget {
+  final List<Map<String, dynamic>> notices;
+  const _NoticeBar({required this.notices});
+
+  @override
+  State<_NoticeBar> createState() => _NoticeBarState();
+}
+
+class _NoticeBarState extends State<_NoticeBar> {
+  bool _expanded = false;
+
+  void _showDetail(BuildContext ctx, Map<String, dynamic> notice) {
+    showDialog<void>(
+      context: ctx,
+      builder: (_) => AlertDialog(
+        title: Row(children: [
+          const Icon(Icons.campaign_outlined, color: Color(0xFF4A90D9)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(notice['title'] as String? ?? '공지사항',
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          ),
+        ]),
+        content: SingleChildScrollView(
+          child: Text(notice['content'] as String? ?? '',
+              style: const TextStyle(height: 1.6, fontSize: 14)),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(_), child: const Text('닫기'))],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = const Color(0xFF4A90D9);
+    return Material(
+      color: primary.withOpacity(0.08),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(children: [
+                const Icon(Icons.campaign_outlined, size: 16, color: Color(0xFF4A90D9)),
+                const SizedBox(width: 8),
+                const Text('공지', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF4A90D9))),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    widget.notices.first['title'] as String? ?? '',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 18, color: Colors.grey),
+              ]),
+            ),
+          ),
+          if (_expanded)
+            ...widget.notices.map((n) => InkWell(
+              onTap: () => _showDetail(context, n),
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: primary.withOpacity(0.15))),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Row(children: [
+                  const SizedBox(width: 24),
+                  const Icon(Icons.article_outlined, size: 14, color: Color(0xFF4A90D9)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(n['title'] as String? ?? '',
+                        style: const TextStyle(fontSize: 13),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                  const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+                ]),
+              ),
+            )),
+          Divider(height: 1, color: primary.withOpacity(0.2)),
+        ],
+      ),
     );
   }
 }

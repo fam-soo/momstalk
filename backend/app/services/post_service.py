@@ -21,6 +21,8 @@ def _author_display_name(post_or_comment, author: User) -> str | None:
 
 
 async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
+    if req.board_type == "notice" and not user.is_admin:
+        raise ValueError("공지사항은 관리자만 작성할 수 있습니다.")
     check_profanity(req.title, "제목")
     check_profanity(req.content, "내용")
     post = Post(
