@@ -553,6 +553,34 @@ def page_dashboard():
 
     st.markdown("---")
 
+    # ── 지역별 가입현황 ─────────────────────────────────
+    st.subheader("지역별 가입현황")
+    with _db() as db:
+        reg_signup_rows = db.execute(text("""
+            SELECT COALESCE(region, '(미설정)') AS region, COUNT(*) AS cnt
+            FROM users
+            WHERE region IS NOT NULL AND region != ''
+            GROUP BY region
+            ORDER BY cnt DESC
+            LIMIT 30
+        """)).fetchall()
+        total_no_region = db.execute(text("""
+            SELECT COUNT(*) FROM users WHERE region IS NULL OR region = ''
+        """)).scalar()
+
+    if reg_signup_rows:
+        df_reg = pd.DataFrame(reg_signup_rows, columns=["지역", "가입수"])
+        col_chart, col_table = st.columns([2, 1])
+        with col_chart:
+            st.bar_chart(df_reg.set_index("지역"))
+        with col_table:
+            st.dataframe(df_reg, use_container_width=True, hide_index=True)
+        st.caption(f"지역 미설정 유저: {total_no_region}명")
+    else:
+        st.info("지역 정보가 있는 유저가 없습니다.")
+
+    st.markdown("---")
+
     # ── 지역별 게시글 현황 ──────────────────────────────
     st.subheader("지역별 게시글 현황")
     with _db() as db:

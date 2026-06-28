@@ -53,12 +53,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         return;
       }
 
-      // ── 모바일: 카카오 SDK 사용 ──────────────────────────
+      // ── 모바일: 카카오 SDK — 연령 동의 스코프 포함 ──────────────────
       OAuthToken token;
       if (await isKakaoTalkInstalled()) {
         token = await UserApi.instance.loginWithKakaoTalk();
+        // KakaoTalk 로그인 후 age_range 동의가 없으면 추가 요청
+        try {
+          token = await UserApi.instance.loginWithNewScopes(['age_range']);
+        } catch (_) {
+          // 이미 동의됐거나 불필요한 경우 무시
+        }
       } else {
-        token = await UserApi.instance.loginWithKakaoAccount();
+        token = await UserApi.instance.loginWithKakaoAccount(
+          scopes: ['age_range'],
+        );
       }
 
       await _authenticateWithBackend(token);
@@ -93,7 +101,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       } else {
         context.go('/board');
       }
-    } on DioException {
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 403) {
+        final detail = e.response?.data?['detail'] as String? ?? '가입이 제한된 계정입니다.';
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('가입 불가'),
+              content: Text(detail),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('확인'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
       rethrow;
     }
   }

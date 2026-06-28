@@ -17,9 +17,12 @@ from app.services.auth_service import _random_anon_nickname as _random_nickname
 
 KAKAO_ME_URL = "https://kapi.kakao.com/v2/user/me"
 
+# 미성년자 연령대 (카카오 age_range 값)
+_MINOR_AGE_RANGES = {"1~9", "10~14", "15~19"}
+
 
 async def _fetch_kakao_profile(kakao_access_token: str) -> dict:
-    """카카오 API로 사용자 정보 조회. 카카오 고유 ID만 사용 (phone_number 스코프 불필요)."""
+    """카카오 API로 사용자 정보 조회. age_range로 미성년자 가입 차단."""
     headers = {"Authorization": f"Bearer {kakao_access_token}"}
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.get(KAKAO_ME_URL, headers=headers)
@@ -27,6 +30,13 @@ async def _fetch_kakao_profile(kakao_access_token: str) -> dict:
         raise ValueError(f"카카오 API 오류: {resp.status_code}")
     data = resp.json()
     kakao_id = str(data["id"])
+
+    kakao_account = data.get("kakao_account") or {}
+    age_range = kakao_account.get("age_range")
+
+    if age_range and age_range in _MINOR_AGE_RANGES:
+        raise PermissionError("미성년자는 MomsTalk에 가입할 수 없습니다.")
+
     return {"kakao_id": kakao_id}
 
 
