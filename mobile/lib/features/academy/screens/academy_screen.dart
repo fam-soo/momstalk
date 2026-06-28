@@ -15,6 +15,7 @@ class AcademyScreen extends ConsumerStatefulWidget {
 
 class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   final _searchCtrl = TextEditingController();
+  final _searchFocus = FocusNode();
   String _selectedSubject = '';
   String _userRegion = '';
   List<Map<String, dynamic>> _allResults = [];  // 전체 로드 결과
@@ -34,6 +35,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   @override
   void dispose() {
     _searchCtrl.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -135,7 +137,8 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       body: Column(
         children: [
           // ── 검색 영역 ─────────────────────────────────
-          Material(
+          // Material 대신 ColoredBox 사용 — Flutter Web에서 Material이 포인터 이벤트 차단하는 버그 회피
+          ColoredBox(
             color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.35),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
@@ -147,6 +150,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                       Expanded(
                         child: TextField(
                           controller: _searchCtrl,
+                          focusNode: _searchFocus,
                           keyboardType: TextInputType.text,
                           textInputAction: TextInputAction.search,
                           enableInteractiveSelection: true,
@@ -163,13 +167,12 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                             contentPadding:
                                 const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
-                          // onChanged에서 setState 제거 — rebuild마다 포커스 손실 방지
                           onSubmitted: (_) => _search(),
                         ),
                       ),
                       const SizedBox(width: 8),
                       FilledButton.icon(
-                        onPressed: _loading ? null : () => _search(),
+                        onPressed: () => _search(),
                         icon: const Icon(Icons.search, size: 18),
                         label: const Text('검색'),
                         style: FilledButton.styleFrom(
