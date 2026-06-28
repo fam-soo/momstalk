@@ -69,9 +69,11 @@ async def get_kakao_place(
     if not academy:
         raise HTTPException(status_code=404, detail="학원을 찾을 수 없습니다.")
 
-    api_key = os.getenv("KAKAO_REST_API_KEY", "")
+    api_key = os.getenv("KAKAO_REST_API_KEY", "").strip()
     if not api_key:
-        raise HTTPException(status_code=503, detail="카카오 API 키가 설정되지 않았습니다.")
+        import logging
+        logging.getLogger("uvicorn").error("KAKAO_REST_API_KEY not set. Env keys: %s", [k for k in os.environ if 'KAKAO' in k])
+        raise HTTPException(status_code=503, detail="카카오 API 키 미설정 (KAKAO_REST_API_KEY)")
 
     query = academy.name
     if academy.address:
