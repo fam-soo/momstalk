@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -269,7 +268,7 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
         itemBuilder: (ctx, i) {
           final c = Map<String, dynamic>.from(_items[i] as Map);
           final captureId = c['id'] as int;
-          final fallbackUrl = c['image_url'] as String?;
+          final hasImage = c['has_image'] as bool? ?? false;
           return Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -280,9 +279,9 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
                 const SizedBox(height: 2),
                 Text('제출: ${c['created_at'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 10),
-                // 캡처 이미지 (백엔드 프록시로 S3 CORS 우회)
+                // 캡처 이미지 (백엔드 → Supabase Storage 프록시)
                 FutureBuilder<Uint8List?>(
-                  future: _fetchImage(captureId),
+                  future: hasImage ? _fetchImage(captureId) : Future.value(null),
                   builder: (ctx2, snap) {
                     if (snap.connectionState != ConnectionState.done) {
                       return Container(
@@ -296,23 +295,23 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
                       final errMsg = _imageFetchError[captureId];
                       return Container(
                         padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.orange.shade200)),
+                        decoration: BoxDecoration(
+                          color: hasImage ? Colors.orange.shade50 : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: hasImage ? Colors.orange.shade200 : Colors.grey.shade300),
+                        ),
                         child: Column(mainAxisSize: MainAxisSize.min, children: [
-                          Icon(Icons.image_not_supported_outlined, color: Colors.orange.shade700, size: 28),
+                          Icon(
+                            hasImage ? Icons.image_not_supported_outlined : Icons.image_outlined,
+                            color: hasImage ? Colors.orange.shade700 : Colors.grey,
+                            size: 28,
+                          ),
                           const SizedBox(height: 4),
-                          Text(errMsg ?? '이미지 로드 실패',
-                              style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
-                              textAlign: TextAlign.center),
-                          if (fallbackUrl != null && !fallbackUrl.startsWith('/dev')) ...[
-                            const SizedBox(height: 6),
-                            TextButton.icon(
-                              onPressed: () => launchUrl(Uri.parse(fallbackUrl), mode: LaunchMode.externalApplication),
-                              icon: const Icon(Icons.open_in_new, size: 14),
-                              label: const Text('브라우저에서 열기', style: TextStyle(fontSize: 12)),
-                              style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                            ),
-                          ],
+                          Text(
+                            hasImage ? (errMsg ?? '이미지 로드 실패') : '이미지 없음',
+                            style: TextStyle(fontSize: 11, color: hasImage ? Colors.orange.shade800 : Colors.grey),
+                            textAlign: TextAlign.center,
+                          ),
                         ]),
                       );
                     }

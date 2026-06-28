@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from pydantic import BaseModel
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -283,6 +283,33 @@ async def capture_presign(
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
     skip = not settings.AWS_ACCESS_KEY_ID  # S3 미설정 시 클라이언트가 PUT 생략
     return CapturePresignResponse(upload_url=url, s3_key=key, skip_upload=skip)
+
+
+@router.post("/capture/upload", status_code=status.HTTP_204_NO_CONTENT)
+async def capture_upload(
+    file: UploadFile = File(..., description="알림장 캡처 이미지 (jpg/png/heic)"),
+    school_code: str = Form(...),
+    school_name: str = Form(...),
+    grade: int = Form(...),
+    class_num: int | None = Form(None),
+    school_type: str = Form(...),
+    region: str = Form(""),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """캡처 이미지 + 학교 정보를 한 번에 제출. Supabase Storage에 저장 후 심사 대기 상태로 전환."""
+    _ALLOWED = {"image/jpeg", "image/png", "image/heic", "image/heif"}
+    content_type = file.content_type or "image/jpeg"
+    if content_type not in _ALLOWED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JPG, PNG, HEIC 파일만 업로드 가능합니다.")
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:  # 10 MB
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="파일 크기는 10MB 이하여야 합니다.")
+    try:
+        storage_key = await capture_service.upload_capture_image(user.id, data, content_type)
+    except RuntimeError as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+    await capture_service.submit_capture(user, storage_key, school_code, school_name, grade, class_num, db)
 
 
 @router.post("/capture/submit", status_code=status.HTTP_204_NO_CONTENT)

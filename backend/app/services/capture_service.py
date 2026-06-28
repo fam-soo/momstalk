@@ -1,35 +1,24 @@
 """
 알림장 캡처 업로드 & 관리자 대조 승인 서비스.
 
-흐름:
-  1. 유저가 /auth/capture/presign 요청 → S3 presigned PUT URL 발급
-  2. 클라이언트가 S3로 직접 업로드
-  3. 유저가 /auth/capture/submit 으로 s3_key + 학교정보 제출 → auth_captures 행 생성
-  4. 관리자가 /admin/captures 에서 검토 → approve/reject
-  5. 승인 시 user.member_grade = 'member', user.auth_pending = False
-     거절 시 user.auth_pending = False, s3_key 삭제
+흐름 (Supabase Storage):
+  1. 유저가 POST /auth/capture/upload (multipart) → 백엔드가 Supabase Storage에 저장
+  2. auth_captures 행 생성 (storage_key 보관)
+  3. 관리자 GET /admin/captures/{id}/image → 백엔드가 Supabase에서 가져와 프록시
+  4. 승인 시 member_grade = 'member', 파일 삭제
 """
 import uuid
 from datetime import datetime
 
-import boto3
-from botocore.exceptions import BotoCoreError, ClientError
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.fcm import send_push
-from app.models.service_models import AdminAction, AdminUser, AuthCapture, User
+from app.models.service_models import AdminAction, AuthCapture, User
 
-
-def _s3_client():
-    return boto3.client(
-        "s3",
-        region_name=settings.AWS_REGION,
-        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-    )
-
+_SUPABASE_BUCKET = "captures"
 
 _ALLOWED_CONTENT_TYPES = {
     "image/jpeg": "jpg",
@@ -39,52 +28,81 @@ _ALLOWED_CONTENT_TYPES = {
 }
 
 
-def generate_presign_url(user_id: int, content_type: str = "image/jpeg") -> tuple[str, str]:
-    """S3 presigned PUT URL 발급. (url, s3_key) 반환."""
+def _storage_available() -> bool:
+    return bool(settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY)
+
+
+def _storage_path(user_id: int, content_type: str) -> str:
+    ext = _ALLOWED_CONTENT_TYPES.get(content_type, "jpg")
+    return f"{user_id}/{uuid.uuid4().hex}.{ext}"
+
+
+async def upload_capture_image(user_id: int, data: bytes, content_type: str) -> str:
+    """Supabase Storage에 이미지 업로드 → storage_key 반환."""
     if content_type not in _ALLOWED_CONTENT_TYPES:
         content_type = "image/jpeg"
-    ext = _ALLOWED_CONTENT_TYPES[content_type]
-    if not settings.AWS_ACCESS_KEY_ID:
-        key = f"captures/{user_id}/{uuid.uuid4().hex}.{ext}"
-        return ("http://localhost:9000/presign-dummy", key)
-    key = f"captures/{user_id}/{uuid.uuid4().hex}.{ext}"
-    try:
-        url = _s3_client().generate_presigned_url(
-            "put_object",
-            Params={"Bucket": settings.AWS_S3_BUCKET, "Key": key, "ContentType": content_type},
-            ExpiresIn=600,
-        )
-        return url, key
-    except (BotoCoreError, ClientError) as e:
-        raise RuntimeError(f"S3 presign 실패: {e}")
+
+    if not _storage_available():
+        # 개발 환경: 실제 저장 없이 더미 키 반환
+        return f"dev/{user_id}/{uuid.uuid4().hex}.jpg"
+
+    path = _storage_path(user_id, content_type)
+    url = f"{settings.SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}/{path}"
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(url, content=data, headers={
+            "Authorization": f"Bearer {settings.SUPABASE_SERVICE_KEY}",
+            "Content-Type": content_type,
+        })
+        if resp.status_code not in (200, 201):
+            raise RuntimeError(f"Supabase Storage 업로드 실패: {resp.status_code} {resp.text}")
+    return path
 
 
-def generate_get_presign_url(s3_key: str, expires: int = 3600) -> str:
-    """S3 presigned GET URL 발급 (관리자 캡처 이미지 열람용)."""
-    if not settings.AWS_ACCESS_KEY_ID:
-        return f"/dev-capture/{s3_key}"  # 개발 환경 더미
-    try:
-        return _s3_client().generate_presigned_url(
-            "get_object",
-            Params={"Bucket": settings.AWS_S3_BUCKET, "Key": s3_key},
-            ExpiresIn=expires,
-        )
-    except (BotoCoreError, ClientError) as e:
-        raise RuntimeError(f"S3 presign GET 실패: {e}")
+async def get_capture_image(storage_key: str) -> tuple[bytes, str]:
+    """Supabase Storage에서 이미지 다운로드 → (bytes, content_type)."""
+    if not _storage_available():
+        raise RuntimeError("Supabase Storage 미설정 (SUPABASE_URL / SUPABASE_SERVICE_KEY)")
+
+    url = f"{settings.SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}/{storage_key}"
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.get(url, headers={
+            "Authorization": f"Bearer {settings.SUPABASE_SERVICE_KEY}",
+        })
+        if resp.status_code == 404:
+            raise FileNotFoundError("이미지 파일을 찾을 수 없습니다.")
+        resp.raise_for_status()
+    content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0]
+    return resp.content, content_type
 
 
-def _delete_s3_object(key: str) -> None:
-    if not settings.AWS_ACCESS_KEY_ID:
+def _delete_storage_object(storage_key: str) -> None:
+    """동기 삭제 (approve/reject 시 호출 — fire-and-forget 방식)."""
+    if not _storage_available() or storage_key.startswith("dev/"):
         return
+    import threading
+
+    def _do():
+        import asyncio
+        asyncio.run(_delete_async(storage_key))
+
+    threading.Thread(target=_do, daemon=True).start()
+
+
+async def _delete_async(storage_key: str) -> None:
+    url = f"{settings.SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}"
     try:
-        _s3_client().delete_object(Bucket=settings.AWS_S3_BUCKET, Key=key)
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.delete(
+                f"{url}/{storage_key}",
+                headers={"Authorization": f"Bearer {settings.SUPABASE_SERVICE_KEY}"},
+            )
     except Exception:
         pass
 
 
 async def submit_capture(
     user: User,
-    s3_key: str,
+    storage_key: str,
     school_code: str,
     school_name: str,
     grade: int,
@@ -92,14 +110,13 @@ async def submit_capture(
     db: AsyncSession,
 ) -> AuthCapture:
     """캡처 제출 → auth_captures 행 생성, user.auth_pending = True."""
-    # 기존 pending 캡처가 있으면 덮어씀
     existing = (await db.execute(
         select(AuthCapture).where(AuthCapture.user_id == user.id)
     )).scalar_one_or_none()
 
     if existing:
-        _delete_s3_object(existing.s3_key)
-        existing.s3_key = s3_key
+        _delete_storage_object(existing.s3_key)
+        existing.s3_key = storage_key
         existing.input_school_code = school_code
         existing.input_school_name = school_name
         existing.input_grade = grade
@@ -113,7 +130,7 @@ async def submit_capture(
     else:
         capture = AuthCapture(
             user_id=user.id,
-            s3_key=s3_key,
+            s3_key=storage_key,
             input_school_code=school_code,
             input_school_name=school_name,
             input_grade=grade,
@@ -128,12 +145,7 @@ async def submit_capture(
     return capture
 
 
-async def approve_capture(
-    capture_id: int,
-    admin: AdminUser,
-    db: AsyncSession,
-) -> None:
-    """관리자 승인 → user.member_grade = 'member', S3 파일 삭제."""
+async def approve_capture(capture_id: int, admin: User, db: AsyncSession) -> None:
     capture = (await db.execute(
         select(AuthCapture).where(AuthCapture.id == capture_id)
     )).scalar_one_or_none()
@@ -164,19 +176,13 @@ async def approve_capture(
     ))
     await db.commit()
 
-    _delete_s3_object(capture.s3_key)
+    _delete_storage_object(capture.s3_key)
 
     if user.fcm_token:
         await send_push(user.fcm_token, title="가입 승인 완료!", body="맘스토크 정회원이 되었습니다.", data={"type": "auth_approved"})
 
 
-async def reject_capture(
-    capture_id: int,
-    admin: AdminUser,
-    reason: str,
-    db: AsyncSession,
-) -> None:
-    """관리자 거절 → user.auth_pending = False, S3 파일 삭제."""
+async def reject_capture(capture_id: int, admin: User, reason: str, db: AsyncSession) -> None:
     capture = (await db.execute(
         select(AuthCapture).where(AuthCapture.id == capture_id)
     )).scalar_one_or_none()
@@ -202,7 +208,7 @@ async def reject_capture(
     ))
     await db.commit()
 
-    _delete_s3_object(capture.s3_key)
+    _delete_storage_object(capture.s3_key)
 
     if user and user.fcm_token:
         await send_push(

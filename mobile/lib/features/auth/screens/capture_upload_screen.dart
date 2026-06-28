@@ -1,10 +1,10 @@
 import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
 import '../../board/screens/board_screen.dart' show userProfileProvider;
@@ -83,33 +83,26 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
       final dio = ref.read(dioProvider);
       final contentType = _contentTypeFromName(_pickedFile!.name);
 
-      final presignResp = await dio.post('/auth/capture/presign', data: {'content_type': contentType});
-      final uploadUrl = presignResp.data['upload_url'] as String;
-      final s3Key = presignResp.data['s3_key'] as String;
-      final skipUpload = presignResp.data['skip_upload'] as bool? ?? false;
-
-      if (!skipUpload) {
-        final putResp = await http.put(
-          Uri.parse(uploadUrl),
-          body: _imageBytes,
-          headers: {'Content-Type': contentType},
-        );
-        if (putResp.statusCode != 200 && putResp.statusCode != 204) {
-          throw Exception('이미지 업로드 실패 (${putResp.statusCode})');
-        }
-      }
-
-      await dio.post('/auth/capture/submit', data: {
-        's3_key': s3Key,
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          _imageBytes!,
+          filename: _pickedFile!.name,
+          contentType: DioMediaType.parse(contentType),
+        ),
         'school_code': widget.schoolInfo['school_code'],
         'school_name': widget.schoolInfo['school_name'],
-        'grade': widget.schoolInfo['grade'],
-        'class_num': widget.schoolInfo['class_num'],
+        'grade': '${widget.schoolInfo['grade']}',
+        'class_num': widget.schoolInfo['class_num'] != null ? '${widget.schoolInfo['class_num']}' : null,
         'school_type': widget.schoolInfo['school_type'],
         'region': widget.schoolInfo['region'] ?? '',
-      });
+      }..removeWhere((_, v) => v == null));
+
+      await dio.post('/auth/capture/upload', data: formData);
 
       if (mounted) context.go('/auth/pending');
+    } on DioException catch (e) {
+      final detail = (e.response?.data is Map) ? e.response!.data['detail'] : e.message;
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('업로드 실패: $detail')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('업로드 실패: $e')));
     } finally {

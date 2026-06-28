@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     # 값이 없으면 FCM 발송 없이 무시 (graceful degradation)
     FCM_SERVICE_ACCOUNT_JSON: str = ""
 
+    # Supabase Storage (S3 대신 사용 — SUPABASE_URL, SUPABASE_SERVICE_KEY 만 필요)
+    SUPABASE_URL: str = ""          # e.g. https://xxxx.supabase.co
+    SUPABASE_SERVICE_KEY: str = ""  # service_role key (Supabase > Settings > API)
+
+    # AWS S3 (레거시 — 미설정 시 Supabase Storage 사용)
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_S3_BUCKET: str = "momstalk-media"

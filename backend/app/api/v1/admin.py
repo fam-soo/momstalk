@@ -46,10 +46,6 @@ async def list_captures(
     result = []
     for c in captures:
         user = (await db.execute(select(User).where(User.id == c.user_id))).scalar_one_or_none()
-        try:
-            image_url = capture_service.generate_get_presign_url(c.s3_key) if c.s3_key else None
-        except Exception:
-            image_url = None
         result.append({
             "id": c.id,
             "user_id": c.user_id,
@@ -58,8 +54,7 @@ async def list_captures(
             "input_school_name": c.input_school_name,
             "input_grade": c.input_grade,
             "input_class_num": c.input_class_num,
-            "s3_key": c.s3_key,
-            "image_url": image_url,
+            "has_image": bool(c.s3_key and not c.s3_key.startswith("dev/")),
             "created_at": c.created_at.isoformat() if c.created_at else None,
         })
     return result
@@ -81,27 +76,16 @@ async def capture_image(
     if not capture or not capture.s3_key:
         raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
 
-    if not settings.AWS_ACCESS_KEY_ID:
-        raise HTTPException(status_code=503, detail="S3 미설정: Render 환경변수(AWS_ACCESS_KEY_ID)를 확인하세요.")
-
-    def _fetch():
-        s3 = boto3.client(
-            "s3",
-            region_name=settings.AWS_REGION,
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        )
-        obj = s3.get_object(Bucket=settings.AWS_S3_BUCKET, Key=capture.s3_key)
-        content_type = obj.get("ContentType", "image/jpeg")
-        data = obj["Body"].read()
-        return data, content_type
-
     try:
-        data, content_type = await run_in_threadpool(_fetch)
+        data, content_type = await capture_service.get_capture_image(capture.s3_key)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="이미지 파일이 Storage에 없습니다.")
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         import logging
-        logging.getLogger("momstalk.admin").error("S3 캡처 조회 실패: key=%s err=%s", capture.s3_key, e)
-        raise HTTPException(status_code=502, detail=f"S3 조회 실패: {e}")
+        logging.getLogger("momstalk.admin").error("캡처 이미지 조회 실패: key=%s err=%s", capture.s3_key, e)
+        raise HTTPException(status_code=502, detail=f"이미지 조회 실패: {e}")
 
     return Response(content=data, media_type=content_type, headers={
         "Cache-Control": "private, max-age=3600",
