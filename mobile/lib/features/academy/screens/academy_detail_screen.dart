@@ -26,15 +26,26 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
   Future<void> _load() async {
     try {
       final dio = ref.read(dioProvider);
-      final results = await Future.wait([
-        dio.get('/academies/${widget.academyId}'),
-        dio.get('/academies/${widget.academyId}/reviews'),
-      ]);
+      final academyResp = await dio.get('/academies/${widget.academyId}');
       if (mounted) {
-        setState(() {
-          _academy = Map<String, dynamic>.from(results[0].data);
-          _reviews = List<Map<String, dynamic>>.from(results[1].data);
-        });
+        setState(() => _academy = Map<String, dynamic>.from(academyResp.data));
+      }
+
+      // 리뷰 로드는 학원 정보와 분리 — 실패해도 학원 정보는 표시
+      try {
+        final reviewsResp = await dio.get('/academies/${widget.academyId}/reviews');
+        if (mounted) {
+          setState(() => _reviews = List<Map<String, dynamic>>.from(reviewsResp.data));
+        }
+      } catch (_) {
+        // 리뷰 로드 실패 시 빈 목록 유지
+      }
+    } catch (e) {
+      // 학원 정보 자체 로드 실패
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('학원 정보를 불러오지 못했습니다: $e')),
+        );
       }
     } finally {
       if (mounted) setState(() => _loading = false);

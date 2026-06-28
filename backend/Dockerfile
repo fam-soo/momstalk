@@ -13,4 +13,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 ARG CACHEBUST=2
 COPY . .
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000
