@@ -337,8 +337,8 @@ class AcademyReview(Base):
     id = Column(Integer, primary_key=True)
     academy_id = Column(Integer, ForeignKey("academies.id", ondelete="CASCADE"), nullable=False, index=True)
     author_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    subject = Column(String(30), nullable=True)
-    teacher_style = Column(String(30), nullable=True)
+    subjects = Column(JSONB, nullable=True)       # ["수학", "영어"]
+    teacher_styles = Column(JSONB, nullable=True)  # ["꼼꼼해요", "친절해요"]
     homework_level = Column(String(20), nullable=True)
     score_improvement = Column(String(30), nullable=True)
     review_text = Column(Text, nullable=False)

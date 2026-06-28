@@ -39,7 +39,8 @@ async def search_academies(
     db: AsyncSession,
     name: Optional[str] = None,
     region: Optional[str] = None,
-    subject: Optional[str] = None,
+    subjects: Optional[list[str]] = None,   # 복수 과목 필터
+    school_level: Optional[str] = None,      # 초등|중등|고등
 ) -> list[AcademyResponse]:
     """DB 우선 검색 → 결과 없으면 NEIS API 조회 후 DB 캐싱.
 
@@ -50,12 +51,28 @@ async def search_academies(
         filters.append(Academy.name.ilike(f"%{name}%"))
     if region:
         filters.append(Academy.region.ilike(f"%{region}%"))
-    if subject:
-        # JSONB 배열 포함 검사 (@>) — cast(Text) ilike는 한글 유니코드 escape로 매칭 실패
-        filters.append(Academy.subjects.op("@>")(sa.type_coerce(json.dumps([subject]), PGJSONB)))
+    if subjects:
+        # 선택한 과목 중 하나라도 포함하면 표시 (OR 조건)
+        subject_filters = [
+            Academy.subjects.op("@>")(sa.type_coerce(json.dumps([s]), PGJSONB))
+            for s in subjects
+        ]
+        filters.append(sa.or_(*subject_filters))
+    if school_level:
+        level_map = {"초등": "초등학교", "중등": "중학교", "고등": "고등학교"}
+        mapped = level_map.get(school_level, school_level)
+        filters.append(Academy.school_type.ilike(f"%{mapped}%"))
 
     result = await db.execute(
-        select(Academy).where(*filters).order_by(Academy.review_count.desc(), Academy.id.asc()).limit(10000)
+        select(Academy).where(*filters).order_by(
+            # 숫자로 시작하는 이름은 맨 뒤
+            sa.case((Academy.name.op("~")(r"^[0-9]"), 1), else_=0).asc(),
+            # 후기 많은 것, 별점 높은 것 우선
+            Academy.review_count.desc(),
+            Academy.avg_rating.desc().nulls_last(),
+            # 이름 가나다 순
+            Academy.name.asc(),
+        ).limit(10000)
     )
     academies = result.scalars().all()
 
@@ -64,7 +81,7 @@ async def search_academies(
         neis_results = await neis_service.search_academies(
             name=name,
             region=region,
-            subject=subject,
+            subject=subjects[0] if subjects else None,
         )
         added = False
         for r in neis_results:
@@ -98,7 +115,15 @@ async def search_academies(
             await db.commit()
 
         result2 = await db.execute(
-            select(Academy).where(*filters).order_by(Academy.review_count.desc(), Academy.id.asc()).limit(10000)
+            select(Academy).where(*filters).order_by(
+            # 숫자로 시작하는 이름은 맨 뒤
+            sa.case((Academy.name.op("~")(r"^[0-9]"), 1), else_=0).asc(),
+            # 후기 많은 것, 별점 높은 것 우선
+            Academy.review_count.desc(),
+            Academy.avg_rating.desc().nulls_last(),
+            # 이름 가나다 순
+            Academy.name.asc(),
+        ).limit(10000)
         )
         academies = result2.scalars().all()
 
@@ -138,8 +163,8 @@ async def create_review(
     review = AcademyReview(
         academy_id=academy_id,
         author_id=user.id,
-        subject=req.subject,
-        teacher_style=req.teacher_style,
+        subjects=req.subjects or [],
+        teacher_styles=req.teacher_styles or [],
         homework_level=req.homework_level,
         score_improvement=req.score_improvement,
         review_text=req.review_text,
@@ -157,11 +182,12 @@ async def create_review(
     academy.avg_rating = Decimal(str(round(new_avg, 2)))
 
     # 리뷰 과목 → academy.subjects에 추가 (중복 제외)
-    if req.subject:
+    if req.subjects:
         existing_subjects: list = list(academy.subjects or [])
-        if req.subject not in existing_subjects:
-            existing_subjects.append(req.subject)
-            academy.subjects = existing_subjects
+        for s in req.subjects:
+            if s not in existing_subjects:
+                existing_subjects.append(s)
+        academy.subjects = existing_subjects
 
     await db.commit()
     await db.refresh(review)
@@ -176,8 +202,8 @@ async def create_review(
     return AcademyReviewResponse(
         id=review.id,
         academy_id=review.academy_id,
-        subject=review.subject,
-        teacher_style=review.teacher_style,
+        subjects=review.subjects or [],
+        teacher_styles=review.teacher_styles or [],
         homework_level=review.homework_level,
         score_improvement=review.score_improvement,
         review_text=review.review_text,
@@ -212,8 +238,8 @@ async def list_reviews(academy_id: int, db: AsyncSession) -> list[AcademyReviewR
         out.append(AcademyReviewResponse(
             id=review.id,
             academy_id=review.academy_id,
-            subject=review.subject,
-            teacher_style=review.teacher_style,
+            subjects=review.subjects or [],
+            teacher_styles=review.teacher_styles or [],
             homework_level=review.homework_level,
             score_improvement=review.score_improvement,
             review_text=review.review_text,

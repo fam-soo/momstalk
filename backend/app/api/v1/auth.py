@@ -197,8 +197,10 @@ async def get_me(
         if latest:
             reject_reason = latest.reject_reason
 
+    from app.services.temperature_service import to_celsius
     profile = UserProfile.model_validate(user)
     profile.reject_reason = reject_reason
+    profile.temperature = to_celsius(user.manner_score)
     return profile
 
 

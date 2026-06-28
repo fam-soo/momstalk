@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.profanity import check_profanity
 from app.models.service_models import Block, Comment, Like, Post, Report, Scrap, User
 from app.schemas.post import PostCreate, PostListItem, PostResponse, ScrapResponse, PostUpdate
+from app.services import temperature_service
 
 REPORT_AUTO_HIDE_THRESHOLD = 5
 
@@ -40,6 +41,7 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
         mention_tags=req.mention_tags or None,
     )
     db.add(post)
+    await temperature_service.adjust(user.id, "post_created", db)
     await db.commit()
     await db.refresh(post)
     return post
@@ -274,10 +276,12 @@ async def toggle_like_post(post_id: int, user: User, db: AsyncSession) -> dict:
         await db.delete(like)
         post.like_count = max(0, post.like_count - 1)
         liked = False
+        await temperature_service.adjust(post.author_id, "post_unliked", db)
     else:
         db.add(Like(user_id=user.id, target_type="post", target_id=post_id))
         post.like_count += 1
         liked = True
+        await temperature_service.adjust(post.author_id, "post_liked", db)
 
     await db.commit()
     return {"like_count": post.like_count, "is_liked": liked}
@@ -361,5 +365,6 @@ async def report_content(
         target.report_count += 1
         if target.report_count >= REPORT_AUTO_HIDE_THRESHOLD:
             target.is_hidden = True
+            await temperature_service.adjust(target.author_id, "post_hidden", db)
 
     await db.commit()

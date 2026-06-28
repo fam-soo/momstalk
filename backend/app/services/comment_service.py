@@ -5,6 +5,7 @@ from app.core.fcm import send_push
 from app.core.profanity import check_profanity
 from app.models.service_models import Block, Comment, Like, Post, User
 from app.schemas.comment import CommentCreate, CommentResponse
+from app.services import temperature_service
 
 
 async def create_comment(
@@ -28,6 +29,7 @@ async def create_comment(
         nickname_type=req.nickname_type,
     )
     db.add(comment)
+    await temperature_service.adjust(user.id, "comment_created", db)
     await db.commit()
     await db.refresh(comment)
     # 방금 작성한 댓글의 anon_label을 계산하기 위해 기존 댓글 목록 확인
@@ -188,10 +190,12 @@ async def toggle_like_comment(comment_id: int, user: User, db: AsyncSession) -> 
         await db.delete(like)
         comment.like_count = max(0, comment.like_count - 1)
         liked = False
+        await temperature_service.adjust(comment.author_id, "comment_unliked", db)
     else:
         db.add(Like(user_id=user.id, target_type="comment", target_id=comment_id))
         comment.like_count += 1
         liked = True
+        await temperature_service.adjust(comment.author_id, "comment_liked", db)
 
     await db.commit()
     return {"like_count": comment.like_count, "is_liked": liked}

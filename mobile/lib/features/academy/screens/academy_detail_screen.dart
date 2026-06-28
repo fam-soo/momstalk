@@ -188,7 +188,8 @@ class _ReviewCard extends StatelessWidget {
     final rating = (review['rating'] as num?)?.toInt() ?? 0;
     final isAnon = review['is_anonymous'] as bool? ?? true;
     final authorName = isAnon ? '익명' : (review['author_display_name'] as String? ?? '학부모');
-    final subject = review['subject'] as String? ?? '';
+    final subjects = (review['subjects'] as List?)?.cast<String>() ?? [];
+    final teacherStyles = (review['teacher_styles'] as List?)?.cast<String>() ?? [];
     final text = review['review_text'] as String? ?? '';
     final schoolName = review['author_school_name'] as String?;
     final grade = review['author_grade'] as int?;
@@ -214,15 +215,18 @@ class _ReviewCard extends StatelessWidget {
                       Text(schoolInfo, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
                   ],
                 ),
-                if (subject.isNotEmpty) ...[
+                if (subjects.isNotEmpty) ...[
                   const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(subject, style: const TextStyle(fontSize: 11, color: Colors.blue)),
+                  Wrap(
+                    spacing: 4,
+                    children: subjects.map((s) => Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(s, style: const TextStyle(fontSize: 11, color: Colors.blue)),
+                    )).toList(),
                   ),
                 ],
                 const Spacer(),
@@ -241,7 +245,8 @@ class _ReviewCard extends StatelessWidget {
             ],
             const SizedBox(height: 6),
             // 구조화된 평가 항목
-            _ReviewDetail(label: '선생님 스타일', value: review['teacher_style'] as String?),
+            if (teacherStyles.isNotEmpty)
+              _ReviewDetail(label: '선생님 스타일', value: teacherStyles.join(' · ')),
             _ReviewDetail(label: '숙제량', value: review['homework_level'] as String?),
             _ReviewDetail(label: '성적 향상', value: review['score_improvement'] as String?),
             const SizedBox(height: 4),

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,20 +16,11 @@ class PostWriteScreen extends ConsumerStatefulWidget {
 class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
   final _titleCtrl = TextEditingController();
   final _contentCtrl = TextEditingController();
-  final _tagSearchCtrl = TextEditingController();
 
-  // 닉네임 유형 선택: 'anon' | 'certified'
   String _nicknameType = 'anon';
-  String? _certifiedNickname;   // 서버에서 불러온 인증 닉네임
-  String? _anonNickname;        // 서버에서 불러온 익명 닉네임
-
+  String? _certifiedNickname;
+  String? _anonNickname;
   bool _submitting = false;
-
-  final Set<String> _selectedTags = {};
-  List<String> _myTags = [];
-  List<_TagSuggestion> _suggestions = [];
-  bool _searching = false;
-  Timer? _debounce;
 
   @override
   void initState() {
@@ -43,8 +32,6 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
   void dispose() {
     _titleCtrl.dispose();
     _contentCtrl.dispose();
-    _tagSearchCtrl.dispose();
-    _debounce?.cancel();
     super.dispose();
   }
 
@@ -53,68 +40,13 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
       final dio = ref.read(dioProvider);
       final resp = await dio.get('/auth/me');
       final p = resp.data as Map<String, dynamic>;
-
-      final tags = <String>[];
-      final region = p['region'] as String?;
-      final school = p['school_name'] as String?;
-      final grade = p['grade'] as int?;
-      if (region != null && region.isNotEmpty) tags.add(region);
-      if (school != null && school.isNotEmpty) tags.add(school);
-      if (grade != null) tags.add('$grade학년');
-
       if (mounted) {
         setState(() {
-          _myTags = tags;
           _certifiedNickname = p['certified_nickname'] as String?;
           _anonNickname = p['nickname'] as String?;
         });
       }
     } catch (_) {}
-  }
-
-  void _onSearchChanged(String q) {
-    _debounce?.cancel();
-    if (q.length < 2) {
-      setState(() => _suggestions = []);
-      return;
-    }
-    _debounce = Timer(const Duration(milliseconds: 300), () => _fetchSuggestions(q));
-  }
-
-  Future<void> _fetchSuggestions(String q) async {
-    if (!mounted) return;
-    setState(() => _searching = true);
-    try {
-      final dio = ref.read(dioProvider);
-      final resp = await dio.get('/schools/search', queryParameters: {'q': q});
-      final results = (resp.data as List).cast<Map<String, dynamic>>();
-
-      final suggestions = <_TagSuggestion>[];
-      final seenRegions = <String>{};
-      for (final r in results.take(10)) {
-        final name = r['school_name'] as String? ?? '';
-        final region = r['region'] as String? ?? '';
-        if (name.isNotEmpty) {
-          suggestions.add(_TagSuggestion(label: name, subtitle: region, value: name, type: '학교'));
-        }
-        if (region.isNotEmpty && seenRegions.add(region)) {
-          suggestions.add(_TagSuggestion(label: region, subtitle: '지역', value: region, type: '지역'));
-        }
-      }
-      if (mounted) setState(() => _suggestions = suggestions);
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _searching = false);
-    }
-  }
-
-  void _addTag(String value) {
-    if (_selectedTags.length >= 5 || value.isEmpty) return;
-    setState(() {
-      _selectedTags.add(value);
-      _suggestions = [];
-      _tagSearchCtrl.clear();
-    });
   }
 
   Future<void> _submit() async {
@@ -134,7 +66,6 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
         'content': _contentCtrl.text.trim(),
         'is_anonymous': _nicknameType == 'anon',
         'nickname_type': _nicknameType,
-        'mention_tags': _selectedTags.toList(),
       };
       final resp = await dio.post('/posts', data: body);
       final postId = resp.data['id'];
@@ -167,8 +98,6 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canAddMore = _selectedTags.length < 5;
-    final myUnselected = _myTags.where((t) => !_selectedTags.contains(t)).toList();
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -184,124 +113,12 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
           ),
         ],
       ),
-      // 하단 고정 바: 태그 + 닉네임 (키보드 위에 유지)
+      // 닉네임 유형 선택 — 키보드 위에 고정
       bottomNavigationBar: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Divider(height: 1),
-            // ── @태그 섹션 ──────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Text('@태그',
-                        style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        '지역·학교 게시판 상단 노출 (최대 5개)',
-                        style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey[600]),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ]),
-                  const SizedBox(height: 6),
-
-                  if (_selectedTags.isNotEmpty)
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: _selectedTags.map((tag) => Chip(
-                        label: Text('@$tag', style: const TextStyle(fontSize: 12)),
-                        onDeleted: () => setState(() => _selectedTags.remove(tag)),
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        padding: const EdgeInsets.symmetric(horizontal: 2),
-                        visualDensity: VisualDensity.compact,
-                      )).toList(),
-                    ),
-
-                  if (myUnselected.isNotEmpty && canAddMore)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Wrap(
-                        spacing: 6,
-                        children: myUnselected.map((tag) => ActionChip(
-                          avatar: const Icon(Icons.add, size: 14),
-                          label: Text('@$tag', style: const TextStyle(fontSize: 12)),
-                          onPressed: () => _addTag(tag),
-                          visualDensity: VisualDensity.compact,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
-                          backgroundColor: theme.colorScheme.primaryContainer.withOpacity(0.3),
-                        )).toList(),
-                      ),
-                    ),
-
-                  if (canAddMore)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: TextField(
-                        controller: _tagSearchCtrl,
-                        decoration: InputDecoration(
-                          hintText: '학교·지역 검색 (예: 강남구, 행복초)',
-                          prefixIcon: const Icon(Icons.search, size: 18),
-                          suffixIcon: _searching
-                              ? const Padding(padding: EdgeInsets.all(10), child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)))
-                              : _tagSearchCtrl.text.isNotEmpty
-                                  ? IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () { _tagSearchCtrl.clear(); setState(() => _suggestions = []); })
-                                  : null,
-                          isDense: true,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                        onChanged: _onSearchChanged,
-                      ),
-                    ),
-
-                  if (_suggestions.isNotEmpty)
-                    Container(
-                      constraints: const BoxConstraints(maxHeight: 160),
-                      margin: const EdgeInsets.only(top: 2),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(8),
-                        color: theme.colorScheme.surface,
-                      ),
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        itemCount: _suggestions.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (_, i) {
-                          final s = _suggestions[i];
-                          return ListTile(
-                            dense: true,
-                            leading: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: s.type == '학교'
-                                    ? Colors.blue.withOpacity(0.12)
-                                    : Colors.green.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(s.type, style: TextStyle(fontSize: 11, color: s.type == '학교' ? Colors.blue : Colors.green, fontWeight: FontWeight.w600)),
-                            ),
-                            title: Text('@${s.label}', style: const TextStyle(fontSize: 14)),
-                            subtitle: s.type == '학교' ? Text(s.subtitle, style: const TextStyle(fontSize: 12)) : null,
-                            onTap: () => _addTag(s.value),
-                          );
-                        },
-                      ),
-                    ),
-                  const SizedBox(height: 6),
-                ],
-              ),
-            ),
-
-            const Divider(height: 1),
-            // ── 닉네임 유형 선택 ─────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Column(
@@ -421,7 +238,7 @@ class _NicknameTypeCard extends StatelessWidget {
             color: selected ? color : Colors.grey.shade300,
             width: selected ? 2 : 1,
           ),
-          color: selected ? color.withOpacity(0.06) : (disabled ? Colors.grey.shade50 : null),
+          color: selected ? color.withValues(alpha: 0.06) : (disabled ? Colors.grey.shade50 : null),
         ),
         child: Row(
           children: [
@@ -456,13 +273,4 @@ class _NicknameTypeCard extends StatelessWidget {
       ),
     );
   }
-}
-
-
-class _TagSuggestion {
-  final String label;
-  final String subtitle;
-  final String value;
-  final String type;
-  const _TagSuggestion({required this.label, required this.subtitle, required this.value, required this.type});
 }

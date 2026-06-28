@@ -173,8 +173,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       Text(_profile!['nickname'] ?? '닉네임 없음',
                           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 4),
-                      Text('매너온도 ${_profile!['manner_score'] ?? 36}°',
-                          style: TextStyle(color: Colors.orange[700], fontSize: 13)),
+                      _TemperatureChip(
+                        celsius: (_profile!['temperature'] as num?)?.toDouble() ?? 36.5,
+                      ),
                     ],
                   )),
                 ]),
@@ -835,6 +836,42 @@ class _ScrapListScreenState extends ConsumerState<ScrapListScreen> {
                     },
                   ),
                 ),
+    );
+  }
+}
+
+class _TemperatureChip extends StatelessWidget {
+  final double celsius;
+  const _TemperatureChip({required this.celsius});
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color;
+    final IconData icon;
+    if (celsius >= 60) {
+      color = Colors.red.shade600;
+      icon = Icons.local_fire_department;
+    } else if (celsius >= 40) {
+      color = Colors.orange.shade600;
+      icon = Icons.thermostat;
+    } else if (celsius >= 30) {
+      color = Colors.blue.shade600;
+      icon = Icons.thermostat;
+    } else {
+      color = Colors.grey.shade500;
+      icon = Icons.thermostat;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 3),
+        Text(
+          '${celsius.toStringAsFixed(1)}°C',
+          style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+      ],
     );
   }
 }

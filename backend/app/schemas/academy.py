@@ -22,8 +22,8 @@ class AcademyResponse(BaseModel):
 
 class AcademyReviewCreate(BaseModel):
     rating: int
-    subject: Optional[str] = None
-    teacher_style: Optional[str] = None
+    subjects: Optional[list[str]] = None       # 다중 과목
+    teacher_styles: Optional[list[str]] = None  # 다중 선생님 스타일 (최대 3)
     homework_level: Optional[str] = None
     score_improvement: Optional[str] = None
     review_text: str
@@ -44,12 +44,19 @@ class AcademyReviewCreate(BaseModel):
             raise ValueError("후기는 10자 이상 입력해주세요.")
         return v.strip()
 
+    @field_validator("teacher_styles")
+    @classmethod
+    def check_teacher_styles(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v and len(v) > 3:
+            raise ValueError("선생님 스타일은 최대 3개까지 선택할 수 있습니다.")
+        return v
+
 
 class AcademyReviewResponse(BaseModel):
     id: int
     academy_id: int
-    subject: Optional[str] = None
-    teacher_style: Optional[str] = None
+    subjects: Optional[list[str]] = None
+    teacher_styles: Optional[list[str]] = None
     homework_level: Optional[str] = None
     score_improvement: Optional[str] = None
     review_text: str
