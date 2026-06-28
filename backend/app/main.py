@@ -88,14 +88,11 @@ async def health():
     return {"status": "ok", "app": settings.APP_NAME}
 
 
-@app.post("/internal/sync")
-async def trigger_sync(secret: str = ""):
-    """수동 동기화 트리거 — Render Shell 또는 curl로 호출."""
-    if secret != settings.SECRET_KEY[:16]:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="forbidden")
-    task = asyncio.create_task(_run_initial_sync())
-    return {"ok": True, "message": "동기화 시작됨 (백그라운드)"}
+@app.get("/internal/sync")
+async def trigger_sync():
+    """수동 동기화 트리거 — 브라우저에서 URL 열기."""
+    asyncio.create_task(_run_initial_sync())
+    return {"ok": True, "message": "동기화 시작됨 — Render 로그에서 진행 확인"}
 
 
 @app.get("/internal/db-count")
