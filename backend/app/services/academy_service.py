@@ -19,11 +19,16 @@ async def search_academies(
     region: Optional[str] = None,
     subject: Optional[str] = None,
 ) -> list[AcademyResponse]:
-    """DB 우선 검색 → 결과 없으면 NEIS API 조회 후 DB 캐싱."""
+    """DB 우선 검색 → 결과 없으면 NEIS API 조회 후 DB 캐싱.
+
+    이름 검색 시 region 필터 미적용 (전국 검색) — region은 지역 목록 조회에만 사용.
+    """
     filters = []
     if name:
+        # 이름으로 검색할 때는 지역 제한 없이 전체에서 LIKE 검색
         filters.append(Academy.name.ilike(f"%{name}%"))
-    if region:
+    elif region:
+        # 이름 없이 지역만 있을 때만 region 필터 적용
         filters.append(Academy.region.ilike(f"%{region}%"))
     if subject:
         # JSONB 배열 포함 검사 (@>) — cast(Text) ilike는 한글 유니코드 escape로 매칭 실패
@@ -35,8 +40,12 @@ async def search_academies(
     academies = result.scalars().all()
 
     if not academies:
-        # NEIS API 조회 후 DB 저장
-        neis_results = await neis_service.search_academies(name=name, region=region, subject=subject)
+        # NEIS API 조회 후 DB 저장 — 이름 검색 시 region 없이 전국 조회
+        neis_results = await neis_service.search_academies(
+            name=name,
+            region=None if name else region,  # 이름 검색 시 region 제한 해제
+            subject=subject,
+        )
         for r in neis_results:
             neis_code = r.get("neis_academy_code")
             if neis_code:

@@ -211,11 +211,9 @@ async def search_academies(
 ) -> list[dict]:
     """NEIS acaInsTiInfo API로 학원 검색.
 
-    ATPT_OFCDC_SC_CODE 필수: region에서 자동 추론.
-    region 없으면 서울(B10) 기본값.
+    이름 검색 시: 시도코드 없이 전국 조회 (ATPT_OFCDC_SC_CODE 생략).
+    지역 검색 시: region에서 시도코드 자동 추론.
     """
-    edu_code = _infer_edu_code(region or "") or "B10"
-
     if not settings.NEIS_API_KEY:
         return _dummy_academies(name, region, subject)
 
@@ -224,10 +222,16 @@ async def search_academies(
         "Type": "json",
         "pIndex": 1,
         "pSize": 50,
-        "ATPT_OFCDC_SC_CODE": edu_code,
     }
+
     if name:
         params["ACA_NM"] = name
+        # 이름 검색 시 지역 제한 없이 전국에서 조회
+    else:
+        # 지역 기반 조회: 시도코드 필수
+        edu_code = _infer_edu_code(region or "") or "B10"
+        params["ATPT_OFCDC_SC_CODE"] = edu_code
+
     if region:
         # 구/군 단위면 ADMST_ZONE_NM (행정구역명)에 삽입
         if any(region.endswith(s) for s in ("구", "군", "시")):

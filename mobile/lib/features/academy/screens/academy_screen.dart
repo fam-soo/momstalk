@@ -149,9 +149,10 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                           controller: _searchCtrl,
                           keyboardType: TextInputType.text,
                           textInputAction: TextInputAction.search,
+                          enableInteractiveSelection: true,
                           decoration: InputDecoration(
                             hintText: _userRegion.isNotEmpty
-                                ? '$_userRegion 학원 검색'
+                                ? '$_userRegion 학원명 검색'
                                 : '학원명 검색',
                             prefixIcon: const Icon(Icons.search, size: 20),
                             isDense: true,
@@ -162,7 +163,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                             contentPadding:
                                 const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
-                          onChanged: (_) => setState(() {}),
+                          // onChanged에서 setState 제거 — rebuild마다 포커스 손실 방지
                           onSubmitted: (_) => _search(),
                         ),
                       ),
