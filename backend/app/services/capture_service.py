@@ -46,7 +46,7 @@ async def upload_capture_image(user_id: int, data: bytes, content_type: str) -> 
         # 개발 환경: 실제 저장 없이 더미 키 반환
         return f"dev/{user_id}/{uuid.uuid4().hex}.jpg"
 
-    path = _storage_path(user_id, content_type)
+    path = _storage_path(user_id, content_type)  # e.g. "1/abc123.jpg" (버킷명 제외)
     url = f"{settings.SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}/{path}"
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(url, content=data, headers={
@@ -63,7 +63,9 @@ async def get_capture_image(storage_key: str) -> tuple[bytes, str]:
     if not _storage_available():
         raise RuntimeError("Supabase Storage 미설정 (SUPABASE_URL / SUPABASE_SERVICE_KEY)")
 
-    url = f"{settings.SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}/{storage_key}"
+    # 구 S3 키가 "captures/..." 형태로 저장된 경우 버킷명 중복 방지
+    path = storage_key.removeprefix(f"{_SUPABASE_BUCKET}/")
+    url = f"{settings.SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}/{path}"
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(url, headers={
             "Authorization": f"Bearer {settings.SUPABASE_SERVICE_KEY}",
