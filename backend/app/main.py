@@ -14,31 +14,45 @@ logger = logging.getLogger(__name__)
 _scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
 
 
-async def _run_sync():
+async def _run_initial_sync():
     from app.services.academy_sync_service import initial_sync_if_needed
+    from app.services.school_sync_service import initial_school_sync_if_needed
+    try:
+        await initial_school_sync_if_needed(settings.NEIS_API_KEY)
+    except Exception as e:
+        logger.error("학교 초기 동기화 실패: %s", e)
     try:
         await initial_sync_if_needed(settings.NEIS_API_KEY)
     except Exception as e:
-        logger.error("학원 동기화 실패: %s", e)
+        logger.error("학원 초기 동기화 실패: %s", e)
 
 
 async def _weekly_sync():
     from app.services.academy_sync_service import sync_all_academies
-    logger.info("주간 학원 동기화 시작")
+    from app.services.school_sync_service import sync_all_schools
+    logger.info("주간 동기화 시작")
+    try:
+        await sync_all_schools(settings.NEIS_API_KEY)
+    except Exception as e:
+        logger.error("주간 학교 동기화 실패: %s", e)
     try:
         await sync_all_academies(settings.NEIS_API_KEY, full=True)
     except Exception as e:
-        logger.error("주간 동기화 실패: %s", e)
+        logger.error("주간 학원 동기화 실패: %s", e)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 마이그레이션 자동 적용 (개발: create_all, 프로덕션: alembic upgrade)
     if settings.DEBUG:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+    else:
+        import subprocess
+        subprocess.run(["alembic", "upgrade", "head"], cwd="/app", check=False)
 
     # 초기 동기화: 앱 시작 10초 후 백그라운드 실행 (포트 바인딩 먼저 완료)
-    _scheduler.add_job(_run_sync, "date", id="initial_sync",
+    _scheduler.add_job(_run_initial_sync, "date", id="initial_sync",
                        run_date=None,  # 즉시이지만 scheduler 루프 안에서 실행
                        misfire_grace_time=600)
     # 매주 일요일 새벽 3시 전국 업데이트

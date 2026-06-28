@@ -298,6 +298,19 @@ class AdminAction(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class School(Base):
+    """NEIS 연동 학교 정보 (전국 캐시)."""
+    __tablename__ = "schools"
+
+    id = Column(Integer, primary_key=True)
+    school_code = Column(String(20), unique=True, nullable=False, index=True)
+    school_name = Column(String(100), nullable=False, index=True)
+    school_type = Column(String(10), nullable=False)   # elementary/middle/high
+    address = Column(String(200), nullable=True)
+    region = Column(String(50), nullable=True, index=True)  # 구/군 단위
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
 class Academy(Base):
     """NEIS 연동 학원 정보."""
     __tablename__ = "academies"
