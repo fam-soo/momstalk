@@ -260,8 +260,6 @@ async def kakao_login(
         access_token, refresh_token, _user = await social_auth_service.kakao_login(
             req.kakao_access_token, service_db
         )
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     return TokenResponse(access_token=access_token, refresh_token=refresh_token)

@@ -20,6 +20,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _loading = false;
   bool _agreed = false;
+  bool _isAdult = false;
 
   /// 개발 전용: 백엔드 /auth/dev/lurker-login 호출 → 실제 JWT 저장 → /board 진입
   Future<void> _devLurkerLogin() async {
@@ -52,21 +53,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         setState(() => _loading = false);
         return;
       }
+      if (!_isAdult) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('만 19세 이상 성인만 가입할 수 있습니다.')),
+        );
+        setState(() => _loading = false);
+        return;
+      }
 
-      // ── 모바일: 카카오 SDK — 연령 동의 스코프 포함 ──────────────────
+      // ── 모바일: 카카오 SDK ──────────────────────────
       OAuthToken token;
       if (await isKakaoTalkInstalled()) {
         token = await UserApi.instance.loginWithKakaoTalk();
-        // KakaoTalk 로그인 후 age_range 동의가 없으면 추가 요청
-        try {
-          token = await UserApi.instance.loginWithNewScopes(['age_range']);
-        } catch (_) {
-          // 이미 동의됐거나 불필요한 경우 무시
-        }
       } else {
-        token = await UserApi.instance.loginWithKakaoAccount(
-          scopes: ['age_range'],
-        );
+        token = await UserApi.instance.loginWithKakaoAccount();
       }
 
       await _authenticateWithBackend(token);
@@ -198,6 +198,24 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ],
               ),
+              const SizedBox(height: 8),
+              // ── 성인 확인 체크박스 ──────────────────────────
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Checkbox(
+                    value: _isAdult,
+                    onChanged: (v) => setState(() => _isAdult = v ?? false),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  const Expanded(
+                    child: Text(
+                      '(필수) 본인은 만 19세 이상 성인입니다.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 12),
               _loading
                   ? const Center(child: CircularProgressIndicator())
@@ -206,21 +224,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       child: Container(
                         height: 52,
                         decoration: BoxDecoration(
-                          color: _agreed ? const Color(0xFFFEE500) : Colors.grey.shade300,
+                          color: (_agreed && _isAdult) ? const Color(0xFFFEE500) : Colors.grey.shade300,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(Icons.chat_bubble, size: 24,
-                                color: _agreed ? const Color(0xFF3C1E1E) : Colors.grey),
+                                color: (_agreed && _isAdult) ? const Color(0xFF3C1E1E) : Colors.grey),
                             const SizedBox(width: 8),
                             Text(
                               '카카오로 시작하기',
                               style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
-                                  color: _agreed ? const Color(0xFF3C1E1E) : Colors.grey),
+                                  color: (_agreed && _isAdult) ? const Color(0xFF3C1E1E) : Colors.grey),
                             ),
                           ],
                         ),
