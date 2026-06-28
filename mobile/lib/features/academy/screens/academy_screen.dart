@@ -15,14 +15,15 @@ class AcademyScreen extends ConsumerStatefulWidget {
 
 class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   final _searchCtrl = TextEditingController();
-  String _selectedSubject = '전체';
+  String _selectedSubject = '';
   String _userRegion = '';
-  List<Map<String, dynamic>> _results = [];
+  List<Map<String, dynamic>> _allResults = [];  // 전체 로드 결과
+  List<Map<String, dynamic>> _results = [];     // 표시 결과 (클라이언트 필터)
   bool _loading = true;
   bool _searched = false;
   String? _error;
 
-  static const _subjects = ['전체', '수학', '영어', '과학', '국어', '음악', '미술', '체육', '코딩'];
+  static const _subjects = ['수학', '영어', '과학', '국어', '음악', '미술', '체육', '코딩'];
 
   @override
   void initState() {
@@ -36,11 +37,35 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
     super.dispose();
   }
 
+  // 과목별 학원 수 (전체 결과 기준)
+  Map<String, int> get _subjectCounts {
+    final counts = <String, int>{};
+    for (final a in _allResults) {
+      final subjects = (a['subjects'] as List?)?.cast<String>() ?? [];
+      for (final s in subjects) {
+        if (_subjects.contains(s)) {
+          counts[s] = (counts[s] ?? 0) + 1;
+        }
+      }
+    }
+    return counts;
+  }
+
+  void _applySubjectFilter() {
+    if (_selectedSubject.isEmpty) {
+      _results = List.from(_allResults);
+    } else {
+      _results = _allResults.where((a) {
+        final subjects = (a['subjects'] as List?)?.cast<String>() ?? [];
+        return subjects.contains(_selectedSubject);
+      }).toList();
+    }
+  }
+
   Future<void> _initLoad() async {
     try {
       final dio = ref.read(dioProvider);
       String region = '';
-      // 로그인 상태일 때만 지역 정보 가져옴 (비로그인도 학원 목록 열람 가능)
       final token = await ref.read(tokenStorageProvider).read(AppConstants.tokenKey);
       if (token != null) {
         try {
@@ -67,11 +92,17 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       final params = <String, dynamic>{};
       if (q.isNotEmpty) params['name'] = q;
       if (searchRegion.isNotEmpty) params['region'] = searchRegion;
-      if (_selectedSubject != '전체') params['subject'] = _selectedSubject;
+      // subject 필터는 서버에 보내지 않고 클라이언트에서 처리
 
       final resp = await dio.get('/academies', queryParameters: params);
       final list = resp.data as List;
-      if (mounted) setState(() => _results = list.map((e) => Map<String, dynamic>.from(e as Map)).toList());
+      final all = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      if (mounted) {
+        setState(() {
+          _allResults = all;
+          _applySubjectFilter();
+        });
+      }
     } on DioException catch (e) {
       if (mounted) {
         final detail = e.response?.data;
@@ -84,9 +115,17 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
     }
   }
 
+  void _onChipTap(String subject) {
+    setState(() {
+      _selectedSubject = _selectedSubject == subject ? '' : subject;
+      _applySubjectFilter();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final counts = _subjectCounts;
 
     return Scaffold(
       appBar: AppBar(
@@ -110,7 +149,6 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                           controller: _searchCtrl,
                           keyboardType: TextInputType.text,
                           textInputAction: TextInputAction.search,
-                          enableInteractiveSelection: true,
                           decoration: InputDecoration(
                             hintText: _userRegion.isNotEmpty
                                 ? '$_userRegion 학원 검색'
@@ -140,22 +178,48 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
+                  // 과목 필터 칩 — 카운트 표시, 토글 가능
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
-                      children: _subjects.map((s) => Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: FilterChip(
-                          label: Text(s, style: const TextStyle(fontSize: 12)),
-                          selected: _selectedSubject == s,
-                          onSelected: (_) {
-                            setState(() => _selectedSubject = s);
-                            _search();
-                          },
-                          visualDensity: VisualDensity.compact,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      children: [
+                        // 전체 칩
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: FilterChip(
+                            label: Text(
+                              '전체${_allResults.isNotEmpty ? " ${_allResults.length}" : ""}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            selected: _selectedSubject.isEmpty,
+                            onSelected: (_) {
+                              setState(() {
+                                _selectedSubject = '';
+                                _applySubjectFilter();
+                              });
+                            },
+                            visualDensity: VisualDensity.compact,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
                         ),
-                      )).toList(),
+                        ..._subjects.map((s) {
+                          final count = counts[s] ?? 0;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: FilterChip(
+                              label: Text(
+                                count > 0 ? '$s $count' : s,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              selected: _selectedSubject == s,
+                              onSelected: count > 0 ? (_) => _onChipTap(s) : null,
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              disabledColor: theme.colorScheme.surfaceContainerHighest,
+                            ),
+                          );
+                        }),
+                      ],
                     ),
                   ),
                 ],
@@ -193,15 +257,19 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                                   Icon(Icons.search_off, size: 48, color: Colors.grey.shade300),
                                   const SizedBox(height: 8),
                                   Text(
-                                    _userRegion.isNotEmpty
-                                        ? '$_userRegion 주변 학원 정보가 없습니다'
-                                        : '검색 결과가 없습니다',
+                                    _selectedSubject.isNotEmpty
+                                        ? '\'$_selectedSubject\' 과목 학원이 없습니다'
+                                        : _userRegion.isNotEmpty
+                                            ? '$_userRegion 주변 학원 정보가 없습니다'
+                                            : '검색 결과가 없습니다',
                                     style: TextStyle(color: Colors.grey.shade500),
                                   ),
-                                  const SizedBox(height: 4),
-                                  Text('학원명이나 다른 지역을 검색해보세요',
-                                      style: TextStyle(
-                                          fontSize: 12, color: Colors.grey.shade400)),
+                                  if (_selectedSubject.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 4),
+                                      child: Text('후기 작성 시 과목을 선택하면 검색에 반영됩니다',
+                                          style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+                                    ),
                                 ]),
                               )
                             : RefreshIndicator(
@@ -212,7 +280,8 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                                     Padding(
                                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
                                       child: Text(
-                                        '학원 ${_results.length}곳${_userRegion.isNotEmpty ? " · $_userRegion" : ""}',
+                                        '학원 ${_results.length}곳'
+                                        '${_selectedSubject.isNotEmpty ? " · $_selectedSubject" : (_userRegion.isNotEmpty ? " · $_userRegion" : "")}',
                                         style: TextStyle(
                                           fontSize: 13,
                                           color: Colors.grey.shade600,
@@ -249,7 +318,10 @@ class _AcademyTile extends StatelessWidget {
     final theme = Theme.of(context);
     final rating = (academy['avg_rating'] as num?)?.toDouble() ?? 0.0;
     final reviewCount = academy['review_count'] as int? ?? 0;
-    final subjects = (academy['subjects'] as List?)?.cast<String>() ?? [];
+    final rawSubjects = (academy['subjects'] as List?)?.cast<String>() ?? [];
+    // NEIS 계열명("보통교과" 등)은 표시하지 않고 실제 과목만 표시
+    const knownSubjects = ['수학', '영어', '과학', '국어', '음악', '미술', '체육', '코딩', '기타'];
+    final subjects = rawSubjects.where((s) => knownSubjects.contains(s)).toList();
     final isB2b = academy['is_b2b'] as bool? ?? false;
     final name = academy['name'] as String? ?? '';
     final address = academy['address'] as String? ?? '';
@@ -297,8 +369,13 @@ class _AcademyTile extends StatelessWidget {
             ),
           const SizedBox(height: 4),
           Row(children: [
-            Icon(Icons.star_rounded, size: 15, color: Colors.amber.shade600),
-            const SizedBox(width: 2),
+            // 별점
+            ...List.generate(5, (i) => Icon(
+              i < rating.round() ? Icons.star_rounded : Icons.star_outline_rounded,
+              size: 14,
+              color: Colors.amber.shade600,
+            )),
+            const SizedBox(width: 4),
             Text(
               rating > 0 ? rating.toStringAsFixed(1) : '-',
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),

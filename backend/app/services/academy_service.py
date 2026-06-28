@@ -113,6 +113,13 @@ async def create_review(
     new_avg = (current_avg * prev_count + req.rating) / academy.review_count
     academy.avg_rating = Decimal(str(round(new_avg, 2)))
 
+    # 리뷰 과목 → academy.subjects에 추가 (중복 제외)
+    if req.subject:
+        existing_subjects: list = list(academy.subjects or [])
+        if req.subject not in existing_subjects:
+            existing_subjects.append(req.subject)
+            academy.subjects = existing_subjects
+
     await db.commit()
     await db.refresh(review)
 
