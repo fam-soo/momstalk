@@ -177,9 +177,29 @@ async def refresh_token(req: RefreshRequest, db: AsyncSession = Depends(get_db))
 
 
 @router.get("/me", response_model=UserProfile)
-async def get_me(user: User = Depends(get_current_user)):
+async def get_me(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """현재 로그인 유저 프로필 조회."""
-    return user
+    from sqlalchemy import select as sa_select
+    from app.models.service_models import AuthCapture
+
+    # lurker이고 auth_pending=False인 경우 최신 거절 사유 포함
+    reject_reason = None
+    if user.member_grade == "lurker" and not user.auth_pending:
+        latest = (await db.execute(
+            sa_select(AuthCapture)
+            .where(AuthCapture.user_id == user.id, AuthCapture.status == "rejected")
+            .order_by(AuthCapture.created_at.desc())
+            .limit(1)
+        )).scalar_one_or_none()
+        if latest:
+            reject_reason = latest.reject_reason
+
+    profile = UserProfile.model_validate(user)
+    profile.reject_reason = reject_reason
+    return profile
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,4 +1,4 @@
-import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -158,6 +158,23 @@ class _CapturesTab extends ConsumerStatefulWidget {
 class _CapturesTabState extends ConsumerState<_CapturesTab> {
   List<dynamic> _items = [];
   bool _loading = true;
+  final Map<int, Uint8List> _imageCache = {};
+
+  Future<Uint8List?> _fetchImage(int captureId) async {
+    if (_imageCache.containsKey(captureId)) return _imageCache[captureId];
+    try {
+      final resp = await ref.read(adminDioProvider).get<List<int>>(
+        '/admin/captures/$captureId/image',
+        options: Options(responseType: ResponseType.bytes),
+      );
+      if (resp.data != null) {
+        final bytes = Uint8List.fromList(resp.data!);
+        _imageCache[captureId] = bytes;
+        return bytes;
+      }
+    } catch (_) {}
+    return null;
+  }
 
   @override
   void initState() {
@@ -175,7 +192,7 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
     }
   }
 
-  void _showImageDialog(BuildContext ctx, String imageUrl) {
+  void _showImageDialog(BuildContext ctx, Uint8List bytes) {
     showDialog(
       context: ctx,
       builder: (_) => Dialog(
@@ -184,7 +201,7 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
         child: Stack(children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.contain),
+            child: Image.memory(bytes, fit: BoxFit.contain),
           ),
           Positioned(
             top: 8, right: 8,
@@ -242,7 +259,7 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (ctx, i) {
           final c = Map<String, dynamic>.from(_items[i] as Map);
-          final imageUrl = c['image_url'] as String?;
+          final captureId = c['id'] as int;
           return Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -253,36 +270,34 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
                 const SizedBox(height: 2),
                 Text('제출: ${c['created_at'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 10),
-                // 캡처 이미지
-                if (imageUrl != null)
-                  GestureDetector(
-                    onTap: () => _showImageDialog(ctx, imageUrl),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
-                        imageUrl: imageUrl,
+                // 캡처 이미지 (백엔드 프록시로 S3 CORS 우회)
+                FutureBuilder<Uint8List?>(
+                  future: _fetchImage(captureId),
+                  builder: (ctx2, snap) {
+                    if (snap.connectionState != ConnectionState.done) {
+                      return Container(
                         height: 180,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                        placeholder: (_, __) => Container(
-                          height: 180,
-                          color: Colors.grey.shade100,
-                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                        ),
-                        errorWidget: (_, __, ___) => Container(
-                          height: 60,
-                          color: Colors.grey.shade100,
-                          child: const Center(child: Icon(Icons.broken_image_outlined, color: Colors.grey)),
-                        ),
+                        color: Colors.grey.shade100,
+                        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                      );
+                    }
+                    final bytes = snap.data;
+                    if (bytes == null) {
+                      return Container(
+                        height: 60,
+                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                        child: const Center(child: Text('이미지 없음', style: TextStyle(color: Colors.grey, fontSize: 12))),
+                      );
+                    }
+                    return GestureDetector(
+                      onTap: () => _showImageDialog(ctx, bytes),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.memory(bytes, height: 180, width: double.infinity, fit: BoxFit.cover),
                       ),
-                    ),
-                  )
-                else
-                  Container(
-                    height: 60,
-                    decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-                    child: const Center(child: Text('이미지 없음', style: TextStyle(color: Colors.grey, fontSize: 12))),
-                  ),
+                    );
+                  },
+                ),
                 const SizedBox(height: 12),
                 Row(children: [
                   Expanded(

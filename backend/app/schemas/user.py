@@ -14,6 +14,7 @@ class UserProfile(BaseModel):
     member_grade: str = "lurker"   # lurker / member
     auth_pending: bool = False
     is_admin: bool = False
+    reject_reason: Optional[str] = None   # 최근 캡처 거절 사유
     profile_updated_at: Optional[datetime] = None
     created_at: datetime
 

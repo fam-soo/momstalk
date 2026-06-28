@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -61,6 +63,47 @@ async def list_captures(
             "created_at": c.created_at.isoformat() if c.created_at else None,
         })
     return result
+
+
+@router.get("/captures/{capture_id}/image")
+async def capture_image(
+    capture_id: int,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """S3 이미지를 백엔드가 프록시로 반환 (CORS 우회)."""
+    from app.core.config import settings
+    import boto3
+
+    capture = (await db.execute(
+        select(AuthCapture).where(AuthCapture.id == capture_id)
+    )).scalar_one_or_none()
+    if not capture or not capture.s3_key:
+        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
+
+    if not settings.AWS_ACCESS_KEY_ID:
+        raise HTTPException(status_code=404, detail="개발 환경: S3 미설정")
+
+    def _fetch():
+        s3 = boto3.client(
+            "s3",
+            region_name=settings.AWS_REGION,
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        )
+        obj = s3.get_object(Bucket=settings.AWS_S3_BUCKET, Key=capture.s3_key)
+        content_type = obj.get("ContentType", "image/jpeg")
+        data = obj["Body"].read()
+        return data, content_type
+
+    try:
+        data, content_type = await run_in_threadpool(_fetch)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"S3 조회 실패: {e}")
+
+    return Response(content=data, media_type=content_type, headers={
+        "Cache-Control": "private, max-age=3600",
+    })
 
 
 @router.post("/captures/{capture_id}/approve", status_code=status.HTTP_204_NO_CONTENT)
