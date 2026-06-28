@@ -53,6 +53,39 @@ async def create_post(
     return await post_service.get_post_response(post, user, db)
 
 
+@router.get("/preview")
+async def preview_posts(
+    board_type: str = Query("region", description="region | school | free"),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """비회원 미리보기: 인기글 5개 (인증 불필요)."""
+    from sqlalchemy import select, text
+    from app.models.service_models import Post as PostModel
+
+    stmt = (
+        select(PostModel)
+        .where(
+            PostModel.board_type == board_type,
+            PostModel.is_hidden == False,  # noqa: E712
+            PostModel.is_deleted == False,  # noqa: E712
+        )
+        .order_by((PostModel.like_count + PostModel.view_count).desc(), PostModel.created_at.desc())
+        .limit(5)
+    )
+    result = await db.execute(stmt)
+    posts = result.scalars().all()
+    return [
+        {
+            "id": p.id,
+            "title": p.title,
+            "like_count": p.like_count,
+            "view_count": p.view_count,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in posts
+    ]
+
+
 @router.get("/me/scraps", response_model=list[ScrapResponse])
 async def my_scraps(
     user: User = Depends(get_current_user),

@@ -9,6 +9,8 @@ import '../features/auth/screens/invite_join_screen.dart';
 import '../features/board/screens/board_screen.dart';
 import '../features/board/screens/post_detail_screen.dart';
 import '../features/board/screens/post_write_screen.dart';
+import '../features/board/screens/region_board_screen.dart';
+import '../features/board/screens/school_board_screen.dart';
 import '../features/profile/screens/profile_screen.dart';
 import '../features/search/screens/search_screen.dart';
 import '../features/dm/screens/dm_list_screen.dart';
@@ -29,10 +31,12 @@ final _shellNavKey = GlobalKey<NavigatorState>();
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     navigatorKey: _rootNavKey,
-    initialLocation: '/board',
+    initialLocation: '/region',
     redirect: (context, state) async {
       final loc = state.matchedLocation;
       if (loc.startsWith('/admin')) return null;
+      // 지역·학교 탭은 비회원 미리보기 허용 — 화면 내부에서 인증 처리
+      if (loc == '/region' || loc == '/school') return null;
       final storage = ref.read(tokenStorageProvider);
       final token = await storage.read(AppConstants.tokenKey);
       final isAuthRoute = loc.startsWith('/auth') || loc.startsWith('/invite');
@@ -58,7 +62,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/auth/school-select', builder: (ctx, s) => const SchoolSelectScreen()),
       GoRoute(path: '/auth/pending', builder: (ctx, s) => const AuthPendingScreen()),
 
-      // 초대 링크 딥링크: momstalk://invite/{token} → /invite/{token}
+      // 초대 링크 딥링크
       GoRoute(
         path: '/invite/:token',
         parentNavigatorKey: _rootNavKey,
@@ -66,7 +70,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       // ── 게시판 관련 (Shell 밖) ─────────────────────────
-      // /board/write 반드시 /board/:postId 앞에 위치해야 함 (순서대로 매칭)
       GoRoute(
         path: '/board/write',
         parentNavigatorKey: _rootNavKey,
@@ -92,7 +95,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/privacy', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const PrivacyScreen()),
       GoRoute(path: '/search', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const SearchScreen()),
 
-      // ── 학원 후기 (Shell 밖) ──────────────────────────────
+      // ── 학원 후기 (Shell 밖) ───────────────────────────
       GoRoute(
         path: '/academy/:id/review/write',
         parentNavigatorKey: _rootNavKey,
@@ -104,18 +107,27 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (ctx, s) => AcademyDetailScreen(academyId: int.parse(s.pathParameters['id']!)),
       ),
 
-      // ── 바텀 네비 Shell ──────────────────────────────────
+      // ── 바텀 네비 Shell (5탭) ────────────────────────────
       StatefulShellRoute.indexedStack(
         parentNavigatorKey: _rootNavKey,
         builder: (ctx, state, shell) => _MainShell(shell: shell),
         branches: [
           StatefulShellBranch(
             navigatorKey: _shellNavKey,
-            routes: [GoRoute(path: '/board', builder: (ctx, s) => const BoardScreen())],
+            routes: [GoRoute(path: '/region', builder: (ctx, s) => const RegionBoardScreen())],
           ),
-          StatefulShellBranch(routes: [GoRoute(path: '/academy', builder: (ctx, s) => const AcademyScreen())]),
-          StatefulShellBranch(routes: [GoRoute(path: '/dm', builder: (ctx, s) => const DmListScreen())]),
-          StatefulShellBranch(routes: [GoRoute(path: '/my', builder: (ctx, s) => const ProfileScreen())]),
+          StatefulShellBranch(
+            routes: [GoRoute(path: '/school', builder: (ctx, s) => const SchoolBoardScreen())],
+          ),
+          StatefulShellBranch(
+            routes: [GoRoute(path: '/academy', builder: (ctx, s) => const AcademyScreen())],
+          ),
+          StatefulShellBranch(
+            routes: [GoRoute(path: '/dm', builder: (ctx, s) => const DmListScreen())],
+          ),
+          StatefulShellBranch(
+            routes: [GoRoute(path: '/my', builder: (ctx, s) => const ProfileScreen())],
+          ),
         ],
       ),
     ],
@@ -134,8 +146,9 @@ class _MainShell extends StatelessWidget {
         selectedIndex: shell.currentIndex,
         onDestinationSelected: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.article_outlined), selectedIcon: Icon(Icons.article), label: '게시판'),
-          NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: '학원'),
+          NavigationDestination(icon: Icon(Icons.location_on_outlined), selectedIcon: Icon(Icons.location_on), label: '지역'),
+          NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: '학교'),
+          NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: '학원'),
           NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: '대화'),
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '내정보'),
         ],
