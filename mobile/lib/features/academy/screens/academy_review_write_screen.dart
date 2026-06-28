@@ -22,7 +22,7 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
   final Set<String> _selectedTeacherStyles = {}; // 다중 선생님 스타일 (최대 3)
   String _homeworkLevel = '';
   String _scoreImprovement = '';
-  String _nicknameType = 'anon';
+  String _nicknameType = 'nickname';
   String? _certifiedNickname;
   String? _nickname;
   bool _isAdmin = false;
@@ -395,9 +395,7 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
                 icon: Icons.person_outline,
                 title: _nickname ?? '닉네임',
                 color: Colors.teal.shade600,
-                onTap: _nickname != null
-                    ? () => setState(() => _nicknameType = 'nickname')
-                    : null,
+                onTap: () => setState(() => _nicknameType = 'nickname'),
               ),
             ),
             const SizedBox(width: 8),

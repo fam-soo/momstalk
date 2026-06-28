@@ -52,7 +52,20 @@ try:
                 conn.execute(text("DELETE FROM alembic_version"))
                 conn.execute(text("INSERT INTO alembic_version VALUES ('0013')"))
                 conn.commit()
+                current2 = "0013"
                 print("[start] stamp 0013 완료")
+
+        # 5. 0014: manner_score 기본값 수정 — 이미 모두 100 이상이면 적용된 것으로 간주
+        heads_now = conn.execute(text("SELECT version_num FROM alembic_version")).fetchall()
+        current3 = heads_now[0][0] if heads_now else current
+        if int(current3) < 14:
+            low_count = conn.execute(text("SELECT COUNT(*) FROM users WHERE manner_score < 100")).scalar()
+            if low_count == 0:
+                print("[start] manner_score 모두 100 이상 → 0014 이미 적용된 것으로 stamp")
+                conn.execute(text("DELETE FROM alembic_version"))
+                conn.execute(text("INSERT INTO alembic_version VALUES ('0014')"))
+                conn.commit()
+                print("[start] stamp 0014 완료")
 
 except Exception as e:
     print(f"[start] 사전 동기화 오류 (무시): {e}")

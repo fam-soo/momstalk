@@ -58,7 +58,7 @@ class User(Base):
     grade = Column(Integer, nullable=False)
     class_num = Column(Integer, nullable=True)
     school_type = Column(String(10), nullable=False)
-    manner_score = Column(Integer, default=36)          # 블라인드 매너온도 유사
+    manner_score = Column(Integer, default=365, server_default="365")  # 온도 × 10 (365 = 36.5°C)
     fcm_token = Column(String(256), nullable=True)      # Firebase 푸시 토큰 (기기별 갱신)
     is_banned = Column(Boolean, default=False)
     is_admin = Column(Boolean, default=False)
