@@ -4,13 +4,9 @@
   <meta charset="utf-8">
   <title>MomsTalk</title>
   <script>
-    // GitHub Pages SPA 라우팅 — 404를 index.html로 리다이렉트
+    // GitHub Pages SPA 라우팅 — /path를 /#/path로 리다이렉트 (Flutter 해시 라우팅)
     var l = window.location;
-    l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-      l.pathname.split('/').slice(0, 1).join('/') +
-      '/?p=/' + l.pathname.slice(1).replace(/&/g, '~and~') +
-      (l.search ? '&q=' + l.search.slice(1).replace(/&/g, '~and~') : '') +
-      l.hash);
+    l.replace(l.protocol + '//' + l.host + '/#' + l.pathname + l.search + l.hash);
   </script>
 </head>
 <body></body>
