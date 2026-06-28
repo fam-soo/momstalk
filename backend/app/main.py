@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -15,8 +16,11 @@ _scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
 
 
 async def _run_initial_sync():
-    from app.services.academy_sync_service import initial_sync_if_needed
+    """앱 시작 후 백그라운드에서 학교·학원 초기 동기화."""
     from app.services.school_sync_service import initial_school_sync_if_needed
+    from app.services.academy_sync_service import initial_sync_if_needed
+
+    logger.info("=== 초기 동기화 시작 ===")
     try:
         await initial_school_sync_if_needed(settings.NEIS_API_KEY)
     except Exception as e:
@@ -25,37 +29,34 @@ async def _run_initial_sync():
         await initial_sync_if_needed(settings.NEIS_API_KEY)
     except Exception as e:
         logger.error("학원 초기 동기화 실패: %s", e)
+    logger.info("=== 초기 동기화 완료 ===")
 
 
 async def _weekly_sync():
-    from app.services.academy_sync_service import sync_all_academies
     from app.services.school_sync_service import sync_all_schools
+    from app.services.academy_sync_service import sync_all_academies
     logger.info("주간 동기화 시작")
     try:
         await sync_all_schools(settings.NEIS_API_KEY)
-    except Exception as e:
-        logger.error("주간 학교 동기화 실패: %s", e)
-    try:
         await sync_all_academies(settings.NEIS_API_KEY, full=True)
     except Exception as e:
-        logger.error("주간 학원 동기화 실패: %s", e)
+        logger.error("주간 동기화 실패: %s", e)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 없는 테이블만 생성 (checkfirst=True → 기존 테이블 보존)
+    # 없는 테이블만 생성 (기존 테이블 보존)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # 초기 동기화: 앱 시작 10초 후 백그라운드 실행 (포트 바인딩 먼저 완료)
-    _scheduler.add_job(_run_initial_sync, "date", id="initial_sync",
-                       run_date=None,  # 즉시이지만 scheduler 루프 안에서 실행
-                       misfire_grace_time=600)
-    # 매주 일요일 새벽 3시 전국 업데이트
+    # 초기 동기화: uvicorn이 완전히 뜬 후 백그라운드 실행
+    asyncio.get_running_loop().call_later(3, lambda: asyncio.ensure_future(_run_initial_sync()))
+
+    # 매주 일요일 03:00 전국 업데이트
     _scheduler.add_job(_weekly_sync, "cron", day_of_week="sun", hour=3, minute=0,
                        misfire_grace_time=3600)
     _scheduler.start()
-    logger.info("APScheduler 시작 — 초기 동기화 및 매주 일 03:00 예약됨")
+    logger.info("APScheduler 시작 (매주 일 03:00)")
 
     yield
 
