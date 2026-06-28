@@ -18,8 +18,7 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
   final _contentCtrl = TextEditingController();
 
   String _nicknameType = 'anon';
-  String? _certifiedNickname;
-  String? _anonNickname;
+  String? _nickname;
   bool _submitting = false;
 
   @override
@@ -42,8 +41,7 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
       final p = resp.data as Map<String, dynamic>;
       if (mounted) {
         setState(() {
-          _certifiedNickname = p['certified_nickname'] as String?;
-          _anonNickname = p['nickname'] as String?;
+          _nickname = p['nickname'] as String?;
         });
       }
     } catch (_) {}
@@ -133,8 +131,8 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                         child: _NicknameTypeCard(
                           selected: _nicknameType == 'anon',
                           icon: Icons.visibility_off_outlined,
-                          title: '완전 익명',
-                          subtitle: _anonNickname != null ? '익명 닉네임 사용' : '익명',
+                          title: '익명',
+                          subtitle: '이름 없이 게시',
                           color: Colors.grey.shade600,
                           onTap: () => setState(() => _nicknameType = 'anon'),
                         ),
@@ -142,30 +140,16 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: _NicknameTypeCard(
-                          selected: _nicknameType == 'certified',
-                          icon: Icons.verified_outlined,
-                          title: '인증 닉네임',
-                          subtitle: _certifiedNickname ?? '설정 필요',
+                          selected: _nicknameType == 'nickname',
+                          icon: Icons.person_outline,
+                          title: '닉네임',
+                          subtitle: _nickname ?? '로딩 중...',
                           color: theme.colorScheme.primary,
-                          onTap: _certifiedNickname != null
-                              ? () => setState(() => _nicknameType = 'certified')
-                              : null,
+                          onTap: () => setState(() => _nicknameType = 'nickname'),
                         ),
                       ),
                     ],
                   ),
-                  if (_nicknameType == 'certified')
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Row(children: [
-                        Icon(Icons.info_outline, size: 13, color: theme.colorScheme.primary),
-                        const SizedBox(width: 4),
-                        Text(
-                          '학교 인증된 닉네임으로 게시됩니다.',
-                          style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.primary),
-                        ),
-                      ]),
-                    ),
                 ],
               ),
             ),

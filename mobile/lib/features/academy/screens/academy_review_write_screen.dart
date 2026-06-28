@@ -23,7 +23,6 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
   String _homeworkLevel = '';
   String _scoreImprovement = '';
   String _nicknameType = 'nickname';
-  String? _certifiedNickname;
   String? _nickname;
   bool _isAdmin = false;
   final Set<String> _adminSubjects = {};
@@ -58,7 +57,6 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
       final p = resp.data as Map<String, dynamic>;
       if (mounted) {
         setState(() {
-          _certifiedNickname = p['certified_nickname'] as String?;
           _nickname = p['nickname'] as String?;
           _isAdmin = p['is_admin'] as bool? ?? false;
         });
@@ -396,18 +394,6 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
                 title: _nickname ?? '닉네임',
                 color: Colors.teal.shade600,
                 onTap: () => setState(() => _nicknameType = 'nickname'),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _TypeCard(
-                selected: _nicknameType == 'certified',
-                icon: Icons.verified_outlined,
-                title: _certifiedNickname ?? '인증 닉네임',
-                color: theme.colorScheme.primary,
-                onTap: _certifiedNickname != null
-                    ? () => setState(() => _nicknameType = 'certified')
-                    : null,
               ),
             ),
           ],

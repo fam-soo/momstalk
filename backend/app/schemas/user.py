@@ -6,7 +6,6 @@ from pydantic import BaseModel, field_validator
 class UserProfile(BaseModel):
     id: int
     nickname: str
-    certified_nickname: Optional[str] = None
     region: Optional[str] = None
     school_name: str
     grade: int

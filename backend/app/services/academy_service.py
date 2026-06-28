@@ -53,10 +53,15 @@ async def search_academies(
         filters.append(Academy.region.ilike(f"%{region}%"))
     if subjects:
         # 선택한 과목 중 하나라도 포함하면 표시 (OR 조건)
-        subject_filters = [
-            Academy.subjects.op("@>")(sa.type_coerce(json.dumps([s]), PGJSONB))
-            for s in subjects
-        ]
+        # JSONB @> 체크 + 학원명 키워드 fallback (subjects 미입력 학원 대응)
+        subject_filters = []
+        for s in subjects:
+            kws = _SUBJECT_KEYWORDS.get(s, [s])
+            name_kw_filters = [Academy.name.ilike(f"%{kw}%") for kw in kws]
+            subject_filters.append(sa.or_(
+                Academy.subjects.op("@>")(sa.type_coerce(json.dumps([s]), PGJSONB)),
+                *name_kw_filters,
+            ))
         filters.append(sa.or_(*subject_filters))
     if school_level:
         level_map = {"초등": "초등학교", "중등": "중학교", "고등": "고등학교"}
@@ -194,10 +199,7 @@ async def create_review(
 
     author_display = None
     if not review.is_anonymous:
-        if review.nickname_type == "certified":
-            author_display = user.certified_nickname or user.nickname
-        else:
-            author_display = user.nickname
+        author_display = user.nickname
 
     return AcademyReviewResponse(
         id=review.id,
@@ -231,10 +233,7 @@ async def list_reviews(academy_id: int, db: AsyncSession) -> list[AcademyReviewR
     for review, author in rows:
         author_display = None
         if not review.is_anonymous:
-            if review.nickname_type == "certified":
-                author_display = author.certified_nickname or author.nickname
-            else:
-                author_display = author.nickname
+            author_display = author.nickname
         out.append(AcademyReviewResponse(
             id=review.id,
             academy_id=review.academy_id,
