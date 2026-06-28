@@ -290,7 +290,7 @@ class AdminAction(Base):
     __tablename__ = "admin_actions"
 
     id = Column(Integer, primary_key=True)
-    admin_id = Column(Integer, ForeignKey("admin_users.id"), nullable=False)
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     action_type = Column(String(50), nullable=False)     # approve_capture / reject_capture / ban_user / ...
     target_type = Column(String(20), nullable=True)      # user / post / comment / capture
     target_id = Column(Integer, nullable=True)
