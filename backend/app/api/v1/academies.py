@@ -58,6 +58,50 @@ async def get_academy(
     return academy
 
 
+@router.get("/{academy_id}/kakao-place")
+async def get_kakao_place(
+    academy_id: int,
+    db: AsyncSession = Depends(get_service_db),
+):
+    """카카오 Local API로 학원의 카카오맵 장소 URL 조회."""
+    import os, httpx
+    academy = await academy_service.get_academy(academy_id, db)
+    if not academy:
+        raise HTTPException(status_code=404, detail="학원을 찾을 수 없습니다.")
+
+    api_key = os.getenv("KAKAO_REST_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="카카오 API 키가 설정되지 않았습니다.")
+
+    query = academy.name
+    if academy.address:
+        query = f"{academy.name} {academy.address[:10]}"
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(
+                "https://dapi.kakao.com/v2/local/search/keyword.json",
+                params={"query": query, "category_group_code": "AC5", "size": 5},
+                headers={"Authorization": f"KakaoAK {api_key}"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception:
+        raise HTTPException(status_code=503, detail="카카오 API 호출 실패")
+
+    documents = data.get("documents", [])
+    if not documents:
+        return {"place_url": None, "found": False}
+
+    # 학원명이 가장 유사한 결과 우선
+    for doc in documents:
+        if academy.name in doc.get("place_name", "") or doc.get("place_name", "") in academy.name:
+            return {"place_url": doc["place_url"], "place_name": doc["place_name"], "found": True}
+
+    first = documents[0]
+    return {"place_url": first["place_url"], "place_name": first["place_name"], "found": True}
+
+
 @router.get("/{academy_id}/reviews", response_model=list[AcademyReviewResponse])
 async def list_reviews(
     academy_id: int,

@@ -7,7 +7,7 @@ import 'package:dio/dio.dart';
 import '../../../core/api_client.dart';
 import 'post_list_widget.dart';
 
-final userProfileProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+final userProfileProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final dio = ref.read(dioProvider);
   final resp = await dio.get('/auth/me');
   return Map<String, dynamic>.from(resp.data);
@@ -62,7 +62,8 @@ class _BoardScreenState extends ConsumerState<BoardScreen> with SingleTickerProv
   }
 
   List<(String label, String boardType, bool locked)> _buildTabs(Map<String, dynamic> profile) {
-    final isAdmin = profile['is_admin'] as bool? ?? false;
+    final isAdmin = (profile['is_admin'] as bool? ?? false) ||
+        (profile['member_grade'] as String? ?? '') == 'admin';
     final isMember = isAdmin || (profile['member_grade'] as String? ?? 'lurker') == 'member';
     final region = profile['region'] as String? ?? '';
     final school = profile['school_name'] as String? ?? '';
@@ -127,7 +128,8 @@ class _BoardScreenState extends ConsumerState<BoardScreen> with SingleTickerProv
       },
       data: (profile) {
         final tabs = _buildTabs(profile);
-        final isAdmin = profile['is_admin'] as bool? ?? false;
+        final isAdmin = (profile['is_admin'] as bool? ?? false) ||
+            (profile['member_grade'] as String? ?? '') == 'admin';
         final isMember = isAdmin || (profile['member_grade'] as String? ?? 'lurker') == 'member';
         final isPending = !isAdmin && (profile['auth_pending'] as bool? ?? false);
 

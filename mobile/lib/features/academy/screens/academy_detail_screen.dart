@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api_client.dart';
 
@@ -16,6 +17,7 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
   Map<String, dynamic>? _academy;
   List<Map<String, dynamic>> _reviews = [];
   bool _loading = true;
+  bool _kakaoLoading = false;
 
   @override
   void initState() {
@@ -49,6 +51,42 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
       }
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _openKakaoMap() async {
+    setState(() => _kakaoLoading = true);
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.get('/academies/${widget.academyId}/kakao-place');
+      final data = resp.data as Map<String, dynamic>;
+      final placeUrl = data['place_url'] as String?;
+      final found = data['found'] as bool? ?? false;
+      if (!mounted) return;
+      if (!found || placeUrl == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('카카오맵에서 해당 학원을 찾을 수 없습니다.')),
+        );
+        return;
+      }
+      final uri = Uri.parse(placeUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('카카오맵을 열 수 없습니다.')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('오류: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _kakaoLoading = false);
     }
   }
 
@@ -128,6 +166,27 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                     ],
                   ),
                 ],
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: _kakaoLoading ? null : _openKakaoMap,
+                  icon: _kakaoLoading
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : Image.network(
+                          'https://developers.kakao.com/assets/img/about/logos/kakaolink/kakaolink_btn_small.png',
+                          width: 18,
+                          height: 18,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.map_outlined, size: 16),
+                        ),
+                  label: const Text('카카오맵에서 보기', style: TextStyle(fontSize: 13)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF3A1D1D),
+                    side: const BorderSide(color: Color(0xFFFFE600), width: 1.5),
+                    backgroundColor: const Color(0xFFFFE600).withOpacity(0.08),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
                 const SizedBox(height: 12),
                 if (subjects.isNotEmpty)
                   Wrap(

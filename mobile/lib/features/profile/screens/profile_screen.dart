@@ -151,7 +151,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _buildBody() {
-    final isAdmin = _profile!['is_admin'] as bool? ?? false;
+    final isAdmin = (_profile!['is_admin'] as bool? ?? false) ||
+        (_profile!['member_grade'] as String? ?? '') == 'admin';
     final isMember = isAdmin || (_profile!['member_grade'] as String? ?? 'lurker') == 'member';
     final isPending = !isAdmin && (_profile!['auth_pending'] as bool? ?? false);
 
