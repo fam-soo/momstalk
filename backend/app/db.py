@@ -7,11 +7,11 @@ engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
     poolclass=NullPool,
-    connect_args={"statement_cache_size": 0},
+    connect_args={"prepare_threshold": None},  # psycopg3: prepared statement 완전 비활성화
 )
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 
-# 하위 호환 별칭 (리팩토링 완료 전 사용 중인 코드 대비)
+# 하위 호환 별칭
 service_engine = engine
 ServiceSessionLocal = SessionLocal
 
