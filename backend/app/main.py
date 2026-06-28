@@ -49,8 +49,8 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # 초기 동기화: uvicorn이 완전히 뜬 후 백그라운드 실행
-    asyncio.get_running_loop().call_later(3, lambda: asyncio.ensure_future(_run_initial_sync()))
+    # 초기 동기화: 백그라운드 태스크로 즉시 실행
+    _sync_task = asyncio.create_task(_run_initial_sync())
 
     # 매주 일요일 03:00 전국 업데이트
     _scheduler.add_job(_weekly_sync, "cron", day_of_week="sun", hour=3, minute=0,
@@ -60,6 +60,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    _sync_task.cancel()
     _scheduler.shutdown(wait=False)
 
 
