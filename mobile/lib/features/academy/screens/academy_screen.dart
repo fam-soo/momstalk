@@ -45,11 +45,13 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       if (token != null) {
         try {
           final resp = await dio.get('/auth/me');
-          region = (resp.data as Map<String, dynamic>)['region'] as String? ?? '';
+          final r = (resp.data as Map<String, dynamic>)['region'] as String? ?? '';
+          region = r.isNotEmpty ? r : '양천구';
         } catch (_) {}
       }
+      if (region.isEmpty) region = '양천구';
       if (mounted) setState(() => _userRegion = region);
-      await _search(regionOverride: region.isNotEmpty ? region : null);
+      await _search(regionOverride: region);
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }

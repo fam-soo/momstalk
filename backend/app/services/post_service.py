@@ -116,9 +116,11 @@ async def list_posts(
     if q:
         query = query.where(or_(Post.title.ilike(f"%{q}%"), Post.content.ilike(f"%{q}%")))
 
+    _DEFAULT_REGION = "양천구"
     if board_type == "region":
+        effective_region = user.region or _DEFAULT_REGION
         query = query.where(Post.school_code.in_(
-            select(User.school_code).where(User.region == user.region)
+            select(User.school_code).where(User.region == effective_region)
         ))
     elif board_type == "free":
         pass

@@ -96,7 +96,9 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
       if (mounted) {
         setState(() {
           _isMember = isMember || isAdmin;
-          _region = profile['region'] as String? ?? '';
+          _region = (profile['region'] as String?)?.isNotEmpty == true
+              ? profile['region'] as String
+              : '양천구';
           _loading = false;
         });
         if (_isMember) {
