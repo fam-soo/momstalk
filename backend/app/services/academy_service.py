@@ -13,6 +13,28 @@ from app.schemas.academy import AcademyReviewCreate, AcademyReviewResponse, Acad
 from app.services import neis_service
 
 
+_SUBJECT_KEYWORDS: dict[str, list[str]] = {
+    "수학": ["수학"],
+    "영어": ["영어", "영어회화", "영어전문"],
+    "국어": ["국어", "논술", "독서논술"],
+    "과학": ["과학", "물리", "화학", "생물"],
+    "음악": ["음악", "피아노", "바이올린", "플루트", "첼로", "드럼", "성악", "기타레슨"],
+    "미술": ["미술", "드로잉", "조형", "입시미술"],
+    "체육": ["체육", "태권도", "수영", "발레", "무용", "유도", "검도", "축구", "농구", "야구"],
+    "코딩": ["코딩", "프로그래밍", "로봇", "SW", "소프트웨어", "컴퓨터"],
+}
+
+
+def _detect_subjects_from_name(name: str) -> list[str]:
+    """학원 이름에서 과목 키워드를 감지해 subject 목록 반환."""
+    detected = []
+    name_lower = name.lower()
+    for subject, keywords in _SUBJECT_KEYWORDS.items():
+        if any(kw in name for kw in keywords) or any(kw.lower() in name_lower for kw in keywords):
+            detected.append(subject)
+    return detected
+
+
 async def search_academies(
     db: AsyncSession,
     name: Optional[str] = None,
@@ -61,13 +83,17 @@ async def search_academies(
                 )
                 if existing.scalar_one_or_none():
                     continue
+            academy_name = r["name"]
+            neis_subjects = r.get("subjects") or []
+            detected = _detect_subjects_from_name(academy_name)
+            merged_subjects = list(dict.fromkeys(detected + [s for s in neis_subjects if s not in detected]))
             academy = Academy(
                 neis_academy_code=neis_code,
-                name=r["name"],
+                name=academy_name,
                 region=r.get("region"),
                 address=r.get("address"),
                 phone=r.get("phone"),
-                subjects=r.get("subjects"),
+                subjects=merged_subjects if merged_subjects else neis_subjects,
                 school_type=r.get("school_type"),
             )
             db.add(academy)
