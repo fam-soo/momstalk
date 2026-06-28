@@ -107,6 +107,16 @@ async def search_academies(
     return [AcademyResponse.model_validate(a) for a in academies]
 
 
+async def patch_subjects(academy_id: int, subjects: list[str], db: AsyncSession) -> None:
+    """관리자 전용: 학원 과목 목록 교체."""
+    result = await db.execute(select(Academy).where(Academy.id == academy_id))
+    academy = result.scalar_one_or_none()
+    if not academy:
+        raise ValueError("학원을 찾을 수 없습니다.")
+    academy.subjects = subjects
+    await db.commit()
+
+
 async def get_academy(academy_id: int, db: AsyncSession) -> Optional[AcademyResponse]:
     result = await db.execute(select(Academy).where(Academy.id == academy_id))
     academy = result.scalar_one_or_none()

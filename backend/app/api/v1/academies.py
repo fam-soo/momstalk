@@ -1,6 +1,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_optional_user
@@ -55,3 +56,24 @@ async def create_review(
         return await academy_service.create_review(academy_id, user, req, db)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class AdminSubjectPatch(BaseModel):
+    subjects: list[str]
+
+
+@router.patch("/{academy_id}/subjects")
+async def admin_patch_subjects(
+    academy_id: int,
+    req: AdminSubjectPatch,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """관리자 전용: 학원 과목 목록 직접 수정."""
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="관리자만 사용할 수 있습니다.")
+    try:
+        await academy_service.patch_subjects(academy_id, req.subjects, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"ok": True}
