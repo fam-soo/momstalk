@@ -106,6 +106,9 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                       Expanded(
                         child: TextField(
                           controller: _searchCtrl,
+                          keyboardType: TextInputType.text,
+                          textInputAction: TextInputAction.search,
+                          enableInteractiveSelection: true,
                           decoration: InputDecoration(
                             hintText: _userRegion.isNotEmpty
                                 ? '$_userRegion 학원 검색'
@@ -119,6 +122,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                             contentPadding:
                                 const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                           ),
+                          onChanged: (_) => setState(() {}),
                           onSubmitted: (_) => _search(),
                         ),
                       ),

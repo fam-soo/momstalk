@@ -19,13 +19,16 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
     with SingleTickerProviderStateMixin {
   bool _loading = true;
   bool _isMember = false;
+  bool _isLurker = false; // 로그인 했지만 미인증
   String _schoolName = '';
   int _grade = 1;
   List<Map<String, dynamic>> _previewPosts = [];
   int _previewTaps = 0;
+  int _lurkerReads = 0; // lurker 읽기 횟수 (계정당 1회, 초기화 없음)
   TabController? _tabController;
   static const _tapLimit = 2;
   static const _prefKey = 'preview_taps_school';
+  static const _lurkerReadKey = 'school_lurker_reads';
 
   @override
   void initState() {
@@ -42,6 +45,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   Future<void> _init() async {
     final prefs = await SharedPreferences.getInstance();
     _previewTaps = prefs.getInt(_prefKey) ?? 0;
+    _lurkerReads = prefs.getInt(_lurkerReadKey) ?? 0;
 
     try {
       final storage = ref.read(tokenStorageProvider);
@@ -56,9 +60,10 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       final isMember = (profile['member_grade'] as String? ?? 'lurker') == 'member';
       final isAdmin = profile['is_admin'] as bool? ?? false;
       if (mounted) {
-        final tabs = TabController(length: 2, vsync: this);
+        final tabs = (isMember || isAdmin) ? TabController(length: 2, vsync: this) : null;
         setState(() {
           _isMember = isMember || isAdmin;
+          _isLurker = !isMember && !isAdmin; // 로그인은 됐지만 미인증
           _schoolName = profile['school_name'] as String? ?? '';
           _grade = profile['grade'] as int? ?? 1;
           _tabController = tabs;
@@ -68,6 +73,32 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
     } catch (_) {
       await _loadPreview();
     }
+  }
+
+  Future<void> _onLurkerTap(int postId) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_lurkerReads >= 1) {
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('학부모 인증 후 이용 가능'),
+          content: const Text('학교 게시판은 학부모 인증 정회원만 이용할 수 있어요.\n알림장 캡처로 간편하게 인증할 수 있습니다.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('닫기')),
+            FilledButton(
+              onPressed: () { Navigator.pop(ctx); context.go('/auth/school-select'); },
+              child: const Text('인증하기'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    _lurkerReads++;
+    await prefs.setInt(_lurkerReadKey, _lurkerReads);
+    if (!mounted) return;
+    context.push('/board/$postId');
   }
 
   Future<void> _loadPreview() async {
@@ -132,7 +163,28 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       );
     }
 
-    // 비회원/lurker 미리보기
+    // lurker (로그인 O, 인증 X): 미리보기 + 읽기 1회 제한
+    if (_isLurker) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('학교 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
+          actions: [
+            TextButton(
+              onPressed: () => context.go('/auth/school-select'),
+              child: const Text('학교 인증'),
+            ),
+          ],
+        ),
+        body: _SchoolPreviewBoard(
+          posts: _previewPosts,
+          onTap: _onLurkerTap,
+          onCertify: () => context.go('/auth/school-select'),
+          lurkerReadsLeft: 1 - _lurkerReads,
+        ),
+      );
+    }
+
+    // 비로그인 미리보기
     return Scaffold(
       appBar: AppBar(
         title: const Text('학교 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -147,6 +199,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
         posts: _previewPosts,
         onTap: _onPreviewTap,
         onCertify: () => context.go('/auth/school-select'),
+        lurkerReadsLeft: null,
       ),
     );
   }
@@ -156,11 +209,13 @@ class _SchoolPreviewBoard extends StatelessWidget {
   final List<Map<String, dynamic>> posts;
   final Future<void> Function(int postId) onTap;
   final VoidCallback onCertify;
+  final int? lurkerReadsLeft; // null = 비로그인, 0 이하 = 더 이상 읽기 불가
 
   const _SchoolPreviewBoard({
     required this.posts,
     required this.onTap,
     required this.onCertify,
+    required this.lurkerReadsLeft,
   });
 
   String _relativeTime(String? iso) {
@@ -188,7 +243,11 @@ class _SchoolPreviewBoard extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                '학교 게시판 인기글 미리보기 · 학부모 인증 후 모든 글을 볼 수 있어요',
+                lurkerReadsLeft != null
+                    ? (lurkerReadsLeft! > 0
+                        ? '게시글 1개 읽기 가능 · 이후 학부모 인증이 필요합니다'
+                        : '읽기 횟수를 모두 사용했습니다 · 학부모 인증 후 이용하세요')
+                    : '학교 게시판 인기글 미리보기 · 학부모 인증 후 모든 글을 볼 수 있어요',
                 style: TextStyle(fontSize: 12, color: theme.colorScheme.primary, fontWeight: FontWeight.w500),
               ),
             ),

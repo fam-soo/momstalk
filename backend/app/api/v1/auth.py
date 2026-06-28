@@ -309,7 +309,7 @@ async def capture_upload(
         storage_key = await capture_service.upload_capture_image(user.id, data, content_type)
     except RuntimeError as e:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
-    await capture_service.submit_capture(user, storage_key, school_code, school_name, grade, class_num, db)
+    await capture_service.submit_capture(user, storage_key, school_code, school_name, grade, class_num, db, region=region)
 
 
 @router.post("/capture/submit", status_code=status.HTTP_204_NO_CONTENT)

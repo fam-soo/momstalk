@@ -110,6 +110,7 @@ async def submit_capture(
     grade: int,
     class_num: int | None,
     db: AsyncSession,
+    region: str = "",
 ) -> AuthCapture:
     """캡처 제출 → auth_captures 행 생성, user.auth_pending = True."""
     existing = (await db.execute(
@@ -140,6 +141,8 @@ async def submit_capture(
         )
         db.add(capture)
 
+    if region:
+        user.region = region  # 캡처 제출 시 지역 즉시 반영 (승인 전에도 지역게시판/학원탭 사용 가능)
     user.auth_pending = True
     user.auth_route = "capture"
     await db.commit()
