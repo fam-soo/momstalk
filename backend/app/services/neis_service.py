@@ -271,9 +271,11 @@ def _dummy_academies(name: str | None, region: str | None, subject: str | None) 
     region_label = region or "강남구"
     prefix = name or region_label
     subjects_list = [subject] if subject else ["수학", "영어"]
+    import hashlib
+    key_base = f"{prefix}_{region_label}_{','.join(subjects_list)}"
     return [
         {
-            "neis_academy_code": f"DUMMY_ACA_{i:03d}",
+            "neis_academy_code": hashlib.md5(f"{key_base}_{i}".encode()).hexdigest()[:12],
             "name": f"{prefix}학원{i}",
             "region": region_label,
             "address": f"서울특별시 {region_label} 테헤란로 {i * 10}",

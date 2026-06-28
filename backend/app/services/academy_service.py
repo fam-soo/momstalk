@@ -1,8 +1,10 @@
+import json
 from decimal import Decimal
 from typing import Optional
 
 import sqlalchemy as sa
 from sqlalchemy import select, func
+from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.profanity import check_profanity
@@ -24,7 +26,8 @@ async def search_academies(
     if region:
         filters.append(Academy.region.ilike(f"%{region}%"))
     if subject:
-        filters.append(Academy.subjects.cast(sa.Text).ilike(f"%{subject}%"))
+        # JSONB 배열 포함 검사 (@>) — cast(Text) ilike는 한글 유니코드 escape로 매칭 실패
+        filters.append(Academy.subjects.op("@>")(sa.type_coerce(json.dumps([subject]), PGJSONB)))
 
     result = await db.execute(
         select(Academy).where(*filters).order_by(Academy.review_count.desc()).limit(50)
