@@ -50,29 +50,31 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
-    anon_id = Column(String(64), unique=True, nullable=False, index=True)
-    nickname = Column(String(30), nullable=True)        # 없으면 자동 생성 닉네임
-    region = Column(String(30), nullable=True)          # 지역 (예: 강남구, 수원시)
-    school_code = Column(String(20), nullable=False)
-    school_name = Column(String(100), nullable=False)
-    grade = Column(Integer, nullable=False)
+    anon_id = Column(String(64), unique=True, nullable=True, index=True)  # 관리자 계정은 null
+    nickname = Column(String(30), nullable=True)
+    region = Column(String(30), nullable=True)
+    school_code = Column(String(20), nullable=True)      # 관리자 계정은 null
+    school_name = Column(String(100), nullable=True)     # 관리자 계정은 null
+    grade = Column(Integer, nullable=True)               # 관리자 계정은 null
     class_num = Column(Integer, nullable=True)
-    school_type = Column(String(10), nullable=False)
-    manner_score = Column(Integer, default=365, server_default="365")  # 온도 × 10 (365 = 36.5°C)
-    fcm_token = Column(String(256), nullable=True)      # Firebase 푸시 토큰 (기기별 갱신)
+    school_type = Column(String(10), nullable=True)      # 관리자 계정은 null
+    manner_score = Column(Integer, default=365, server_default="365")
+    fcm_token = Column(String(256), nullable=True)
     is_banned = Column(Boolean, default=False)
     is_admin = Column(Boolean, default=False)
-    suspended_until = Column(DateTime, nullable=True)   # 기간 정지 해제 시각 (NULL이면 정지 없음)
-    warning_count = Column(Integer, default=0)          # 누적 경고 횟수
-    # 선택적 실명제 (v0.5)
-    certified_nickname = Column(String(50), nullable=True)   # 인증 닉네임 (예: 행복초_지혜맘)
-    school_short_name = Column(String(20), nullable=True)    # 학교 약칭 (인증 닉네임 생성용)
+    suspended_until = Column(DateTime, nullable=True)
+    warning_count = Column(Integer, default=0)
+    certified_nickname = Column(String(50), nullable=True)
+    school_short_name = Column(String(20), nullable=True)
     # v3 인증 관련
-    social_provider = Column(String(20), nullable=True)   # "kakao"
-    member_grade = Column(String(10), nullable=False, server_default="lurker")  # lurker / member
-    auth_route = Column(String(10), nullable=True)        # "capture" / "invite"
-    auth_pending = Column(Boolean, default=False)         # 캡처 검토 대기 중 (lurker)
-    profile_updated_at = Column(DateTime, nullable=True)  # 프로필 최종 수정일 (월 1회 제한)
+    social_provider = Column(String(20), nullable=True)
+    member_grade = Column(String(10), nullable=False, server_default="lurker")  # lurker / member / admin
+    auth_route = Column(String(10), nullable=True)
+    auth_pending = Column(Boolean, default=False)
+    profile_updated_at = Column(DateTime, nullable=True)
+    # 관리자 전용 자격증명 (일반 유저는 null)
+    admin_username = Column(String(50), unique=True, nullable=True)
+    admin_password_hash = Column(String(128), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     posts = relationship("Post", back_populates="author")

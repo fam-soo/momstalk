@@ -118,18 +118,20 @@ async def list_posts(
     if q:
         query = query.where(or_(Post.title.ilike(f"%{q}%"), Post.content.ilike(f"%{q}%")))
 
-    _DEFAULT_REGION = "양천구"
-    if board_type == "region":
-        effective_region = user.region or _DEFAULT_REGION
-        query = query.where(Post.school_code.in_(
-            select(User.school_code).where(User.region == effective_region)
-        ))
-    elif board_type == "free":
-        pass
-    else:
-        query = query.where(Post.school_code == school_code)
-        if board_type == "grade" and grade:
-            query = query.where(Post.grade == grade)
+    # 관리자: 모든 지역/학교 필터 없이 전체 조회
+    if not user.is_admin:
+        _DEFAULT_REGION = "양천구"
+        if board_type == "region":
+            effective_region = user.region or _DEFAULT_REGION
+            query = query.where(Post.school_code.in_(
+                select(User.school_code).where(User.region == effective_region)
+            ))
+        elif board_type == "free":
+            pass
+        else:
+            query = query.where(Post.school_code == school_code)
+            if board_type == "grade" and grade:
+                query = query.where(Post.grade == grade)
 
     # cursor 필터 + 정렬
     if sort == "popular":

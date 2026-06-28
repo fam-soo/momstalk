@@ -5,16 +5,17 @@ from pydantic import BaseModel, field_validator
 
 class UserProfile(BaseModel):
     id: int
-    nickname: str
+    nickname: Optional[str] = None
     region: Optional[str] = None
-    school_name: str
-    grade: int
-    school_type: str
+    school_name: Optional[str] = None
+    grade: Optional[int] = None
+    school_type: Optional[str] = None
     manner_score: int
-    temperature: float = 36.5    # manner_score → °C (API 계산값)
+    temperature: float = 36.5
     member_grade: str = "lurker"
     auth_pending: bool = False
     is_admin: bool = False
+    admin_username: Optional[str] = None
     reject_reason: Optional[str] = None
     profile_updated_at: Optional[datetime] = None
     created_at: datetime

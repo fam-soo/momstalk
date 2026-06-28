@@ -65,7 +65,20 @@ try:
                 conn.execute(text("DELETE FROM alembic_version"))
                 conn.execute(text("INSERT INTO alembic_version VALUES ('0014')"))
                 conn.commit()
+                current3 = "0014"
                 print("[start] stamp 0014 완료")
+
+        # 6. 0015: admin_username 컬럼 존재 여부로 판단
+        heads_now = conn.execute(text("SELECT version_num FROM alembic_version")).fetchall()
+        current4 = heads_now[0][0] if heads_now else current
+        if int(current4) < 15:
+            user_cols = [c["name"] for c in inspector.get_columns("users")]
+            if "admin_username" in user_cols:
+                print("[start] admin_username 컬럼 존재 → 0015 이미 적용된 것으로 stamp")
+                conn.execute(text("DELETE FROM alembic_version"))
+                conn.execute(text("INSERT INTO alembic_version VALUES ('0015')"))
+                conn.commit()
+                print("[start] stamp 0015 완료")
 
 except Exception as e:
     print(f"[start] 사전 동기화 오류 (무시): {e}")

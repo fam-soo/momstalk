@@ -12,6 +12,7 @@ from app.core.security import create_access_token, decode_token
 from app.db import get_db
 from app.models.service_models import User
 from app.schemas.auth import (
+    AdminLoginRequest,
     CapturePresignResponse,
     CaptureSubmitRequest,
     DevLoginRequest,
@@ -389,3 +390,43 @@ async def update_profile(
     await db.commit()
     await db.refresh(user)
     return user
+
+
+@router.post("/admin/login", response_model=TokenResponse)
+async def admin_login(
+    req: AdminLoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """관리자 전용 로그인 (username + password). 카카오 인증 불필요."""
+    from sqlalchemy import select as sa_select
+    from app.core.security import verify_password, create_refresh_token
+
+    result = await db.execute(
+        sa_select(User).where(User.admin_username == req.username, User.is_admin == True)
+    )
+    user = result.scalar_one_or_none()
+    if not user or not user.admin_password_hash or not verify_password(req.password, user.admin_password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="아이디 또는 비밀번호가 올바르지 않습니다.")
+
+    access_token = create_access_token(str(user.id))
+    refresh_token = create_refresh_token(str(user.id))
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+
+
+@router.post("/admin/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_change_password(
+    current_password: str,
+    new_password: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """관리자 비밀번호 변경."""
+    from app.core.security import verify_password, hash_password
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자만 사용 가능합니다.")
+    if not user.admin_password_hash or not verify_password(current_password, user.admin_password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="현재 비밀번호가 올바르지 않습니다.")
+    if len(new_password) < 8:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="비밀번호는 8자 이상이어야 합니다.")
+    user.admin_password_hash = hash_password(new_password)
+    await db.commit()

@@ -122,3 +122,8 @@ class InviteUseRequest(BaseModel):
     token: str
     grade: int
     class_num: int | None = None
+
+
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str

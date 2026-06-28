@@ -581,6 +581,34 @@ def page_dashboard():
 
     st.markdown("---")
 
+    # ── 학교별 가입현황 ─────────────────────────────────
+    st.subheader("학교별 가입현황")
+    with _db() as db:
+        school_rows = db.execute(text("""
+            SELECT school_name, region,
+                   COUNT(*) AS total,
+                   SUM(CASE WHEN member_grade='member' THEN 1 ELSE 0 END) AS members,
+                   SUM(CASE WHEN member_grade='lurker' THEN 1 ELSE 0 END) AS lurkers
+            FROM users
+            WHERE school_name IS NOT NULL AND school_name != ''
+              AND member_grade != 'admin'
+            GROUP BY school_name, region
+            ORDER BY total DESC
+            LIMIT 50
+        """)).fetchall()
+
+    if school_rows:
+        df_school = pd.DataFrame(school_rows, columns=["학교명", "지역", "전체", "정회원", "lurker"])
+        col_a, col_b = st.columns([3, 2])
+        with col_a:
+            st.bar_chart(df_school.set_index("학교명")["전체"].head(20))
+        with col_b:
+            st.dataframe(df_school, use_container_width=True, hide_index=True)
+    else:
+        st.info("학교 정보가 있는 유저가 없습니다.")
+
+    st.markdown("---")
+
     # ── 지역별 게시글 현황 ──────────────────────────────
     st.subheader("지역별 게시글 현황")
     with _db() as db:
