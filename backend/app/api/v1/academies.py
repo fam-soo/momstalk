@@ -64,16 +64,15 @@ async def get_kakao_place(
     db: AsyncSession = Depends(get_service_db),
 ):
     """카카오 Local API로 학원의 카카오맵 장소 URL 조회."""
-    import os, httpx
+    import httpx
+    from app.core.config import settings
     academy = await academy_service.get_academy(academy_id, db)
     if not academy:
         raise HTTPException(status_code=404, detail="학원을 찾을 수 없습니다.")
 
-    api_key = os.getenv("KAKAO_REST_API_KEY", "").strip()
+    api_key = settings.KAKAO_CLIENT_ID.strip()
     if not api_key:
-        import logging
-        logging.getLogger("uvicorn").error("KAKAO_REST_API_KEY not set. Env keys: %s", [k for k in os.environ if 'KAKAO' in k])
-        raise HTTPException(status_code=503, detail="카카오 API 키 미설정 (KAKAO_REST_API_KEY)")
+        raise HTTPException(status_code=503, detail="카카오 API 키 미설정")
 
     query = academy.name
     if academy.address:
