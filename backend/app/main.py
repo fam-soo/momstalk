@@ -43,13 +43,9 @@ async def _weekly_sync():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 마이그레이션 자동 적용 (개발: create_all, 프로덕션: alembic upgrade)
-    if settings.DEBUG:
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-    else:
-        import subprocess
-        subprocess.run(["alembic", "upgrade", "head"], cwd="/app", check=False)
+    # 없는 테이블만 생성 (checkfirst=True → 기존 테이블 보존)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
     # 초기 동기화: 앱 시작 10초 후 백그라운드 실행 (포트 바인딩 먼저 완료)
     _scheduler.add_job(_run_initial_sync, "date", id="initial_sync",
