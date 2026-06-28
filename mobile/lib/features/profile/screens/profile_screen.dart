@@ -40,13 +40,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _logout() async {
     await ref.read(tokenStorageProvider).deleteAll();
-    if (mounted) context.go('/auth/login');
+    if (mounted) GoRouter.of(context).go('/region');
   }
 
   Future<void> _deleteAccount() async {
+    // barrierDismissible: false — 외부 탭 실수로 dismiss 방지
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
         title: const Text('회원 탈퇴'),
         content: const Text(
           '탈퇴하면 모든 개인정보가 즉시 삭제됩니다.\n'
@@ -55,12 +57,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(ctx, false),
             child: const Text('취소'),
           ),
           TextButton(
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(ctx, true),
             child: const Text('탈퇴'),
           ),
         ],
@@ -72,10 +74,15 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final dio = ref.read(dioProvider);
       await dio.delete('/auth/me');
     } catch (_) {
-      // 서버 오류여도 로컬 토큰은 삭제하고 로그인 화면으로 이동
+      // 서버 오류여도 로컬 토큰 삭제 후 이동
     } finally {
       await ref.read(tokenStorageProvider).deleteAll();
-      if (mounted) context.go('/auth/login');
+      if (mounted) {
+        // StatefulShellRoute 안에서 context.go('/auth/login')이
+        // Flutter Web에서 shell 밖 이동 실패하는 버그 회피.
+        // /region은 router redirect에서 인증 체크 없이 통과.
+        GoRouter.of(context).go('/region');
+      }
     }
   }
 
