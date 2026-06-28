@@ -49,6 +49,20 @@ def generate_presign_url(user_id: int) -> tuple[str, str]:
         raise RuntimeError(f"S3 presign 실패: {e}")
 
 
+def generate_get_presign_url(s3_key: str, expires: int = 3600) -> str:
+    """S3 presigned GET URL 발급 (관리자 캡처 이미지 열람용)."""
+    if not settings.AWS_ACCESS_KEY_ID:
+        return f"/dev-capture/{s3_key}"  # 개발 환경 더미
+    try:
+        return _s3_client().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": settings.AWS_S3_BUCKET, "Key": s3_key},
+            ExpiresIn=expires,
+        )
+    except (BotoCoreError, ClientError) as e:
+        raise RuntimeError(f"S3 presign GET 실패: {e}")
+
+
 def _delete_s3_object(key: str) -> None:
     if not settings.AWS_ACCESS_KEY_ID:
         return

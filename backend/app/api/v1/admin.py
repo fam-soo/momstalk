@@ -44,6 +44,10 @@ async def list_captures(
     result = []
     for c in captures:
         user = (await db.execute(select(User).where(User.id == c.user_id))).scalar_one_or_none()
+        try:
+            image_url = capture_service.generate_get_presign_url(c.s3_key) if c.s3_key else None
+        except Exception:
+            image_url = None
         result.append({
             "id": c.id,
             "user_id": c.user_id,
@@ -53,6 +57,7 @@ async def list_captures(
             "input_grade": c.input_grade,
             "input_class_num": c.input_class_num,
             "s3_key": c.s3_key,
+            "image_url": image_url,
             "created_at": c.created_at.isoformat() if c.created_at else None,
         })
     return result
@@ -164,6 +169,22 @@ async def get_user_detail(
             for w in warnings
         ],
     }
+
+
+@router.post("/users/{user_id}/approve", status_code=status.HTTP_204_NO_CONTENT)
+async def approve_user(
+    user_id: int,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """lurker → member 직접 승격 (캡처 없이 관리자가 수동 승인)."""
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+    user.member_grade = "member"
+    user.auth_pending = False
+    db.add(AdminAction(admin_id=admin.id, action_type="approve_user", target_type="user", target_id=user_id, detail="관리자 수동 승인"))
+    await db.commit()
 
 
 @router.post("/users/{user_id}/warn", status_code=status.HTTP_204_NO_CONTENT)

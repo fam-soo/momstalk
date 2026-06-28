@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/constants.dart';
 
 class AcademyScreen extends ConsumerStatefulWidget {
   const AcademyScreen({super.key});
@@ -38,8 +39,15 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   Future<void> _initLoad() async {
     try {
       final dio = ref.read(dioProvider);
-      final resp = await dio.get('/auth/me');
-      final region = (resp.data as Map<String, dynamic>)['region'] as String? ?? '';
+      String region = '';
+      // 로그인 상태일 때만 지역 정보 가져옴 (비로그인도 학원 목록 열람 가능)
+      final token = await ref.read(tokenStorageProvider).read(AppConstants.tokenKey);
+      if (token != null) {
+        try {
+          final resp = await dio.get('/auth/me');
+          region = (resp.data as Map<String, dynamic>)['region'] as String? ?? '';
+        } catch (_) {}
+      }
       if (mounted) setState(() => _userRegion = region);
       await _search(regionOverride: region.isNotEmpty ? region : null);
     } catch (e) {

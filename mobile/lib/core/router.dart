@@ -35,8 +35,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) async {
       final loc = state.matchedLocation;
       if (loc.startsWith('/admin')) return null;
-      // 지역·학교 탭은 비회원 미리보기 허용 — 화면 내부에서 인증 처리
-      if (loc == '/region' || loc == '/school') return null;
+      // 지역·학교·학원 탭은 비회원 미리보기 허용 — 화면 내부에서 인증 처리
+      if (loc == '/region' || loc == '/school' || loc == '/academy') return null;
       final storage = ref.read(tokenStorageProvider);
       final token = await storage.read(AppConstants.tokenKey);
       final isAuthRoute = loc.startsWith('/auth') || loc.startsWith('/invite');

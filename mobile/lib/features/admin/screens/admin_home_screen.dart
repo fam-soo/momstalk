@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -174,6 +175,30 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
     }
   }
 
+  void _showImageDialog(BuildContext ctx, String imageUrl) {
+    showDialog(
+      context: ctx,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.contain),
+          ),
+          Positioned(
+            top: 8, right: 8,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () => Navigator.pop(ctx),
+              style: IconButton.styleFrom(backgroundColor: Colors.black54),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _approve(int id) async {
     try {
       await ref.read(adminDioProvider).post('/admin/captures/$id/approve');
@@ -217,14 +242,47 @@ class _CapturesTabState extends ConsumerState<_CapturesTab> {
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (ctx, i) {
           final c = Map<String, dynamic>.from(_items[i] as Map);
+          final imageUrl = c['image_url'] as String?;
           return Card(
             child: Padding(
               padding: const EdgeInsets.all(12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('${c['nickname']} — ${c['input_school_name']} ${c['input_grade']}학년',
+                // 헤더
+                Text('${c['nickname'] ?? '알 수 없음'} — ${c['input_school_name'] ?? ''} ${c['input_grade'] ?? ''}학년',
                     style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text('제출: ${c['created_at'] ?? ''}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 10),
+                // 캡처 이미지
+                if (imageUrl != null)
+                  GestureDetector(
+                    onTap: () => _showImageDialog(ctx, imageUrl),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => Container(
+                          height: 180,
+                          color: Colors.grey.shade100,
+                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        ),
+                        errorWidget: (_, __, ___) => Container(
+                          height: 60,
+                          color: Colors.grey.shade100,
+                          child: const Center(child: Icon(Icons.broken_image_outlined, color: Colors.grey)),
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  Container(
+                    height: 60,
+                    decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                    child: const Center(child: Text('이미지 없음', style: TextStyle(color: Colors.grey, fontSize: 12))),
+                  ),
                 const SizedBox(height: 12),
                 Row(children: [
                   Expanded(
@@ -396,6 +454,16 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
     }
   }
 
+  Future<void> _approveUser(int id) async {
+    try {
+      await ref.read(adminDioProvider).post('/admin/users/$id/approve');
+      _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('정회원으로 승인되었습니다.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('오류: $e')));
+    }
+  }
+
   Future<void> _suspend(int id, int days) async {
     try {
       await ref.read(adminDioProvider).post('/admin/users/$id/suspend', data: {'days': days, 'reason': '관리자 제재'});
@@ -461,21 +529,13 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
                         title: Text(u['nickname'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                         subtitle: Text('$grade · 경고 ${u['warning_count'] ?? 0}회', style: const TextStyle(fontSize: 12)),
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              Text('학교: ${u['school_name'] ?? '-'} ${u['grade'] ?? ''}학년',
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                              const SizedBox(height: 8),
-                              Wrap(spacing: 6, children: [
-                                if (!isBanned) ...[
-                                  _ActionChip('7일 정지', Colors.orange, () => _suspend(u['id'] as int, 7)),
-                                  _ActionChip('30일 정지', Colors.deepOrange, () => _suspend(u['id'] as int, 30)),
-                                  _ActionChip('영구 차단', Colors.red, () => _ban(u['id'] as int)),
-                                ] else
-                                  _ActionChip('차단 해제', Colors.green, () => _unban(u['id'] as int)),
-                              ]),
-                            ]),
+                          _UserDetailPanel(
+                            userId: u['id'] as int,
+                            summary: u,
+                            onApprove: () => _approveUser(u['id'] as int),
+                            onSuspend: (days) => _suspend(u['id'] as int, days),
+                            onBan: () => _ban(u['id'] as int),
+                            onUnban: () => _unban(u['id'] as int),
                           ),
                         ],
                       ),
@@ -590,6 +650,106 @@ class _PostWriteTabState extends ConsumerState<_PostWriteTab> {
               ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : const Text('게시글 등록'),
         ),
+      ]),
+    );
+  }
+}
+
+// ── 유저 상세 패널 (ExpansionTile 내부) ─────────────────────────────
+
+class _UserDetailPanel extends ConsumerStatefulWidget {
+  final int userId;
+  final Map<String, dynamic> summary;
+  final VoidCallback onApprove;
+  final void Function(int days) onSuspend;
+  final VoidCallback onBan;
+  final VoidCallback onUnban;
+
+  const _UserDetailPanel({
+    required this.userId,
+    required this.summary,
+    required this.onApprove,
+    required this.onSuspend,
+    required this.onBan,
+    required this.onUnban,
+  });
+
+  @override
+  ConsumerState<_UserDetailPanel> createState() => _UserDetailPanelState();
+}
+
+class _UserDetailPanelState extends ConsumerState<_UserDetailPanel> {
+  Map<String, dynamic>? _detail;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final resp = await ref.read(adminDioProvider).get('/admin/users/${widget.userId}');
+      if (mounted) setState(() => _detail = Map<String, dynamic>.from(resp.data as Map));
+    } catch (_) {} finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isBanned = widget.summary['is_banned'] == true;
+    final isMember = widget.summary['member_grade'] == 'member';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('학교: ${widget.summary['school_name'] ?? '-'} ${widget.summary['grade'] ?? ''}학년',
+            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        Text('가입: ${widget.summary['created_at'] ?? '-'}',
+            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        if (widget.summary['suspended_until'] != null)
+          Text('정지 해제: ${widget.summary['suspended_until']}',
+              style: const TextStyle(fontSize: 12, color: Colors.deepOrange)),
+        const SizedBox(height: 6),
+        if (_detail != null)
+          Text('게시글 ${_detail!['post_count'] ?? 0}개 · 경고 ${_detail!['warning_count'] ?? 0}회',
+              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        const SizedBox(height: 8),
+        if (_loading)
+          const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+        else if (_detail != null && (_detail!['warnings'] as List? ?? []).isNotEmpty) ...[
+          const Text('경고/제재 이력', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          ...((_detail!['warnings'] as List).take(3).map((w) {
+            final wm = Map<String, dynamic>.from(w as Map);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 3),
+              child: Row(children: [
+                Icon(Icons.warning_amber_rounded, size: 13, color: Colors.orange.shade700),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text('${wm['warning_type']} — ${wm['reason'] ?? ''}',
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
+              ]),
+            );
+          })),
+          const SizedBox(height: 6),
+        ],
+        Wrap(spacing: 6, runSpacing: 4, children: [
+          if (!isBanned) ...[
+            if (!isMember)
+              _ActionChip('정회원 승인', Colors.green, widget.onApprove),
+            _ActionChip('7일 정지', Colors.orange, () => widget.onSuspend(7)),
+            _ActionChip('30일 정지', Colors.deepOrange, () => widget.onSuspend(30)),
+            _ActionChip('영구 차단', Colors.red, widget.onBan),
+          ] else
+            _ActionChip('차단 해제', Colors.green, widget.onUnban),
+        ]),
       ]),
     );
   }
