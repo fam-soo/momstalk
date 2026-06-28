@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -246,11 +247,18 @@ async def kakao_login(
 
 # ── 캡처 업로드 (가입 루트 A+B) ─────────────────────
 
+class CapturePresignRequest(BaseModel):
+    content_type: str = "image/jpeg"
+
+
 @router.post("/capture/presign", response_model=CapturePresignResponse)
-async def capture_presign(user: User = Depends(get_current_user)):
+async def capture_presign(
+    req: CapturePresignRequest = CapturePresignRequest(),
+    user: User = Depends(get_current_user),
+):
     """S3 presigned PUT URL 발급. 클라이언트가 이 URL로 직접 이미지를 업로드한다."""
     try:
-        url, key = capture_service.generate_presign_url(user.id)
+        url, key = capture_service.generate_presign_url(user.id, req.content_type)
     except RuntimeError as e:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
     skip = not settings.AWS_ACCESS_KEY_ID  # S3 미설정 시 클라이언트가 PUT 생략

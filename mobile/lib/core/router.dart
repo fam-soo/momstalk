@@ -57,6 +57,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (ctx, s) => const AdminHomeScreen(),
       ),
 
+      // /board → /region 하위 호환 리다이렉트 (구 라우트 참조 대비)
+      GoRoute(path: '/board', redirect: (ctx, s) => '/region'),
+
       // ── 인증 ──────────────────────────────────────────
       GoRoute(path: '/auth/login', builder: (ctx, s) => const LoginScreen()),
       GoRoute(path: '/auth/school-select', builder: (ctx, s) => const SchoolSelectScreen()),

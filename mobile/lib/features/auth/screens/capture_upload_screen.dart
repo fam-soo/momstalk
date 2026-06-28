@@ -44,10 +44,31 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
     ];
   }
 
+  static const _allowedExtensions = {'jpg', 'jpeg', 'png', 'heic', 'heif'};
+
+  String _contentTypeFromName(String name) {
+    final ext = name.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'png': return 'image/png';
+      case 'heic': return 'image/heic';
+      case 'heif': return 'image/heif';
+      default: return 'image/jpeg';
+    }
+  }
+
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
+    final ext = picked.name.split('.').last.toLowerCase();
+    if (!_allowedExtensions.contains(ext)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('JPG, PNG, HEIC 파일만 업로드할 수 있습니다.')),
+        );
+      }
+      return;
+    }
     final bytes = await picked.readAsBytes();
     setState(() { _pickedFile = picked; _imageBytes = bytes; });
   }
@@ -60,8 +81,9 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
     setState(() => _uploading = true);
     try {
       final dio = ref.read(dioProvider);
+      final contentType = _contentTypeFromName(_pickedFile!.name);
 
-      final presignResp = await dio.post('/auth/capture/presign');
+      final presignResp = await dio.post('/auth/capture/presign', data: {'content_type': contentType});
       final uploadUrl = presignResp.data['upload_url'] as String;
       final s3Key = presignResp.data['s3_key'] as String;
       final skipUpload = presignResp.data['skip_upload'] as bool? ?? false;
@@ -70,7 +92,7 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
         final putResp = await http.put(
           Uri.parse(uploadUrl),
           body: _imageBytes,
-          headers: {'Content-Type': 'image/jpeg'},
+          headers: {'Content-Type': contentType},
         );
         if (putResp.statusCode != 200 && putResp.statusCode != 204) {
           throw Exception('이미지 업로드 실패 (${putResp.statusCode})');

@@ -31,17 +31,27 @@ def _s3_client():
     )
 
 
-def generate_presign_url(user_id: int) -> tuple[str, str]:
+_ALLOWED_CONTENT_TYPES = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/heic": "heic",
+    "image/heif": "heif",
+}
+
+
+def generate_presign_url(user_id: int, content_type: str = "image/jpeg") -> tuple[str, str]:
     """S3 presigned PUT URL 발급. (url, s3_key) 반환."""
+    if content_type not in _ALLOWED_CONTENT_TYPES:
+        content_type = "image/jpeg"
+    ext = _ALLOWED_CONTENT_TYPES[content_type]
     if not settings.AWS_ACCESS_KEY_ID:
-        # 개발 환경 — 더미 반환
-        key = f"captures/{user_id}/{uuid.uuid4().hex}.jpg"
+        key = f"captures/{user_id}/{uuid.uuid4().hex}.{ext}"
         return ("http://localhost:9000/presign-dummy", key)
-    key = f"captures/{user_id}/{uuid.uuid4().hex}.jpg"
+    key = f"captures/{user_id}/{uuid.uuid4().hex}.{ext}"
     try:
         url = _s3_client().generate_presigned_url(
             "put_object",
-            Params={"Bucket": settings.AWS_S3_BUCKET, "Key": key, "ContentType": "image/jpeg"},
+            Params={"Bucket": settings.AWS_S3_BUCKET, "Key": key, "ContentType": content_type},
             ExpiresIn=600,
         )
         return url, key

@@ -558,11 +558,77 @@ class _PostWriteTab extends ConsumerStatefulWidget {
 }
 
 class _PostWriteTabState extends ConsumerState<_PostWriteTab> {
-  final _titleCtrl = TextEditingController();
-  final _contentCtrl = TextEditingController();
+  late final TextEditingController _titleCtrl;
+  late final TextEditingController _contentCtrl;
   String _boardType = 'free';
   bool _pinned = true;
+
+  static const _defaultTitle = 'MomsTalk 서비스 이용 안내 및 주요 기능 소개';
+  static const _defaultContent = '''안녕하세요, MomsTalk 운영팀입니다 👋
+
+MomsTalk는 학부모님들만의 안전하고 익명인 소통 공간입니다.
+서비스 이용 전 아래 안내사항을 꼭 확인해 주세요.
+
+━━━━━━━━━━━━━━━━━━━━━
+📱 주요 기능 안내
+━━━━━━━━━━━━━━━━━━━━━
+
+🗺️ 지역 게시판
+우리 동네 학부모님들과 지역 정보를 나눠보세요.
+학원 정보, 지역 행사, 맛집 등 다양한 이야기를 나눌 수 있어요.
+
+🏫 학교 게시판
+우리 학교 학부모님들과만 소통하는 공간이에요.
+학교 행사, 공지, 학년별 정보를 빠르게 확인할 수 있어요.
+(학부모 인증 필요)
+
+🎓 학원 탭
+지역 학원 정보와 실제 학부모들의 후기를 확인해보세요.
+별점과 후기로 학원을 쉽게 비교할 수 있어요.
+
+💬 1:1 대화
+다른 학부모님과 직접 메시지를 주고받을 수 있어요.
+
+━━━━━━━━━━━━━━━━━━━━━
+⚠️ 이용 주의사항
+━━━━━━━━━━━━━━━━━━━━━
+
+✅ MomsTalk는 익명 커뮤니티입니다.
+개인 정보(이름, 연락처, 주소 등)는 공유하지 마세요.
+
+✅ 학부모 인증이 필요한 서비스입니다.
+알림장, 가정통신문 등 학교 발송 문서 캡처로 인증하실 수 있어요.
+
+✅ 아래 행위는 제재 대상입니다.
+• 타인 비방·욕설·혐오 발언
+• 허위 정보 유포 및 명예훼손
+• 상업적 광고·홍보 (협력 학원 제외)
+• 개인정보 무단 공유
+• 도배·스팸 게시글
+
+신고 누적 5건 시 자동으로 게시글이 숨겨지며,
+운영자 검토 후 경고·정지·영구 차단 조치가 이루어질 수 있습니다.
+
+✅ 건강한 소통 문화를 함께 만들어요!
+서로 존중하고 배려하는 학부모 커뮤니티가 되도록 노력 부탁드려요.
+
+━━━━━━━━━━━━━━━━━━━━━
+📞 문의 및 신고
+━━━━━━━━━━━━━━━━━━━━━
+
+불편한 게시물은 게시글 우측 상단 ··· 버튼으로 신고해 주세요.
+
+감사합니다 🙏
+MomsTalk 운영팀''';
+
   bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleCtrl = TextEditingController(text: _defaultTitle);
+    _contentCtrl = TextEditingController(text: _defaultContent);
+  }
 
   @override
   void dispose() {
