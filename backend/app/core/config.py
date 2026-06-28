@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     AWS_S3_BUCKET: str = "momstalk-media"
     AWS_REGION: str = "ap-northeast-2"
 
-    ALLOWED_ORIGINS: str = "http://localhost:3000"
+    ALLOWED_ORIGINS: str = "http://localhost:3000,https://momstalk.co.kr,https://www.momstalk.co.kr"
 
     @property
     def allowed_origins_list(self) -> list[str]:
