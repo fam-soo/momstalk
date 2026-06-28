@@ -15,7 +15,9 @@ class AcademyReviewWriteScreen extends ConsumerStatefulWidget {
 
 class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScreen> {
   final _textCtrl = TextEditingController();
+  final _adminReviewCtrl = TextEditingController();
   int _rating = 0;
+  int _adminRating = 0;
   String _subject = '';
   String _teacherStyle = '';
   String _homeworkLevel = '';
@@ -23,7 +25,6 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
   String _nicknameType = 'anon';
   String? _certifiedNickname;
   bool _isAdmin = false;
-  // 관리자 과목 멀티셀렉트
   final Set<String> _adminSubjects = {};
   bool _submitting = false;
 
@@ -41,6 +42,7 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
   @override
   void dispose() {
     _textCtrl.dispose();
+    _adminReviewCtrl.dispose();
     super.dispose();
   }
 
@@ -58,20 +60,41 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
     } catch (_) {}
   }
 
-  // 관리자: 과목만 PATCH
-  Future<void> _submitAdminSubjects() async {
-    if (_adminSubjects.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('과목을 1개 이상 선택해주세요.')));
+  // 관리자: 과목 PATCH + 선택적으로 별점 리뷰 POST
+  Future<void> _submitAdmin() async {
+    if (_adminSubjects.isEmpty && _adminRating == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('과목을 선택하거나 별점을 부여해주세요.')));
       return;
     }
     setState(() => _submitting = true);
     try {
       final dio = ref.read(dioProvider);
-      await dio.patch('/academies/${widget.academyId}/subjects', data: {
-        'subjects': _adminSubjects.toList(),
-      });
+      if (_adminSubjects.isNotEmpty) {
+        await dio.patch('/academies/${widget.academyId}/subjects', data: {
+          'subjects': _adminSubjects.toList(),
+        });
+      }
+      if (_adminRating > 0) {
+        await dio.post('/academies/${widget.academyId}/reviews', data: {
+          'rating': _adminRating,
+          'subject': '',
+          'teacher_style': '',
+          'homework_level': '',
+          'score_improvement': '',
+          'review_text': _adminReviewCtrl.text.trim().isEmpty
+              ? '관리자가 직접 평가한 후기입니다.'
+              : _adminReviewCtrl.text.trim(),
+          'nickname_type': 'anon',
+          'is_anonymous': true,
+        });
+      }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('과목이 저장되었습니다.')));
+        final msgs = <String>[];
+        if (_adminSubjects.isNotEmpty) msgs.add('과목 저장');
+        if (_adminRating > 0) msgs.add('별점 등록');
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${msgs.join(' · ')}되었습니다.')));
         context.pop();
       }
     } on DioException catch (e) {
@@ -128,10 +151,10 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isAdmin ? '과목 설정 (관리자)' : '후기 작성'),
+        title: Text(_isAdmin ? '학원 정보 설정 (관리자)' : '후기 작성'),
         actions: [
           TextButton(
-            onPressed: _submitting ? null : (_isAdmin ? _submitAdminSubjects : _submitReview),
+            onPressed: _submitting ? null : (_isAdmin ? _submitAdmin : _submitReview),
             child: _submitting
                 ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Text('저장'),
@@ -145,7 +168,7 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
     );
   }
 
-  // ── 관리자 전용 UI: 과목 멀티셀렉트만 ──────────────────────────
+  // ── 관리자 전용 UI: 과목 멀티셀렉트 + 선택적 별점 ──────────────
   Widget _buildAdminBody(ThemeData theme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,14 +184,16 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
             const SizedBox(width: 8),
             const Expanded(
               child: Text(
-                '관리자 모드: 필수 항목 없이 과목만 선택·저장합니다.\n기존 과목 목록은 선택한 항목으로 교체됩니다.',
+                '관리자 모드: 과목 설정과 별점 부여를 각각 또는 함께 할 수 있습니다.',
                 style: TextStyle(fontSize: 12, height: 1.5),
               ),
             ),
           ]),
         ),
         const SizedBox(height: 20),
-        _SectionTitle('과목 선택 (복수 선택 가능)'),
+
+        // ── 과목 설정 ───────────────────────────────────────────
+        _SectionTitle('과목 설정 (복수 선택 가능 · 선택 시 기존 목록 교체)'),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
@@ -187,21 +212,55 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
           }).toList(),
         ),
         if (_adminSubjects.isNotEmpty) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           Text(
             '선택됨: ${_adminSubjects.join(', ')}',
             style: TextStyle(fontSize: 13, color: theme.colorScheme.primary, fontWeight: FontWeight.w500),
           ),
         ],
+
+        const SizedBox(height: 24),
+        const Divider(),
+        const SizedBox(height: 16),
+
+        // ── 별점 부여 (선택) ────────────────────────────────────
+        _SectionTitle('별점 부여 (선택)'),
+        const SizedBox(height: 8),
+        Row(
+          children: List.generate(5, (i) => GestureDetector(
+            onTap: () => setState(() => _adminRating = _adminRating == i + 1 ? 0 : i + 1),
+            child: Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Icon(
+                i < _adminRating ? Icons.star : Icons.star_border,
+                size: 36,
+                color: Colors.amber.shade600,
+              ),
+            ),
+          )),
+          ),
+        if (_adminRating > 0) ...[
+          const SizedBox(height: 12),
+          TextField(
+            controller: _adminReviewCtrl,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: '평가 내용 (선택 · 비워두면 "관리자 평가"로 등록)',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              isDense: true,
+            ),
+          ),
+        ],
+
         const SizedBox(height: 32),
         SizedBox(
           width: double.infinity,
           child: FilledButton(
-            onPressed: _submitting ? null : _submitAdminSubjects,
+            onPressed: _submitting ? null : _submitAdmin,
             style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
             child: _submitting
                 ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('과목 저장', style: TextStyle(fontSize: 15)),
+                : const Text('저장', style: TextStyle(fontSize: 15)),
           ),
         ),
       ],

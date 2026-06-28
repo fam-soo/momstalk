@@ -44,35 +44,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _kakaoLogin() async {
+    if (!_agreed) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이용약관 및 개인정보처리방침에 동의해주세요.')),
+      );
+      return;
+    }
+    if (!_isAdult) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('만 19세 이상 성인만 가입할 수 있습니다.')),
+      );
+      return;
+    }
     setState(() => _loading = true);
     try {
-      if (!_agreed) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('이용약관 및 개인정보처리방침에 동의해주세요.')),
-        );
-        setState(() => _loading = false);
-        return;
-      }
-      if (!_isAdult) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('만 19세 이상 성인만 가입할 수 있습니다.')),
-        );
-        setState(() => _loading = false);
-        return;
-      }
-
-      // ── 모바일: 카카오 SDK ──────────────────────────
       OAuthToken token;
-      if (await isKakaoTalkInstalled()) {
+      if (!kIsWeb && await isKakaoTalkInstalled()) {
         token = await UserApi.instance.loginWithKakaoTalk();
       } else {
         token = await UserApi.instance.loginWithKakaoAccount();
       }
-
       await _authenticateWithBackend(token);
     } catch (e) {
       if (mounted) {
-        final msg = '로그인 실패: $e';
+        String msg;
+        final err = e.toString();
+        if (err.contains('cancel') || err.contains('Cancel')) {
+          msg = '카카오 로그인이 취소되었습니다.';
+        } else if (err.contains('network') || err.contains('Network') || err.contains('SocketException')) {
+          msg = '네트워크 연결을 확인해주세요.';
+        } else {
+          msg = '카카오 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg), duration: const Duration(seconds: 5)),
         );
@@ -82,7 +85,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  /// 카카오 토큰으로 백엔드 인증. 전화번호 동의 미완료 시 추가 동의 요청 후 재시도.
   Future<void> _authenticateWithBackend(OAuthToken token) async {
     final dio = ref.read(dioProvider);
     try {
@@ -93,30 +95,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await storage.write(AppConstants.refreshTokenKey, resp.data['refresh_token'] as String);
 
       final meResp = await dio.get('/auth/me');
-      final authPending = meResp.data['auth_pending'] as bool? ?? false;
+      final memberGrade = meResp.data['member_grade'] as String? ?? 'lurker';
+      final isAdmin = meResp.data['is_admin'] as bool? ?? false;
 
       if (!mounted) return;
-      if (authPending) {
-        context.go('/auth/pending');
+      if (memberGrade == 'member' || isAdmin) {
+        context.go('/region');
       } else {
-        context.go('/board');
+        // lurker: 캡처 제출 or 심사 대기 화면으로 이동
+        context.go('/auth/pending');
       }
     } on DioException catch (e) {
-      if (e.response?.statusCode == 403) {
+      final statusCode = e.response?.statusCode;
+      if (statusCode == 403) {
         final detail = e.response?.data?['detail'] as String? ?? '가입이 제한된 계정입니다.';
         if (mounted) {
           showDialog(
             context: context,
             builder: (_) => AlertDialog(
-              title: const Text('가입 불가'),
+              title: const Text('로그인 불가'),
               content: Text(detail),
               actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('확인'),
-                ),
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('확인')),
               ],
             ),
+          );
+        }
+        return;
+      }
+      if (statusCode == 429) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('잠시 후 다시 시도해주세요. (요청 횟수 초과)')),
           );
         }
         return;

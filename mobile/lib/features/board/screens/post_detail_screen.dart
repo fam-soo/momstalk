@@ -242,7 +242,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
           if (raw is String) {
             msg = raw;
           } else if (raw is List && raw.isNotEmpty) {
-            msg = (raw as List).map((item) => (item as Map)['msg'] as String? ?? '').join(', ');
+            msg = (raw as List).map((item) => (item as Map<dynamic, dynamic>)['msg'] as String? ?? '').join(', ');
           }
         }
         if (msg.isEmpty) msg = '오류 ${e.response?.statusCode ?? ''}: ${e.message}';

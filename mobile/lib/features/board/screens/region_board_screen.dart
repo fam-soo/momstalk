@@ -18,6 +18,7 @@ class RegionBoardScreen extends ConsumerStatefulWidget {
 class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
   bool _loading = true;
   bool _isMember = false;
+  bool _isLurker = false;
   String _region = '';
   List<Map<String, dynamic>> _previewPosts = [];
   List<Map<String, dynamic>> _notices = [];
@@ -96,6 +97,7 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
       if (mounted) {
         setState(() {
           _isMember = isMember || isAdmin;
+          _isLurker = !isMember && !isAdmin;
           _region = (profile['region'] as String?)?.isNotEmpty == true
               ? profile['region'] as String
               : '양천구';
@@ -122,6 +124,11 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
   }
 
   Future<void> _onPreviewTap(int postId) async {
+    if (_isLurker) {
+      if (!mounted) return;
+      context.go('/auth/pending');
+      return;
+    }
     _previewTaps++;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_prefKey, _previewTaps);
@@ -157,6 +164,16 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
           icon: const Icon(Icons.edit_outlined),
           label: const Text('글쓰기'),
         ),
+      );
+    }
+
+    // lurker: 로그인은 됐으나 학부모 인증 미완료
+    if (_isLurker) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('지역 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        body: _LurkerGate(onVerify: () => context.go('/auth/pending')),
       );
     }
 
@@ -321,8 +338,7 @@ class _NoticeBarState extends State<_NoticeBar> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final primary = const Color(0xFF4A90D9);
+    const primary = Color(0xFF4A90D9);
     return Material(
       color: primary.withOpacity(0.08),
       child: Column(
@@ -410,6 +426,50 @@ class _JoinCta extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── 로그인은 됐으나 학부모 인증 미완료 ────────────────────────────────
+
+class _LurkerGate extends StatelessWidget {
+  final VoidCallback onVerify;
+  const _LurkerGate({required this.onVerify});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.verified_outlined, size: 72, color: theme.colorScheme.primary),
+            const SizedBox(height: 24),
+            const Text(
+              '학부모 인증이 필요해요',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              '지역 게시판은 학부모 인증 후 이용할 수 있어요.\n알림장·가정통신문 캡처로 간편하게 인증할 수 있습니다.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, height: 1.6),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onVerify,
+                icon: const Icon(Icons.upload_outlined),
+                label: const Text('학부모 인증하기', style: TextStyle(fontSize: 15)),
+                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

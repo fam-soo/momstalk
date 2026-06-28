@@ -63,7 +63,9 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
         ),
         actions: [
           FilledButton.tonal(
-            onPressed: () => context.push('/academy/${widget.academyId}/review/write'),
+            onPressed: () => context
+                .push('/academy/${widget.academyId}/review/write')
+                .then((_) => _load()),
             child: const Text('후기 작성'),
           ),
           const SizedBox(width: 8),
@@ -160,7 +162,9 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                     Text('아직 후기가 없습니다', style: TextStyle(color: Colors.grey.shade500)),
                     const SizedBox(height: 4),
                     TextButton(
-                      onPressed: () => context.push('/academy/${widget.academyId}/review/write'),
+                      onPressed: () => context
+                          .push('/academy/${widget.academyId}/review/write')
+                          .then((_) => _load()),
                       child: const Text('첫 번째 후기를 작성해보세요'),
                     ),
                   ],
@@ -186,6 +190,12 @@ class _ReviewCard extends StatelessWidget {
     final authorName = isAnon ? '익명' : (review['author_display_name'] as String? ?? '학부모');
     final subject = review['subject'] as String? ?? '';
     final text = review['review_text'] as String? ?? '';
+    final schoolName = review['author_school_name'] as String?;
+    final grade = review['author_grade'] as int?;
+    final schoolInfo = [
+      if (schoolName != null && schoolName.isNotEmpty) schoolName,
+      if (grade != null) '$grade학년',
+    ].join(' ');
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -196,7 +206,14 @@ class _ReviewCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(authorName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(authorName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    if (schoolInfo.isNotEmpty)
+                      Text(schoolInfo, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                  ],
+                ),
                 if (subject.isNotEmpty) ...[
                   const SizedBox(width: 6),
                   Container(

@@ -6,7 +6,6 @@ import '../features/auth/screens/login_screen.dart';
 import '../features/auth/screens/school_select_screen.dart';
 import '../features/auth/screens/auth_pending_screen.dart';
 import '../features/auth/screens/invite_join_screen.dart';
-import '../features/board/screens/board_screen.dart';
 import '../features/board/screens/post_detail_screen.dart';
 import '../features/board/screens/post_write_screen.dart';
 import '../features/board/screens/region_board_screen.dart';

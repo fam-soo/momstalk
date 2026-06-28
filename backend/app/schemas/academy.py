@@ -57,6 +57,8 @@ class AcademyReviewResponse(BaseModel):
     nickname_type: str = "anon"
     is_anonymous: bool = True
     author_display_name: Optional[str] = None
+    author_school_name: Optional[str] = None
+    author_grade: Optional[int] = None
     report_count: int = 0
     is_hidden: bool = False
     created_at: datetime

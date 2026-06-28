@@ -3,7 +3,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 import '../../../core/api_client.dart' show tokenStorageProvider;
 import '../../../core/constants.dart';
 import '../admin_api.dart';
@@ -18,9 +17,8 @@ class AdminHomeScreen extends ConsumerStatefulWidget {
 class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen> {
   int _tab = 0;
 
-  Future<void> _logout() async {
-    await ref.read(tokenStorageProvider).deleteAll();
-    if (mounted) context.go('/auth/login');
+  void _goToUserView() {
+    if (mounted) context.go('/region');
   }
 
   @override
@@ -31,7 +29,11 @@ class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen> {
         title: Text(tabs[_tab], style: const TextStyle(fontWeight: FontWeight.bold)),
         leading: const Icon(Icons.admin_panel_settings, color: Color(0xFF4A90D9)),
         actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: _logout, tooltip: '로그아웃'),
+          IconButton(
+            icon: const Icon(Icons.exit_to_app),
+            onPressed: _goToUserView,
+            tooltip: '사용자 화면으로',
+          ),
         ],
       ),
       body: IndexedStack(

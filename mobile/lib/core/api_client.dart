@@ -49,8 +49,6 @@ final tokenStorage = _storage;
 
 final tokenStorageProvider = Provider<_TokenStorage>((_) => _storage);
 
-/// router.dart / 하위 호환용 alias
-final secureStorageProvider = tokenStorageProvider;
 
 final dioProvider = Provider<Dio>((ref) {
   final dio = Dio(BaseOptions(

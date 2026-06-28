@@ -148,7 +148,7 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
           if (raw is String) {
             msg = raw;
           } else if (raw is List && raw.isNotEmpty) {
-            msg = (raw as List).map((item) => (item as Map)['msg'] as String? ?? '').join('\n');
+            msg = (raw as List).map((item) => (item as Map<dynamic, dynamic>)['msg'] as String? ?? '').join('\n');
           }
         }
         if (msg.isEmpty) msg = '오류 ${e.response?.statusCode ?? ''}: ${e.message}';
@@ -172,6 +172,7 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: const Text('글쓰기'),
         actions: [
@@ -183,58 +184,38 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
           ),
         ],
       ),
-      body: SafeArea(
+      // 하단 고정 바: 태그 + 닉네임 (키보드 위에 유지)
+      bottomNavigationBar: SafeArea(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: TextField(
-                controller: _titleCtrl,
-                decoration: const InputDecoration(hintText: '제목', border: InputBorder.none),
-                style: theme.textTheme.titleMedium,
-              ),
-            ),
             const Divider(height: 1),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                child: TextField(
-                  controller: _contentCtrl,
-                  decoration: const InputDecoration(hintText: '내용을 입력해주세요.', border: InputBorder.none),
-                  maxLines: null,
-                  expands: true,
-                  textAlignVertical: TextAlignVertical.top,
-                ),
-              ),
-            ),
-            const Divider(height: 1),
-
             // ── @태그 섹션 ──────────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(children: [
-                    Text(
-                      '@태그',
-                      style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
-                    ),
+                    Text('@태그',
+                        style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
                     const SizedBox(width: 6),
-                    Text(
-                      '해당 지역·학교 게시판 상단에 노출됩니다 (최대 5개)',
-                      style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey[600]),
+                    Flexible(
+                      child: Text(
+                        '지역·학교 게시판 상단 노출 (최대 5개)',
+                        style: theme.textTheme.labelSmall?.copyWith(color: Colors.grey[600]),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ]),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
 
                   if (_selectedTags.isNotEmpty)
                     Wrap(
                       spacing: 6,
                       runSpacing: 4,
                       children: _selectedTags.map((tag) => Chip(
-                        label: Text('@$tag', style: const TextStyle(fontSize: 13)),
+                        label: Text('@$tag', style: const TextStyle(fontSize: 12)),
                         onDeleted: () => setState(() => _selectedTags.remove(tag)),
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -242,45 +223,47 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                       )).toList(),
                     ),
 
-                  if (myUnselected.isNotEmpty && canAddMore) ...[
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      children: myUnselected.map((tag) => ActionChip(
-                        avatar: const Icon(Icons.add, size: 14),
-                        label: Text('@$tag', style: const TextStyle(fontSize: 12)),
-                        onPressed: () => _addTag(tag),
-                        visualDensity: VisualDensity.compact,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
-                        backgroundColor: theme.colorScheme.primaryContainer.withOpacity(0.3),
-                      )).toList(),
-                    ),
-                  ],
-
-                  if (canAddMore) ...[
-                    const SizedBox(height: 6),
-                    TextField(
-                      controller: _tagSearchCtrl,
-                      decoration: InputDecoration(
-                        hintText: '다른 학교·지역 검색 (예: 강남구, 행복초)',
-                        prefixIcon: const Icon(Icons.search, size: 18),
-                        suffixIcon: _searching
-                            ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)))
-                            : _tagSearchCtrl.text.isNotEmpty
-                                ? IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () { _tagSearchCtrl.clear(); setState(() => _suggestions = []); })
-                                : null,
-                        isDense: true,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  if (myUnselected.isNotEmpty && canAddMore)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Wrap(
+                        spacing: 6,
+                        children: myUnselected.map((tag) => ActionChip(
+                          avatar: const Icon(Icons.add, size: 14),
+                          label: Text('@$tag', style: const TextStyle(fontSize: 12)),
+                          onPressed: () => _addTag(tag),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
+                          backgroundColor: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                        )).toList(),
                       ),
-                      onChanged: _onSearchChanged,
                     ),
-                  ],
+
+                  if (canAddMore)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: TextField(
+                        controller: _tagSearchCtrl,
+                        decoration: InputDecoration(
+                          hintText: '학교·지역 검색 (예: 강남구, 행복초)',
+                          prefixIcon: const Icon(Icons.search, size: 18),
+                          suffixIcon: _searching
+                              ? const Padding(padding: EdgeInsets.all(10), child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)))
+                              : _tagSearchCtrl.text.isNotEmpty
+                                  ? IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () { _tagSearchCtrl.clear(); setState(() => _suggestions = []); })
+                                  : null,
+                          isDense: true,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                        onChanged: _onSearchChanged,
+                      ),
+                    ),
 
                   if (_suggestions.isNotEmpty)
                     Container(
-                      constraints: const BoxConstraints(maxHeight: 200),
+                      constraints: const BoxConstraints(maxHeight: 160),
                       margin: const EdgeInsets.only(top: 2),
                       decoration: BoxDecoration(
                         border: Border.all(color: Colors.grey.shade300),
@@ -312,24 +295,21 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                         },
                       ),
                     ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                 ],
               ),
             ),
 
             const Divider(height: 1),
-
-            // ── 닉네임 유형 선택 (선택적 실명제) ─────────
+            // ── 닉네임 유형 선택 ─────────────────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '공개 방식',
-                    style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
+                  Text('공개 방식',
+                      style: theme.textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
                       Expanded(
@@ -359,9 +339,9 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                   ),
                   if (_nicknameType == 'certified')
                     Padding(
-                      padding: const EdgeInsets.only(top: 6),
+                      padding: const EdgeInsets.only(top: 4),
                       child: Row(children: [
-                        Icon(Icons.info_outline, size: 14, color: theme.colorScheme.primary),
+                        Icon(Icons.info_outline, size: 13, color: theme.colorScheme.primary),
                         const SizedBox(width: 4),
                         Text(
                           '학교 인증된 닉네임으로 게시됩니다.',
@@ -370,6 +350,35 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                       ]),
                     ),
                 ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: TextField(
+                controller: _titleCtrl,
+                decoration: const InputDecoration(hintText: '제목', border: InputBorder.none),
+                style: theme.textTheme.titleMedium,
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: TextField(
+                  controller: _contentCtrl,
+                  decoration: const InputDecoration(hintText: '내용을 입력해주세요.', border: InputBorder.none),
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                ),
               ),
             ),
           ],
