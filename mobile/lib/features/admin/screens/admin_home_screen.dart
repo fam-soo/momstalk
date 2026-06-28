@@ -523,14 +523,14 @@ class _PostWriteTabState extends ConsumerState<_PostWriteTab> {
         connectTimeout: const Duration(seconds: 30),
         receiveTimeout: const Duration(seconds: 30),
       ));
-      final adminToken = await readAdminToken();
+      final token = await ref.read(tokenStorageProvider).read(AppConstants.tokenKey);
       await userDio.post('/posts', data: {
         'board_type': _boardType,
         'title': _titleCtrl.text.trim(),
         'content': _contentCtrl.text.trim(),
         'is_anonymous': false,
         'is_pinned': _pinned,
-      }, options: Options(headers: {'Authorization': 'Bearer $adminToken'}));
+      }, options: Options(headers: {'Authorization': 'Bearer $token'}));
       if (mounted) {
         _titleCtrl.clear();
         _contentCtrl.clear();

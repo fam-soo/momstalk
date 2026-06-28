@@ -20,7 +20,6 @@ import '../features/academy/screens/academy_detail_screen.dart';
 import '../features/academy/screens/academy_review_write_screen.dart';
 import 'api_client.dart' show tokenStorageProvider;
 import 'constants.dart';
-import '../features/admin/admin_api.dart';
 import '../features/admin/screens/admin_login_screen.dart';
 import '../features/admin/screens/admin_home_screen.dart';
 
@@ -46,8 +45,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/admin',
         redirect: (ctx, s) async {
-          final token = await readAdminToken();
-          if (token == null) return '/admin/login';
+          final storage = ProviderScope.containerOf(ctx).read(tokenStorageProvider);
+          final token = await storage.read(AppConstants.tokenKey);
+          if (token == null) return '/auth/login';
           return null;
         },
         builder: (ctx, s) => const AdminHomeScreen(),
