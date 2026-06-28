@@ -166,27 +166,6 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                     ],
                   ),
                 ],
-                const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  onPressed: _kakaoLoading ? null : _openKakaoMap,
-                  icon: _kakaoLoading
-                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Image.network(
-                          'https://developers.kakao.com/assets/img/about/logos/kakaolink/kakaolink_btn_small.png',
-                          width: 18,
-                          height: 18,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.map_outlined, size: 16),
-                        ),
-                  label: const Text('카카오맵에서 보기', style: TextStyle(fontSize: 13)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF3A1D1D),
-                    side: const BorderSide(color: Color(0xFFFFE600), width: 1.5),
-                    backgroundColor: const Color(0xFFFFE600).withOpacity(0.08),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                ),
                 const SizedBox(height: 12),
                 if (subjects.isNotEmpty)
                   Wrap(
