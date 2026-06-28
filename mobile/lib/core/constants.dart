@@ -25,7 +25,10 @@ class AppConstants {
   // 프로덕션: Render 배포 후 'https://momstalk-api.onrender.com/api/v1'
   static const String _devUrl = 'http://localhost:8000/api/v1';
   static const String _prodUrl = 'https://momstalk.onrender.com/api/v1';
-  static const String baseUrl = bool.fromEnvironment('dart.vm.product') ? _prodUrl : _devUrl;
+  // dart.vm.product는 Flutter Web 빌드에서 항상 false → ENVIRONMENT dart-define으로 판단
+  static const String baseUrl = String.fromEnvironment('ENVIRONMENT') == 'production'
+      ? _prodUrl
+      : _devUrl;
 
   static const String tokenKey = 'access_token';
   static const String refreshTokenKey = 'refresh_token';
