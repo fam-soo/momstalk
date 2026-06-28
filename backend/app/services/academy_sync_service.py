@@ -158,11 +158,18 @@ async def _upsert_rows(db: AsyncSession, rows: list[dict]) -> tuple[int, int]:
                     updated += 1
                 continue
 
-        # 이름+지역 중복 체크
+        # 이름+지역 중복 체크 — neis_code 없는 기존 레코드면 neis_code 부여 후 스킵
         dup = (await db.execute(
             select(Academy).where(Academy.name == name, Academy.region == region)
         )).scalar_one_or_none()
         if dup:
+            if dup.neis_academy_code is None and neis_code:
+                dup.neis_academy_code = neis_code
+                if address and not dup.address:
+                    dup.address = address
+                if phone and not dup.phone:
+                    dup.phone = phone
+                updated += 1
             continue
 
         db.add(Academy(
