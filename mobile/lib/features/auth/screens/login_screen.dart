@@ -41,6 +41,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   /// 저장된 계정 탭 → 약관 동의 없이 바로 카카오 로그인
+  /// Prompt.selectAccount: 기존 세션이 있어도 계정 선택 화면을 강제 표시
   Future<void> _quickLogin() async {
     setState(() => _loading = true);
     try {
@@ -48,7 +49,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (!kIsWeb && await isKakaoTalkInstalled()) {
         token = await UserApi.instance.loginWithKakaoTalk();
       } else {
-        token = await UserApi.instance.loginWithKakaoAccount();
+        token = await UserApi.instance.loginWithKakaoAccount(
+          prompts: [Prompt.selectAccount],
+        );
       }
       await _authenticateWithBackend(token);
     } catch (e) {
