@@ -38,7 +38,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _logout() async {
     await ref.read(tokenStorageProvider).deleteAll();
-    if (mounted) GoRouter.of(context).go('/region');
+    if (mounted) GoRouter.of(context).go('/auth/login');
   }
 
   Future<void> _deleteAccount() async {
