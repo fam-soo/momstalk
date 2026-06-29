@@ -25,6 +25,8 @@ _CASCADE_FKS = [
     ("conversations",   "conversations_user_b_id_fkey",     "user_b_id"),
     ("comments",        "comments_author_id_fkey",          "author_id"),
     ("posts",           "posts_author_id_fkey",             "author_id"),
+    ("invite_links",    "invite_links_issuer_id_fkey",      "issuer_id"),
+    ("invite_links",    "invite_links_used_by_fkey",        "used_by"),
 ]
 
 # admin_actions.admin_id: 감사 로그 보존을 위해 SET NULL (nullable로 변경)
