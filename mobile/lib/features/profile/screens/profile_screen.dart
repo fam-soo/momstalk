@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/api_client.dart';
+import '../../../core/router.dart';
 import '../../board/screens/board_screen.dart';
 
 // ──────────────────────────────────────────────────────────────────
@@ -38,7 +39,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _logout() async {
     await ref.read(tokenStorageProvider).deleteAll();
-    if (mounted) GoRouter.of(context).go('/auth/login');
+    // StatefulShellRoute 안에서 context.go('/auth/login')은 Shell 밖 이동 실패
+    // → routerProvider를 직접 사용해 루트 네비게이터로 이동
+    if (mounted) ref.read(routerProvider).go('/auth/login');
   }
 
   Future<void> _deleteAccount() async {
