@@ -80,7 +80,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (!kIsWeb && await isKakaoTalkInstalled()) {
         token = await UserApi.instance.loginWithKakaoTalk();
       } else {
-        token = await UserApi.instance.loginWithKakaoAccount();
+        token = await UserApi.instance.loginWithKakaoAccount(
+          prompts: [Prompt.selectAccount],
+        );
       }
       await _authenticateWithBackend(token);
     } catch (e) {
