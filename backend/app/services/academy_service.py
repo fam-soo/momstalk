@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -382,9 +383,9 @@ async def list_reviews(academy_id: int, db: AsyncSession) -> list[AcademyReviewR
             author_display_name=author_display,
             author_school_name=author.school_name if author else None,
             author_grade=author.grade if author else None,
-            report_count=review.report_count,
-            is_hidden=review.is_hidden,
-            is_seed=review.is_seed,
-            created_at=review.created_at,
+            report_count=review.report_count or 0,
+            is_hidden=review.is_hidden or False,
+            is_seed=review.is_seed or False,
+            created_at=review.created_at or datetime.utcnow(),
         ))
     return out

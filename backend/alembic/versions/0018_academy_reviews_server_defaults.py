@@ -29,10 +29,11 @@ def upgrade():
                     server_default="0",
                     existing_nullable=True)
 
-    # 기존 NULL 값 → false/0 으로 정리
+    # 기존 NULL 값 → false/0/now() 으로 정리
     op.execute("UPDATE academy_reviews SET is_hidden = false WHERE is_hidden IS NULL")
     op.execute("UPDATE academy_reviews SET is_seed = false WHERE is_seed IS NULL")
     op.execute("UPDATE academy_reviews SET report_count = 0 WHERE report_count IS NULL")
+    op.execute("UPDATE academy_reviews SET created_at = NOW() WHERE created_at IS NULL")
 
 
 def downgrade():
