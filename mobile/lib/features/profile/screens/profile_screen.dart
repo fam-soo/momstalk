@@ -924,7 +924,7 @@ class _InviteShareDialog extends StatelessWidget {
     );
 
     try {
-      if (ShareClient.instance.isKakaoTalkSharingAvailable()) {
+      if (await ShareClient.instance.isKakaoTalkSharingAvailable()) {
         await ShareClient.instance.shareDefault(template: template);
       } else {
         // 웹 / KakaoTalk 미설치 → 카카오 공유 웹 페이지 열기
