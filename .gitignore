@@ -33,3 +33,6 @@ firebase-service-account*.json
 backend/.env.supabase
 *.db
 supabase_*.sql
+
+# 스크래핑 스크립트 및 생성 데이터 (공개 레포 노출 방지)
+backend/scripts/

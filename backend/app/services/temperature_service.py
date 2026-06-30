@@ -8,14 +8,14 @@ from sqlalchemy import select
 
 from app.models.service_models import User
 
-# 온도 변화 점수표 (× 10 단위)
+# 온도 변화 점수표 (× 10 단위 — DB 저장값, 실제 °C는 /10)
 SCORE = {
-    "post_created": 2,       # 게시글 작성 +0.2°C
-    "comment_created": 1,    # 댓글 작성 +0.1°C
-    "post_liked": 3,         # 게시글 좋아요 받음 +0.3°C
-    "post_unliked": -3,      # 게시글 좋아요 취소 -0.3°C
-    "comment_liked": 1,      # 댓글 좋아요 받음 +0.1°C
-    "comment_unliked": -1,   # 댓글 좋아요 취소 -0.1°C
+    "post_created": 1,        # 게시글 작성 +0.1°C
+    "comment_created": 1,     # 댓글 작성 +0.1°C
+    "post_liked": 2,          # 게시글 좋아요 받음 +0.2°C
+    "post_unliked": -2,       # 게시글 좋아요 취소 -0.2°C
+    "comment_liked": 1,       # 댓글 좋아요 받음 +0.1°C
+    "comment_unliked": -1,    # 댓글 좋아요 취소 -0.1°C
     "post_hidden": -50,       # 신고 누적 블라인드 -5.0°C
     "suspended": -100,        # 계정 정지 -10.0°C
 }

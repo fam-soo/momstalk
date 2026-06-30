@@ -1,6 +1,9 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api_client.dart';
 import '../../../core/router.dart';
 import '../../board/screens/board_screen.dart';
@@ -32,6 +35,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final dio = ref.read(dioProvider);
       final resp = await dio.get('/auth/me');
       setState(() => _profile = Map<String, dynamic>.from(resp.data));
+    } catch (e) {
+      if (e is DioException && e.response?.statusCode == 401) {
+        await ref.read(tokenStorageProvider).deleteAll();
+        if (mounted) ref.read(routerProvider).go('/auth/login');
+        return;
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -39,8 +48,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _logout() async {
     await ref.read(tokenStorageProvider).deleteAll();
-    // StatefulShellRoute 안에서 context.go('/auth/login')은 Shell 밖 이동 실패
-    // → routerProvider를 직접 사용해 루트 네비게이터로 이동
+    ref.invalidate(userProfileProvider);
     if (mounted) ref.read(routerProvider).go('/auth/login');
   }
 
@@ -78,12 +86,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       // 서버 오류여도 로컬 토큰 삭제 후 이동
     } finally {
       await ref.read(tokenStorageProvider).deleteAll();
-      if (mounted) {
-        // StatefulShellRoute 안에서 context.go('/auth/login')이
-        // Flutter Web에서 shell 밖 이동 실패하는 버그 회피.
-        // /region은 router redirect에서 인증 체크 없이 통과.
-        GoRouter.of(context).go('/region');
-      }
+      if (mounted) ref.read(routerProvider).go('/auth/login');
     }
   }
 
@@ -95,17 +98,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       await showDialog(
         context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('초대 링크 생성 완료'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('아래 링크를 공유해 주세요.\n48시간 내 1회만 사용 가능합니다.', style: TextStyle(fontSize: 13, color: Colors.grey)),
-            const SizedBox(height: 12),
-            SelectableText(deeplink, style: const TextStyle(fontSize: 12)),
-          ]),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('닫기')),
-          ],
-        ),
+        builder: (ctx) => _InviteShareDialog(deeplink: deeplink),
       );
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('링크 생성 실패: $e')));
@@ -892,6 +885,85 @@ class _TemperatureChip extends StatelessWidget {
           '${celsius.toStringAsFixed(1)}°C',
           style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600),
         ),
+      ],
+    );
+  }
+}
+
+// ── 초대 링크 공유 다이얼로그 ─────────────────────────────────────────
+
+class _InviteShareDialog extends StatelessWidget {
+  final String deeplink;
+  const _InviteShareDialog({required this.deeplink});
+
+  Future<void> _copyLink(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: deeplink));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('링크가 복사되었습니다!'), duration: Duration(seconds: 2)),
+      );
+    }
+  }
+
+  Future<void> _shareKakao(BuildContext context) async {
+    final text = Uri.encodeComponent('MomsTalk에 초대합니다! 아래 링크로 48시간 내 가입해주세요.\n$deeplink');
+    final kakaoUrl = Uri.parse('kakaotalk://msg/send?text=$text');
+    if (await canLaunchUrl(kakaoUrl)) {
+      await launchUrl(kakaoUrl);
+    } else {
+      // KakaoTalk 미설치(Web 등) → 클립보드 복사 후 안내
+      await Clipboard.setData(ClipboardData(text: deeplink));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('링크를 복사했습니다. 카카오톡에 직접 붙여넣기 해주세요.')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('초대 링크 생성 완료'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text(
+          '아래 링크를 공유해 주세요.\n48시간 내 1회만 사용 가능합니다.',
+          style: TextStyle(fontSize: 13, color: Colors.grey),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.grey.shade100,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SelectableText(deeplink, style: const TextStyle(fontSize: 12)),
+        ),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _copyLink(context),
+              icon: const Icon(Icons.copy, size: 16),
+              label: const Text('링크 복사'),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFEE500),
+                foregroundColor: const Color(0xFF3C1E1E),
+              ),
+              onPressed: () => _shareKakao(context),
+              icon: const Icon(Icons.chat_bubble, size: 16),
+              label: const Text('카카오톡 전달'),
+            ),
+          ),
+        ]),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('닫기')),
       ],
     );
   }

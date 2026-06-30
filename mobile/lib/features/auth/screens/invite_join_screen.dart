@@ -1,10 +1,14 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/constants.dart';
+import '../../../core/router.dart';
 
-/// 딥링크 momstalk://invite/{token} 처리 화면.
+/// 초대 링크(/invite/{token}) 진입 화면.
+/// 비로그인 상태라면 카카오 로그인 후 바로 가입 처리.
 class InviteJoinScreen extends ConsumerStatefulWidget {
   final String token;
   const InviteJoinScreen({super.key, required this.token});
@@ -20,11 +24,19 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
   int _grade = 1;
   int? _classNum;
   bool _joining = false;
+  bool _loggingIn = false;
+  bool _isLoggedIn = false;
 
   @override
   void initState() {
     super.initState();
-    _loadInvite();
+    _init();
+  }
+
+  Future<void> _init() async {
+    final token = await ref.read(tokenStorageProvider).read(AppConstants.tokenKey);
+    _isLoggedIn = token != null;
+    await _loadInvite();
   }
 
   Future<void> _loadInvite() async {
@@ -35,11 +47,43 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
     } catch (e) {
       setState(() => _error = '유효하지 않은 초대 링크입니다.');
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _kakaoLoginThenJoin() async {
+    setState(() => _loggingIn = true);
+    try {
+      OAuthToken kakaoToken;
+      if (!kIsWeb && await isKakaoTalkInstalled()) {
+        kakaoToken = await UserApi.instance.loginWithKakaoTalk();
+      } else {
+        kakaoToken = await UserApi.instance.loginWithKakaoAccount(
+          prompts: [Prompt.selectAccount],
+        );
+      }
+      final dio = ref.read(dioProvider);
+      final resp = await dio.post('/auth/kakao', data: {'kakao_access_token': kakaoToken.accessToken});
+      final storage = ref.read(tokenStorageProvider);
+      await storage.write(AppConstants.tokenKey, resp.data['access_token'] as String);
+      await storage.write(AppConstants.refreshTokenKey, resp.data['refresh_token'] as String);
+
+      setState(() { _isLoggedIn = true; _loggingIn = false; });
+      await _join();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('로그인 실패: $e')));
+        setState(() => _loggingIn = false);
+      }
     }
   }
 
   Future<void> _join() async {
+    if (!_isLoggedIn) {
+      await _kakaoLoginThenJoin();
+      return;
+    }
+
     setState(() => _joining = true);
     try {
       final dio = ref.read(dioProvider);
@@ -49,19 +93,29 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
         'class_num': _classNum,
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('정회원 가입이 완료되었습니다!')));
-        context.go('/board');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('정회원 가입이 완료되었습니다!')),
+        );
+        ref.read(routerProvider).go('/region');
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('가입 실패: $e')));
+      final detail = _extractDetail(e.toString());
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('가입 실패: $detail')));
     } finally {
       if (mounted) setState(() => _joining = false);
     }
   }
 
+  String _extractDetail(String err) {
+    // DioException message에서 백엔드 detail 추출
+    final match = RegExp(r'"detail"\s*:\s*"([^"]+)"').firstMatch(err);
+    return match?.group(1) ?? err;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
     if (_error != null) {
       return Scaffold(
         body: Center(child: Padding(
@@ -71,11 +125,17 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
             const SizedBox(height: 16),
             Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 24),
-            FilledButton(onPressed: () => context.go('/'), child: const Text('홈으로')),
+            FilledButton(
+              onPressed: () => ref.read(routerProvider).go('/region'),
+              child: const Text('홈으로'),
+            ),
           ]),
         )),
       );
     }
+
+    final schoolName = _inviteInfo?['school_name'] as String? ?? '';
+    final isBusy = _joining || _loggingIn;
 
     return Scaffold(
       appBar: AppBar(title: const Text('초대 링크로 가입')),
@@ -87,18 +147,16 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    const Icon(Icons.school_outlined, size: 40),
-                    const SizedBox(height: 8),
-                    Text(
-                      _inviteInfo?['school_name'] ?? '',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text('에 자녀가 재학 중인 학부모 커뮤니티', style: TextStyle(color: Colors.grey.shade600)),
-                  ],
-                ),
+                child: Column(children: [
+                  const Icon(Icons.school_outlined, size: 40),
+                  const SizedBox(height: 8),
+                  Text(
+                    schoolName,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text('학부모 커뮤니티 초대', style: TextStyle(color: Colors.grey.shade600)),
+                ]),
               ),
             ),
             const SizedBox(height: 24),
@@ -108,7 +166,7 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
               value: _grade,
               decoration: const InputDecoration(border: OutlineInputBorder()),
               items: List.generate(6, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}학년'))),
-              onChanged: (v) => setState(() => _grade = v ?? 1),
+              onChanged: isBusy ? null : (v) => setState(() => _grade = v ?? 1),
             ),
             const SizedBox(height: 16),
             const Text('반 (선택)', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -120,14 +178,39 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
                 const DropdownMenuItem<int?>(value: null, child: Text('선택 안함')),
                 ...List.generate(15, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}반'))),
               ],
-              onChanged: (v) => setState(() => _classNum = v),
+              onChanged: isBusy ? null : (v) => setState(() => _classNum = v),
             ),
             const Spacer(),
-            FilledButton(
-              onPressed: _joining ? null : _join,
-              child: _joining
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('가입하기'),
+            if (!_isLoggedIn) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade200),
+                ),
+                child: const Text(
+                  '가입하려면 카카오 로그인이 필요합니다.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            FilledButton.icon(
+              onPressed: isBusy ? null : _join,
+              icon: isBusy
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : Icon(_isLoggedIn ? Icons.check : Icons.login),
+              label: Text(
+                _loggingIn
+                    ? '카카오 로그인 중...'
+                    : _joining
+                        ? '가입 중...'
+                        : _isLoggedIn
+                            ? '가입하기'
+                            : '카카오 로그인 후 가입하기',
+              ),
             ),
           ],
         ),

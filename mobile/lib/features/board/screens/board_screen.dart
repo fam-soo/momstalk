@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:dio/dio.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/router.dart';
 import 'post_list_widget.dart';
 
 final userProfileProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -121,7 +122,9 @@ class _BoardScreenState extends ConsumerState<BoardScreen> with SingleTickerProv
       error: (err, _) {
         final isAuthError = err is DioException && err.response?.statusCode == 401;
         if (isAuthError) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => context.go('/auth/login'));
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => ref.read(routerProvider).go('/auth/login'),
+          );
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
         return Scaffold(body: Center(child: Text('오류: $err')));

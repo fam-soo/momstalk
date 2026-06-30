@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     KAKAO_CLIENT_ID: str = ""           # REST API 키
     KAKAO_REDIRECT_URI: str = ""        # 앱 딥링크 (카카오 콘솔 등록 필요)
 
-    # 추천 링크 기본 딥링크 스킴
-    INVITE_DEEPLINK_BASE: str = "momstalk://invite"
+    # 추천 링크 웹 URL (Flutter Web PWA — HTTPS 필수)
+    INVITE_DEEPLINK_BASE: str = "https://momstalk.co.kr/invite"
 
     # Firebase Cloud Messaging — service account JSON 내용을 그대로 환경변수에 주입
     # 값이 없으면 FCM 발송 없이 무시 (graceful degradation)

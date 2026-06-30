@@ -349,4 +349,5 @@ class AcademyReview(Base):
     is_anonymous = Column(Boolean, nullable=False, default=True)
     report_count = Column(Integer, default=0)
     is_hidden = Column(Boolean, default=False)
+    is_seed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)

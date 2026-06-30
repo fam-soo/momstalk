@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:dio/dio.dart';
+
 import '../../../core/api_client.dart';
+import '../../../core/constants.dart';
+import '../../../core/router.dart';
 
 /// 캡처 제출 후 관리자 심사 대기 화면.
 class AuthPendingScreen extends ConsumerStatefulWidget {
@@ -26,6 +30,11 @@ class _AuthPendingScreenState extends ConsumerState<AuthPendingScreen> {
   }
 
   Future<void> _loadInitialState() async {
+    final token = await ref.read(tokenStorageProvider).read(AppConstants.tokenKey);
+    if (token == null) {
+      if (mounted) ref.read(routerProvider).go('/auth/login');
+      return;
+    }
     try {
       final dio = ref.read(dioProvider);
       final resp = await dio.get('/auth/me');
@@ -53,7 +62,12 @@ class _AuthPendingScreenState extends ConsumerState<AuthPendingScreen> {
         _rejectReason = rejectReason;
         _loading = false;
       });
-    } catch (_) {
+    } catch (e) {
+      if (e is DioException && e.response?.statusCode == 401) {
+        await ref.read(tokenStorageProvider).deleteAll();
+        if (mounted) ref.read(routerProvider).go('/auth/login');
+        return;
+      }
       if (mounted) setState(() { _state = 'new'; _loading = false; });
     }
   }
