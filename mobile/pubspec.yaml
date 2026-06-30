@@ -34,8 +34,9 @@ dependencies:
   intl: ^0.19.0
   pull_to_refresh: ^2.0.0
 
-  # 카카오 로그인 (1.10.0 widget_previews 버그로 1.9.0 고정)
+  # 카카오 로그인 / 공유 (1.10.0 widget_previews 버그로 1.9.0 고정)
   kakao_flutter_sdk_user: ^1.9.0
+  kakao_flutter_sdk_share: ^1.9.0
 
   # 이미지 선택
   image_picker: ^1.1.2

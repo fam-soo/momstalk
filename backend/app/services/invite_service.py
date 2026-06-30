@@ -49,22 +49,25 @@ async def validate_invite(token: str, db: AsyncSession) -> InviteLink:
 
 
 async def use_invite(token: str, user: User, grade: int, class_num: int | None, db: AsyncSession) -> None:
-    """링크 사용 → user.member_grade = 'member', school 정보 채움."""
+    """링크 사용 → school 정보 업데이트 + 비정회원이면 즉시 정회원 승급.
+    기존 정회원도 초대 링크 기준 학교/학년으로 변경 가능."""
     link = await validate_invite(token, db)
-    if user.member_grade == "member":
-        raise ValueError("이미 정회원입니다.")
 
     link.used_by = user.id
     link.used_at = datetime.utcnow()
 
-    user.member_grade = "member"
-    user.auth_route = "invite"
-    user.auth_pending = False
+    # 학교·학년 정보 업데이트 (기존 회원 포함)
     user.school_code = link.school_code
     user.school_name = link.school_name
     user.school_type = link.school_type
     user.grade = grade
     if class_num is not None:
         user.class_num = class_num
+
+    # 비정회원이면 정회원 승급
+    if user.member_grade != "member":
+        user.member_grade = "member"
+        user.auth_route = "invite"
+        user.auth_pending = False
 
     await db.commit()

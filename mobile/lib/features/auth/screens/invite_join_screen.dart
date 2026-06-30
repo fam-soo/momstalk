@@ -26,6 +26,7 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
   bool _joining = false;
   bool _loggingIn = false;
   bool _isLoggedIn = false;
+  bool _wasAlreadyMember = false;
 
   @override
   void initState() {
@@ -36,6 +37,13 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
   Future<void> _init() async {
     final token = await ref.read(tokenStorageProvider).read(AppConstants.tokenKey);
     _isLoggedIn = token != null;
+    if (_isLoggedIn) {
+      try {
+        final dio = ref.read(dioProvider);
+        final me = await dio.get('/auth/me');
+        _wasAlreadyMember = (me.data['member_grade'] as String?) == 'member';
+      } catch (_) {}
+    }
     await _loadInvite();
   }
 
@@ -68,6 +76,8 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
       await storage.write(AppConstants.tokenKey, resp.data['access_token'] as String);
       await storage.write(AppConstants.refreshTokenKey, resp.data['refresh_token'] as String);
 
+      final meResp = await dio.get('/auth/me');
+      _wasAlreadyMember = (meResp.data['member_grade'] as String?) == 'member';
       setState(() { _isLoggedIn = true; _loggingIn = false; });
       await _join();
     } catch (e) {
@@ -93,14 +103,15 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
         'class_num': _classNum,
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('정회원 가입이 완료되었습니다!')),
-        );
+        final msg = _wasAlreadyMember
+            ? '학교 정보가 변경되었습니다!'
+            : '정회원 가입이 완료되었습니다!';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
         ref.read(routerProvider).go('/region');
       }
     } catch (e) {
       final detail = _extractDetail(e.toString());
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('가입 실패: $detail')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('실패: $detail')));
     } finally {
       if (mounted) setState(() => _joining = false);
     }

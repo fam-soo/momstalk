@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:kakao_flutter_sdk_share/kakao_flutter_sdk_share.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api_client.dart';
 import '../../../core/router.dart';
@@ -906,12 +907,32 @@ class _InviteShareDialog extends StatelessWidget {
   }
 
   Future<void> _shareKakao(BuildContext context) async {
-    final text = Uri.encodeComponent('MomsTalk에 초대합니다! 아래 링크로 48시간 내 가입해주세요.\n$deeplink');
-    final kakaoUrl = Uri.parse('kakaotalk://msg/send?text=$text');
-    if (await canLaunchUrl(kakaoUrl)) {
-      await launchUrl(kakaoUrl);
-    } else {
-      // KakaoTalk 미설치(Web 등) → 클립보드 복사 후 안내
+    final link = Link(
+      webUrl: Uri.parse(deeplink),
+      mobileWebUrl: Uri.parse(deeplink),
+    );
+    final template = FeedTemplate(
+      content: Content(
+        title: 'MomsTalk에 초대합니다!',
+        description: '아래 버튼을 눌러 48시간 내 가입해주세요.',
+        imageUrl: Uri.parse('https://momstalk.co.kr/icons/Icon-192.png'),
+        link: link,
+      ),
+      buttons: [
+        Button(title: '가입하기', link: link),
+      ],
+    );
+
+    try {
+      if (ShareClient.instance.isKakaoTalkSharingAvailable()) {
+        await ShareClient.instance.shareDefault(template: template);
+      } else {
+        // 웹 / KakaoTalk 미설치 → 카카오 공유 웹 페이지 열기
+        final url = await WebSharerClient.instance.makeDefaultUrl(template: template);
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {
+      // SDK 공유 실패 시 클립보드 복사로 폴백
       await Clipboard.setData(ClipboardData(text: deeplink));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
