@@ -359,7 +359,7 @@ async def list_reviews(academy_id: int, db: AsyncSession) -> list[AcademyReviewR
     result = await db.execute(
         select(AcademyReview, User)
         .outerjoin(User, User.id == AcademyReview.author_id)  # 시드 후기는 author 없을 수 있음
-        .where(AcademyReview.academy_id == academy_id, AcademyReview.is_hidden == False)
+        .where(AcademyReview.academy_id == academy_id, AcademyReview.is_hidden.isnot(True))
         .order_by(AcademyReview.created_at.desc())
     )
     rows = result.all()
