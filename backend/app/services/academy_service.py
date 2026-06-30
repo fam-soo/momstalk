@@ -358,7 +358,7 @@ async def create_review(
 async def list_reviews(academy_id: int, db: AsyncSession) -> list[AcademyReviewResponse]:
     result = await db.execute(
         select(AcademyReview, User)
-        .join(User, User.id == AcademyReview.author_id)
+        .outerjoin(User, User.id == AcademyReview.author_id)  # 시드 후기는 author 없을 수 있음
         .where(AcademyReview.academy_id == academy_id, AcademyReview.is_hidden == False)
         .order_by(AcademyReview.created_at.desc())
     )
@@ -366,7 +366,7 @@ async def list_reviews(academy_id: int, db: AsyncSession) -> list[AcademyReviewR
     out = []
     for review, author in rows:
         author_display = None
-        if not review.is_anonymous:
+        if author and not review.is_anonymous:
             author_display = author.nickname
         out.append(AcademyReviewResponse(
             id=review.id,
@@ -380,10 +380,11 @@ async def list_reviews(academy_id: int, db: AsyncSession) -> list[AcademyReviewR
             nickname_type=review.nickname_type,
             is_anonymous=review.is_anonymous,
             author_display_name=author_display,
-            author_school_name=author.school_name or None,
-            author_grade=author.grade,
+            author_school_name=author.school_name if author else None,
+            author_grade=author.grade if author else None,
             report_count=review.report_count,
             is_hidden=review.is_hidden,
+            is_seed=review.is_seed,
             created_at=review.created_at,
         ))
     return out
