@@ -234,32 +234,72 @@ class _ReviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final rating = (review['rating'] as num?)?.toInt() ?? 0;
+    final isSeed = review['is_seed'] as bool? ?? false;
     final isAnon = review['is_anonymous'] as bool? ?? true;
-    final authorName = isAnon ? '익명' : (review['author_display_name'] as String? ?? '학부모');
+    final authorName = isSeed
+        ? '맘스톡'
+        : (isAnon ? '익명' : (review['author_display_name'] as String? ?? '학부모'));
     final subjects = (review['subjects'] as List?)?.cast<String>() ?? [];
     final teacherStyles = (review['teacher_styles'] as List?)?.cast<String>() ?? [];
     final text = review['review_text'] as String? ?? '';
     final schoolName = review['author_school_name'] as String?;
     final grade = review['author_grade'] as int?;
-    final schoolInfo = [
-      if (schoolName != null && schoolName.isNotEmpty) schoolName,
-      if (grade != null) '$grade학년',
-    ].join(' ');
+    final schoolInfo = isSeed
+        ? ''
+        : [
+            if (schoolName != null && schoolName.isNotEmpty) schoolName,
+            if (grade != null) '$grade학년',
+          ].join(' ');
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      color: isSeed
+          ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.4)
+          : null,
+      shape: isSeed
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: theme.colorScheme.outline.withOpacity(0.2)),
+            )
+          : null,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 시드 후기 상단 배지
+            if (isSeed) ...[
+              Row(
+                children: [
+                  Icon(Icons.auto_awesome, size: 13, color: theme.colorScheme.primary),
+                  const SizedBox(width: 4),
+                  Text(
+                    'AI 요약 정보',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '실제 후기 기반 자동 요약',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+            ],
             Row(
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(authorName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    Text(authorName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: isSeed ? theme.colorScheme.primary : null)),
                     if (schoolInfo.isNotEmpty)
                       Text(schoolInfo, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
                   ],
@@ -293,19 +333,17 @@ class _ReviewCard extends StatelessWidget {
               Text(text, style: const TextStyle(fontSize: 14, height: 1.5)),
             ],
             const SizedBox(height: 6),
-            // 구조화된 평가 항목
-            if (teacherStyles.isNotEmpty)
-              _ReviewDetail(label: '선생님 스타일', value: teacherStyles.join(' · ')),
-            _ReviewDetail(label: '숙제량', value: review['homework_level'] as String?),
-            _ReviewDetail(label: '성적 향상', value: review['score_improvement'] as String?),
+            if (!isSeed) ...[
+              if (teacherStyles.isNotEmpty)
+                _ReviewDetail(label: '선생님 스타일', value: teacherStyles.join(' · ')),
+              _ReviewDetail(label: '숙제량', value: review['homework_level'] as String?),
+              _ReviewDetail(label: '성적 향상', value: review['score_improvement'] as String?),
+            ],
             const SizedBox(height: 4),
             Text(
-              review['created_at'] as String? ?? '',
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '이 후기는 작성자 개인 경험을 바탕으로 한 의견입니다.',
+              isSeed
+                  ? '수강생 후기를 바탕으로 AI가 요약한 정보입니다.'
+                  : '이 후기는 작성자 개인 경험을 바탕으로 한 의견입니다.',
               style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontStyle: FontStyle.italic),
             ),
           ],

@@ -14,6 +14,11 @@ class AcademyResponse(BaseModel):
     subjects: Optional[list[str]] = None
     school_type: Optional[str] = None
     is_b2b: bool = False
+
+    @field_validator("is_b2b", mode="before")
+    @classmethod
+    def coerce_is_b2b(cls, v: object) -> bool:
+        return bool(v) if v is not None else False
     review_count: int = 0
     avg_rating: Optional[float] = None
 
@@ -63,6 +68,7 @@ class AcademyReviewResponse(BaseModel):
     rating: int
     nickname_type: str = "anon"
     is_anonymous: bool = True
+    is_seed: bool = False
     author_display_name: Optional[str] = None
     author_school_name: Optional[str] = None
     author_grade: Optional[int] = None
