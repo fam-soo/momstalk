@@ -45,6 +45,21 @@ class ParentVerification(Base):
     is_active = Column(Boolean, default=True)
 
 
+class UserChild(Base):
+    """자녀 정보. 한 계정에 복수 등록 가능."""
+    __tablename__ = "user_children"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    school_code = Column(String(20), nullable=True)
+    school_name = Column(String(100), nullable=True)
+    grade = Column(Integer, nullable=True)
+    class_num = Column(Integer, nullable=True)
+    school_type = Column(String(10), nullable=True)
+    region = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class User(Base):
     """익명 유저. anon_id만 알며 전화번호 등 신원 정보는 없음."""
     __tablename__ = "users"
@@ -53,11 +68,11 @@ class User(Base):
     anon_id = Column(String(64), unique=True, nullable=True, index=True)  # 관리자 계정은 null
     nickname = Column(String(30), nullable=True)
     region = Column(String(30), nullable=True)
-    school_code = Column(String(20), nullable=True)      # 관리자 계정은 null
-    school_name = Column(String(100), nullable=True)     # 관리자 계정은 null
-    grade = Column(Integer, nullable=True)               # 관리자 계정은 null
-    class_num = Column(Integer, nullable=True)
-    school_type = Column(String(10), nullable=True)      # 관리자 계정은 null
+    school_code = Column(String(20), nullable=True)      # deprecated — active_child 우선
+    school_name = Column(String(100), nullable=True)     # deprecated
+    grade = Column(Integer, nullable=True)               # deprecated
+    class_num = Column(Integer, nullable=True)           # deprecated
+    school_type = Column(String(10), nullable=True)      # deprecated
     manner_score = Column(Integer, default=365, server_default="365")
     fcm_token = Column(String(256), nullable=True)
     is_banned = Column(Boolean, default=False)
@@ -75,10 +90,25 @@ class User(Base):
     # 관리자 전용 자격증명 (일반 유저는 null)
     admin_username = Column(String(50), unique=True, nullable=True)
     admin_password_hash = Column(String(128), nullable=True)
+    # 다자녀 지원
+    active_child_id = Column(Integer, ForeignKey("user_children.id", ondelete="SET NULL"), nullable=True)
+    academy_review_count = Column(Integer, default=0, server_default="0")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     posts = relationship("Post", back_populates="author")
     comments = relationship("Comment", back_populates="author")
+    children = relationship(
+        "UserChild",
+        foreign_keys="UserChild.user_id",
+        primaryjoin="User.id == UserChild.user_id",
+        lazy="selectin",
+    )
+    active_child = relationship(
+        "UserChild",
+        foreign_keys=[active_child_id],
+        primaryjoin="User.active_child_id == UserChild.id",
+        lazy="joined",
+    )
 
 
 class Post(Base):

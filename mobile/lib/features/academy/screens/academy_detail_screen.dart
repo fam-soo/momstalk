@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -18,6 +19,10 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
   List<Map<String, dynamic>> _reviews = [];
   bool _loading = true;
   bool _kakaoLoading = false;
+  bool _reviewsLocked = false;  // 로그인 미인증
+  int _totalReviews = 0;
+  bool _canUnlockMore = false;
+  int _nextUnlockAt = 1;
 
   @override
   void initState() {
@@ -36,11 +41,23 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
       // 리뷰 로드는 학원 정보와 분리 — 실패해도 학원 정보는 표시
       try {
         final reviewsResp = await dio.get('/academies/${widget.academyId}/reviews');
+        final data = reviewsResp.data as Map<String, dynamic>;
+        final quotaInfo = data['quota_info'] as Map<String, dynamic>? ?? {};
         if (mounted) {
-          setState(() => _reviews = List<Map<String, dynamic>>.from(reviewsResp.data));
+          setState(() {
+            _reviews = List<Map<String, dynamic>>.from(data['reviews'] as List? ?? []);
+            _totalReviews = quotaInfo['total'] as int? ?? 0;
+            _canUnlockMore = quotaInfo['can_unlock_more'] as bool? ?? false;
+            _nextUnlockAt = quotaInfo['next_unlock_at'] as int? ?? 1;
+            _reviewsLocked = false;
+          });
+        }
+      } on DioException catch (e) {
+        if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+          if (mounted) setState(() => _reviewsLocked = true);
         }
       } catch (_) {
-        // 리뷰 로드 실패 시 빈 목록 유지
+        // 기타 오류 — 빈 목록 유지
       }
     } catch (e) {
       // 학원 정보 자체 로드 실패
@@ -193,6 +210,11 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
             child: Row(
               children: [
                 Text('후기', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                if (_totalReviews > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: Text('$_totalReviews개', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                  ),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: () => context
@@ -205,7 +227,25 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
               ],
             ),
           ),
-          if (_reviews.isEmpty)
+          if (_reviewsLocked)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.lock_outline, size: 40, color: Colors.grey.shade300),
+                    const SizedBox(height: 8),
+                    Text('로그인 후 후기를 확인하세요', style: TextStyle(color: Colors.grey.shade500)),
+                    const SizedBox(height: 12),
+                    FilledButton.tonal(
+                      onPressed: () => context.go('/auth/login'),
+                      child: const Text('로그인'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_reviews.isEmpty)
             Padding(
               padding: const EdgeInsets.all(32),
               child: Center(
@@ -220,8 +260,66 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                 ),
               ),
             )
-          else
+          else ...[
+            // 해금 안내 배너
+            if (_canUnlockMore)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primaryContainer.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.lock_open_outlined, size: 16, color: theme.colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '후기 $_nextUnlockAt건 더 작성하면 더 많은 후기를 볼 수 있어요',
+                        style: TextStyle(fontSize: 12, color: theme.colorScheme.primary),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => context.push('/academy/${widget.academyId}/review/write').then((_) => _load()),
+                      style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero),
+                      child: const Text('작성하기', style: TextStyle(fontSize: 12)),
+                    ),
+                  ],
+                ),
+              ),
             ...List.generate(_reviews.length, (i) => _ReviewCard(review: _reviews[i])),
+            // 잠금 카드 (더 보기 가능한 경우)
+            if (_canUnlockMore)
+              Card(
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                color: Colors.grey.shade50,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      Icon(Icons.lock_outline, size: 32, color: Colors.grey.shade300),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${_totalReviews - _reviews.length}개의 후기가 더 있습니다',
+                        style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '후기를 작성하면 더 많은 후기를 볼 수 있어요',
+                        style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                      ),
+                      const SizedBox(height: 12),
+                      FilledButton.tonal(
+                        onPressed: () => context.push('/academy/${widget.academyId}/review/write').then((_) => _load()),
+                        child: const Text('후기 작성하기'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ],
       ),
     );

@@ -77,3 +77,15 @@ class AcademyReviewResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class QuotaInfo(BaseModel):
+    visible: int
+    total: int
+    can_unlock_more: bool
+    next_unlock_at: int  # 다음 해금까지 필요한 후기 수
+
+
+class AcademyReviewListResponse(BaseModel):
+    reviews: list[AcademyReviewResponse]
+    quota_info: QuotaInfo

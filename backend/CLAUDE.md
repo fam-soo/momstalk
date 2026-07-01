@@ -172,6 +172,40 @@ lurker: school/grade 탭만 허용, region/free는 잠금 UI
 
 ---
 
+## SQL 직접 INSERT 작성 규칙
+
+Supabase SQL Editor 등으로 테이블에 직접 행을 삽입할 때 반드시 지켜야 할 규칙.
+
+### academy_reviews 테이블 필수 포함 컬럼
+
+```sql
+INSERT INTO academy_reviews (
+  academy_id, author_id,
+  subjects, teacher_styles, homework_level,
+  review_text, rating,
+  nickname_type, is_anonymous, is_seed,
+  is_hidden, report_count,
+  created_at          -- ← 반드시 포함. 누락 시 NULL → API 500
+)
+VALUES (
+  ...,
+  false, 0,
+  NOW()
+);
+```
+
+| 컬럼 | 누락 시 문제 | 올바른 기본값 |
+|------|------------|------------|
+| `created_at` | NULL → Pydantic `datetime` 검증 실패 → 500 | `NOW()` |
+| `is_hidden` | NULL → `WHERE is_hidden = false` 조건 불일치 → 조회 누락 | `false` |
+| `is_seed` | NULL → Pydantic `bool` 검증 실패 → 500 | `true` (시드) / `false` (일반) |
+| `report_count` | NULL → Pydantic `int` 검증 실패 → 500 | `0` |
+
+> **주의**: ORM `default=` 는 Python 레벨 기본값이고 DB `server_default`와 다름.  
+> SQL로 직접 INSERT할 때는 ORM 기본값이 적용되지 않으므로 명시적으로 값을 지정해야 함.
+
+---
+
 ## 자주 발생하는 오류 및 해결법
 
 | 오류 | 원인 | 해결 |

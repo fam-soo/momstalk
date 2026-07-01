@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, get_optional_user
 from app.db import get_service_db
 from app.models.service_models import User
-from app.schemas.academy import AcademyResponse, AcademyReviewCreate, AcademyReviewResponse
+from app.schemas.academy import AcademyResponse, AcademyReviewCreate, AcademyReviewResponse, AcademyReviewListResponse
 from app.services import academy_service
 
 router = APIRouter(prefix="/academies", tags=["academies"])
@@ -103,13 +103,13 @@ async def get_kakao_place(
     return {"place_url": first["place_url"], "place_name": first["place_name"], "found": True}
 
 
-@router.get("/{academy_id}/reviews", response_model=list[AcademyReviewResponse])
+@router.get("/{academy_id}/reviews", response_model=AcademyReviewListResponse)
 async def list_reviews(
     academy_id: int,
-    user: Optional[User] = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_service_db),
 ):
-    return await academy_service.list_reviews(academy_id, db)
+    return await academy_service.list_reviews(academy_id, user, db)
 
 
 @router.post("/{academy_id}/reviews", response_model=AcademyReviewResponse, status_code=201)

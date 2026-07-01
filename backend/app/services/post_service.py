@@ -28,12 +28,16 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
         raise ValueError("학부모 인증 정회원만 게시글을 작성할 수 있습니다.")
     check_profanity(req.title, "제목")
     check_profanity(req.content, "내용")
+    active = user.active_child
+    school_code = (active.school_code if active else None) or user.school_code
+    grade = (active.grade if active else None) or user.grade
+    class_num = (active.class_num if active else None) or user.class_num
     post = Post(
         author_id=user.id,
         board_type=req.board_type,
-        school_code=user.school_code,
-        grade=user.grade if req.board_type in ("class", "grade") else None,
-        class_num=user.class_num if req.board_type == "class" else None,
+        school_code=school_code,
+        grade=grade if req.board_type in ("class", "grade") else None,
+        class_num=class_num if req.board_type == "class" else None,
         title=req.title,
         content=req.content,
         is_anonymous=req.is_anonymous,

@@ -24,11 +24,15 @@ async def list_posts(
     db: AsyncSession = Depends(get_service_db),
 ):
     """게시판별 게시글 목록. cursor 기반 무한 스크롤."""
+    active = user.active_child
+    school_code = (active.school_code if active else None) or user.school_code
+    grade = (active.grade if active else None) or user.grade
+    class_num = (active.class_num if active else None) or user.class_num
     return await post_service.list_posts(
         board_type=board_type,
-        school_code=user.school_code,
-        grade=user.grade,
-        class_num=user.class_num,
+        school_code=school_code,
+        grade=grade,
+        class_num=class_num,
         size=size,
         user=user,
         db=db,

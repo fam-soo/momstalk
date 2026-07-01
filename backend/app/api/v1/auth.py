@@ -10,7 +10,7 @@ from app.core.permissions import require_member
 from app.core.rate_limit import RateLimit
 from app.core.security import create_access_token, decode_token
 from app.db import get_db
-from app.models.service_models import User
+from app.models.service_models import User, UserChild
 from app.schemas.auth import (
     AdminLoginRequest,
     CapturePresignResponse,
@@ -26,7 +26,7 @@ from app.schemas.auth import (
     VerifySmsRequest,
     VerifySmsResponse,
 )
-from app.schemas.user import UpdateNicknameRequest, UpdateProfileRequest, UserProfile
+from app.schemas.user import UpdateNicknameRequest, UpdateProfileRequest, UserProfile, AddChildRequest, ChildProfile
 from app.services import auth_service, sms_service
 from app.services import social_auth_service, capture_service, invite_service
 
@@ -430,3 +430,106 @@ async def admin_change_password(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="비밀번호는 8자 이상이어야 합니다.")
     user.admin_password_hash = hash_password(new_password)
     await db.commit()
+
+
+# ── 자녀 관리 ─────────────────────────────────────────────────
+
+@router.get("/me/children", response_model=list[ChildProfile])
+async def list_children(
+    user: User = Depends(get_current_user),
+):
+    """현재 유저의 자녀 목록 조회."""
+    return list(user.children)
+
+
+@router.post("/me/children", response_model=ChildProfile, status_code=status.HTTP_201_CREATED)
+async def add_child(
+    req: AddChildRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """자녀 추가 (최대 5명)."""
+    if len(user.children) >= 5:
+        raise HTTPException(status_code=400, detail="자녀는 최대 5명까지 등록할 수 있습니다.")
+
+    child = UserChild(
+        user_id=user.id,
+        school_code=req.school_code,
+        school_name=req.school_name,
+        grade=req.grade,
+        class_num=req.class_num,
+        school_type=req.school_type,
+        region=req.region,
+    )
+    db.add(child)
+    await db.flush()
+
+    # 첫 자녀면 active_child로 자동 설정
+    if user.active_child_id is None:
+        user.active_child_id = child.id
+
+    await db.commit()
+    await db.refresh(child)
+    return child
+
+
+@router.patch("/me/children/{child_id}", response_model=ChildProfile)
+async def update_child(
+    child_id: int,
+    req: AddChildRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """자녀 정보 수정."""
+    child = next((c for c in user.children if c.id == child_id), None)
+    if not child:
+        raise HTTPException(status_code=404, detail="자녀 정보를 찾을 수 없습니다.")
+
+    child.school_code = req.school_code
+    child.school_name = req.school_name
+    child.grade = req.grade
+    child.class_num = req.class_num
+    child.school_type = req.school_type
+    if req.region:
+        child.region = req.region
+
+    await db.commit()
+    await db.refresh(child)
+    return child
+
+
+@router.delete("/me/children/{child_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_child(
+    child_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """자녀 삭제. active_child이면 다른 자녀로 전환."""
+    child = next((c for c in user.children if c.id == child_id), None)
+    if not child:
+        raise HTTPException(status_code=404, detail="자녀 정보를 찾을 수 없습니다.")
+
+    if user.active_child_id == child_id:
+        # 다른 자녀로 전환
+        other = next((c for c in user.children if c.id != child_id), None)
+        user.active_child_id = other.id if other else None
+
+    await db.delete(child)
+    await db.commit()
+
+
+@router.post("/me/active-child/{child_id}", response_model=UserProfile)
+async def set_active_child(
+    child_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """활성 자녀 전환."""
+    child = next((c for c in user.children if c.id == child_id), None)
+    if not child:
+        raise HTTPException(status_code=404, detail="자녀 정보를 찾을 수 없습니다.")
+
+    user.active_child_id = child_id
+    await db.commit()
+    await db.refresh(user)
+    return user

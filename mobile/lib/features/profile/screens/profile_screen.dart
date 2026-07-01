@@ -287,108 +287,109 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ),
           const SizedBox(height: 8),
+
+          // ── 자녀 관리 (정회원) ────────────────────────────
+          if (isMember) _ChildrenSection(profile: _profile!, onChanged: _load),
+          if (isMember) const SizedBox(height: 8),
         ],
 
-        // ── 스크랩 ────────────────────────────────────────
+        // ── 빠른 실행 버튼 행 ──────────────────────────────
         Card(
-          child: ListTile(
-            leading: const Icon(Icons.bookmark_outline),
-            title: const Text('스크랩한 게시글'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const ScrapListScreen()),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                _QuickAction(icon: Icons.bookmark_outline, label: '스크랩', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScrapListScreen()))),
+                _QuickAction(icon: Icons.badge_outlined, label: '닉네임', onTap: () async {
+                  await showDialog(context: context, builder: (_) => _NicknameDialog(nickname: _profile!['nickname'] ?? '', ref: ref));
+                  _load();
+                }),
+                if (isMember && !isAdmin)
+                  _QuickAction(icon: Icons.person_add_outlined, label: '친구초대', onTap: _generateInvite),
+              ],
             ),
-          ),
-        ),
-
-        // ── 초대 링크 (정회원, 비관리자만) ──────────────
-        if (isMember && !isAdmin) ...[
-          const SizedBox(height: 8),
-          Card(
-            child: ListTile(
-              leading: Icon(Icons.person_add_outlined, color: Theme.of(context).colorScheme.primary),
-              title: const Text('친구 초대 링크 발급'),
-              subtitle: const Text('같은 학교 학부모를 초대하세요 (48시간 유효)', style: TextStyle(fontSize: 12, color: Colors.grey)),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _generateInvite,
-            ),
-          ),
-        ],
-        const SizedBox(height: 8),
-
-        // ── 닉네임 변경 ───────────────────────────────────
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.badge_outlined),
-            title: const Text('닉네임 변경'),
-            subtitle: Text(_profile!['nickname'] ?? ''),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () async {
-              await showDialog(
-                context: context,
-                builder: (_) => _NicknameDialog(nickname: _profile!['nickname'] ?? '', ref: ref),
-              );
-              _load();
-            },
           ),
         ),
         const SizedBox(height: 8),
 
-        // ── 서비스 정보 ───────────────────────────────────
+        // ── 서비스 정보 + 로그아웃/탈퇴 통합 (컴팩트) ──
         Card(
           clipBehavior: Clip.antiAlias,
           child: Column(
             children: [
-              ListTile(
-                leading: const Icon(Icons.description_outlined),
-                title: const Text('이용약관'),
-                trailing: const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
-                onTap: () => context.push('/terms'),
+              // 로그아웃 / 탈퇴
+              Row(
+                children: [
+                  Expanded(
+                    child: InkWell(
+                      onTap: _logout,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.logout, size: 16, color: Colors.orange.shade700),
+                            const SizedBox(width: 6),
+                            Text('로그아웃', style: TextStyle(color: Colors.orange.shade700, fontSize: 13, fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Container(width: 1, height: 36, color: Colors.grey.shade200),
+                  Expanded(
+                    child: InkWell(
+                      onTap: _deleteAccount,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.person_remove_outlined, size: 16, color: Colors.red.shade400),
+                            const SizedBox(width: 6),
+                            Text('회원탈퇴', style: TextStyle(color: Colors.red.shade400, fontSize: 13, fontWeight: FontWeight.w500)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.privacy_tip_outlined),
-                title: const Text('개인정보처리방침'),
-                trailing: const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
-                onTap: () => context.push('/privacy'),
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text('앱 버전'),
-                trailing: Text(
-                  'v1.0.0',
-                  style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
+              // 서비스 정보 텍스트 버튼 행
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    TextButton(
+                      onPressed: () => context.push('/terms'),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        foregroundColor: Colors.grey.shade500,
+                        textStyle: const TextStyle(fontSize: 11),
+                      ),
+                      child: const Text('이용약관'),
+                    ),
+                    Text('|', style: TextStyle(color: Colors.grey.shade300, fontSize: 11)),
+                    TextButton(
+                      onPressed: () => context.push('/privacy'),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        foregroundColor: Colors.grey.shade500,
+                        textStyle: const TextStyle(fontSize: 11),
+                      ),
+                      child: const Text('개인정보처리방침'),
+                    ),
+                    Text('|', style: TextStyle(color: Colors.grey.shade300, fontSize: 11)),
+                    Text('v1.0.0', style: TextStyle(color: Colors.grey.shade400, fontSize: 11)),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 8),
-
-        // ── 로그아웃 / 탈퇴 ──────────────────────────────
-        Card(
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              ListTile(
-                leading: const Icon(Icons.logout, color: Colors.orange),
-                title: const Text('로그아웃', style: TextStyle(color: Colors.orange)),
-                onTap: _logout,
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.person_remove_outlined, color: Colors.red),
-                title: const Text('회원 탈퇴', style: TextStyle(color: Colors.red)),
-                subtitle: const Text('탈퇴 시 개인정보가 즉시 삭제됩니다',
-                    style: TextStyle(fontSize: 11, color: Colors.grey)),
-                onTap: _deleteAccount,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
       ],
     );
   }
@@ -400,6 +401,34 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       Text('$label  ', style: const TextStyle(color: Colors.grey, fontSize: 13)),
       Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
     ]);
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _QuickAction({required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 22, color: Colors.grey.shade600),
+              const SizedBox(height: 4),
+              Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -461,6 +490,284 @@ class _NicknameDialogState extends ConsumerState<_NicknameDialog> {
           child: _saving
               ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : const Text('저장'),
+        ),
+      ],
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// 자녀 관리 섹션
+// ──────────────────────────────────────────────────────────────────
+
+class _ChildrenSection extends ConsumerStatefulWidget {
+  final Map<String, dynamic> profile;
+  final VoidCallback onChanged;
+  const _ChildrenSection({required this.profile, required this.onChanged});
+
+  @override
+  ConsumerState<_ChildrenSection> createState() => _ChildrenSectionState();
+}
+
+class _ChildrenSectionState extends ConsumerState<_ChildrenSection> {
+  bool _loading = false;
+
+  List<dynamic> get _children => (widget.profile['children'] as List?) ?? [];
+  int? get _activeChildId => widget.profile['active_child_id'] as int?;
+
+  String _schoolTypeLabel(String? type) {
+    switch (type) {
+      case 'elementary': return '초';
+      case 'middle': return '중';
+      case 'high': return '고';
+      default: return '';
+    }
+  }
+
+  Future<void> _setActive(int childId) async {
+    if (_activeChildId == childId) return;
+    setState(() => _loading = true);
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.post('/auth/me/active-child/$childId');
+      widget.onChanged();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('전환 실패: $e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _deleteChild(int childId, String label) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('자녀 삭제'),
+        content: Text('"$label" 자녀를 삭제하시겠습니까?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.delete('/auth/me/children/$childId');
+      widget.onChanged();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
+    }
+  }
+
+  Future<void> _addChild() async {
+    await showDialog(
+      context: context,
+      builder: (_) => _AddChildDialog(ref: ref),
+    );
+    widget.onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.child_care, size: 18, color: Colors.grey),
+                const SizedBox(width: 8),
+                const Text('자녀 관리', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                const Spacer(),
+                if (_children.length < 5)
+                  TextButton.icon(
+                    onPressed: _loading ? null : _addChild,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('추가'),
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  ),
+              ],
+            ),
+            if (_children.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text('등록된 자녀가 없습니다.', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: _children.map<Widget>((child) {
+                  final id = child['id'] as int;
+                  final isActive = id == _activeChildId;
+                  final schoolName = child['school_name'] as String? ?? '';
+                  final grade = child['grade'] as int?;
+                  final schoolType = _schoolTypeLabel(child['school_type'] as String?);
+                  final label = '$schoolName ${grade != null ? "$grade학년" : ""}($schoolType)';
+                  return GestureDetector(
+                    onLongPress: () => _deleteChild(id, label),
+                    child: FilterChip(
+                      label: Text(label, style: const TextStyle(fontSize: 12)),
+                      selected: isActive,
+                      selectedColor: theme.colorScheme.primaryContainer,
+                      checkmarkColor: theme.colorScheme.primary,
+                      onSelected: (_) => _setActive(id),
+                    ),
+                  );
+                }).toList(),
+              ),
+            if (_children.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('선택된 자녀의 학교 게시판이 활성화됩니다. 길게 눌러 삭제.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AddChildDialog extends ConsumerStatefulWidget {
+  final WidgetRef ref;
+  const _AddChildDialog({required this.ref});
+
+  @override
+  ConsumerState<_AddChildDialog> createState() => _AddChildDialogState();
+}
+
+class _AddChildDialogState extends ConsumerState<_AddChildDialog> {
+  final _schoolCtrl = TextEditingController();
+  String? _selectedSchoolCode;
+  String? _selectedSchoolName;
+  String? _selectedSchoolType;
+  String? _selectedRegion;
+  int _grade = 1;
+  List<Map<String, dynamic>> _searchResults = [];
+  bool _searching = false;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _schoolCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _searchSchools(String q) async {
+    if (q.length < 2) {
+      setState(() => _searchResults = []);
+      return;
+    }
+    setState(() => _searching = true);
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.get('/schools/search', queryParameters: {'q': q});
+      if (mounted) {
+        setState(() => _searchResults = List<Map<String, dynamic>>.from(resp.data));
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  Future<void> _save() async {
+    if (_selectedSchoolCode == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('학교를 선택해주세요.')));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.post('/auth/me/children', data: {
+        'school_code': _selectedSchoolCode,
+        'school_name': _selectedSchoolName,
+        'grade': _grade,
+        'school_type': _selectedSchoolType,
+        'region': _selectedRegion,
+      });
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('추가 실패: $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('자녀 추가'),
+      content: SizedBox(
+        width: 320,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _schoolCtrl,
+              decoration: const InputDecoration(labelText: '학교 검색', prefixIcon: Icon(Icons.search)),
+              onChanged: _searchSchools,
+            ),
+            if (_searching)
+              const Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2)),
+            if (_searchResults.isNotEmpty && _selectedSchoolCode == null)
+              SizedBox(
+                height: 160,
+                child: ListView.builder(
+                  itemCount: _searchResults.length,
+                  itemBuilder: (_, i) {
+                    final s = _searchResults[i];
+                    return ListTile(
+                      dense: true,
+                      title: Text(s['school_name'] as String? ?? '', style: const TextStyle(fontSize: 13)),
+                      subtitle: Text(s['region'] as String? ?? '', style: const TextStyle(fontSize: 11)),
+                      onTap: () {
+                        setState(() {
+                          _selectedSchoolCode = s['school_code'] as String?;
+                          _selectedSchoolName = s['school_name'] as String?;
+                          _selectedSchoolType = s['school_type'] as String?;
+                          _selectedRegion = s['region'] as String?;
+                          _schoolCtrl.text = _selectedSchoolName ?? '';
+                          _searchResults = [];
+                        });
+                      },
+                    );
+                  },
+                ),
+              ),
+            if (_selectedSchoolCode != null) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Text('학년: ', style: TextStyle(fontSize: 13)),
+                  const SizedBox(width: 8),
+                  DropdownButton<int>(
+                    value: _grade,
+                    items: List.generate(6, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}학년'))),
+                    onChanged: (v) => setState(() => _grade = v ?? 1),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: _saving
+              ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('추가'),
         ),
       ],
     );

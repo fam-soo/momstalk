@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.profanity import check_profanity
 from app.models.service_models import Academy, AcademyReview, User
-from app.schemas.academy import AcademyReviewCreate, AcademyReviewResponse, AcademyResponse
+from app.schemas.academy import AcademyReviewCreate, AcademyReviewResponse, AcademyResponse, AcademyReviewListResponse, QuotaInfo
 from app.services import neis_service
 
 
@@ -329,6 +329,10 @@ async def create_review(
                 existing_subjects.append(s)
         academy.subjects = existing_subjects
 
+    # 유저 기여도 및 매너온도 갱신
+    user.academy_review_count += 1
+    user.manner_score += 10
+
     await db.commit()
     await db.refresh(review)
 
@@ -356,19 +360,56 @@ async def create_review(
     )
 
 
-async def list_reviews(academy_id: int, db: AsyncSession) -> list[AcademyReviewResponse]:
+def _review_quota(user: User) -> Optional[int]:
+    """사용자의 후기 조회 가능 수 반환. None = 전체 허용."""
+    if user.is_admin:
+        return None
+    if user.member_grade == "lurker":
+        return None  # lurker는 목록 전부 허용
+    count = user.academy_review_count
+    if count >= 5:
+        return None
+    if count >= 1:
+        return 5
+    return 1
+
+
+async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> AcademyReviewListResponse:
     result = await db.execute(
         select(AcademyReview, User)
-        .outerjoin(User, User.id == AcademyReview.author_id)  # 시드 후기는 author 없을 수 있음
+        .outerjoin(User, User.id == AcademyReview.author_id)
         .where(AcademyReview.academy_id == academy_id, AcademyReview.is_hidden.isnot(True))
         .order_by(AcademyReview.is_seed.desc(), AcademyReview.created_at.asc())
     )
     rows = result.all()
+    total = len(rows)
+
+    quota = _review_quota(user)
+    visible_rows = rows if quota is None else rows[:quota]
+    can_unlock_more = quota is not None and total > quota
+
+    # 다음 해금까지 필요한 후기 수 계산
+    count = user.academy_review_count
+    if count >= 5 or quota is None:
+        next_unlock_at = 0
+    elif count >= 1:
+        next_unlock_at = 5 - count  # 5건 작성하면 전체 해제
+    else:
+        next_unlock_at = 1
+
     out = []
-    for review, author in rows:
+    for review, author in visible_rows:
         author_display = None
         if author and not review.is_anonymous:
             author_display = author.nickname
+        # active_child 기반 학교 정보 우선, fallback으로 user 직접 컬럼
+        if author:
+            active = author.active_child
+            school_name = (active.school_name if active else None) or author.school_name
+            grade = (active.grade if active else None) or author.grade
+        else:
+            school_name = None
+            grade = None
         out.append(AcademyReviewResponse(
             id=review.id,
             academy_id=review.academy_id,
@@ -381,11 +422,20 @@ async def list_reviews(academy_id: int, db: AsyncSession) -> list[AcademyReviewR
             nickname_type=review.nickname_type,
             is_anonymous=review.is_anonymous,
             author_display_name=author_display,
-            author_school_name=author.school_name if author else None,
-            author_grade=author.grade if author else None,
+            author_school_name=school_name,
+            author_grade=grade,
             report_count=review.report_count or 0,
             is_hidden=review.is_hidden or False,
             is_seed=review.is_seed or False,
             created_at=review.created_at or datetime.utcnow(),
         ))
-    return out
+
+    return AcademyReviewListResponse(
+        reviews=out,
+        quota_info=QuotaInfo(
+            visible=len(out),
+            total=total,
+            can_unlock_more=can_unlock_more,
+            next_unlock_at=next_unlock_at,
+        ),
+    )
