@@ -29,6 +29,8 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   String _userSchoolName = '';
   int _userGrade = 0;
   bool _isAdmin = false;
+  int _userReviewCount = 0;
+  String _memberGrade = '';
 
   List<Map<String, dynamic>> _results = [];
   bool _loading = true;
@@ -72,11 +74,15 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
           region = adminFlag ? '' : (r.isNotEmpty ? r : '양천구');
           final schoolName = p['school_name'] as String? ?? '';
           final grade = p['grade'] as int? ?? 0;
+          final reviewCount = p['academy_review_count'] as int? ?? 0;
+          final memberGrade = p['member_grade'] as String? ?? '';
           if (mounted) {
             setState(() {
               _userSchoolName = schoolName;
               _userGrade = grade;
               _isAdmin = adminFlag;
+              _userReviewCount = reviewCount;
+              _memberGrade = memberGrade;
             });
           }
         } catch (_) {}
@@ -445,7 +451,13 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                                         padding: const EdgeInsets.only(bottom: 20),
                                         itemCount: _results.length,
                                         separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
-                                        itemBuilder: (_, i) => _AcademyTile(academy: _results[i]),
+                                        itemBuilder: (_, i) => _AcademyTile(
+                                          academy: _results[i],
+                                          isQuotaLimited: !_isAdmin &&
+                                              _memberGrade != 'lurker' &&
+                                              _userReviewCount < 5 &&
+                                              (_results[i]['review_count'] as int? ?? 0) > 0,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -530,7 +542,8 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
 
 class _AcademyTile extends StatelessWidget {
   final Map<String, dynamic> academy;
-  const _AcademyTile({required this.academy});
+  final bool isQuotaLimited;
+  const _AcademyTile({required this.academy, this.isQuotaLimited = false});
 
   @override
   Widget build(BuildContext context) {
@@ -593,6 +606,10 @@ class _AcademyTile extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             Text('후기 $reviewCount개', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            if (isQuotaLimited) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.lock_outline, size: 13, color: Colors.grey.shade500),
+            ],
             if (subjects.isNotEmpty) ...[
               const SizedBox(width: 8),
               Expanded(

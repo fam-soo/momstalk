@@ -573,11 +573,13 @@ class _ChildrenSectionState extends ConsumerState<_ChildrenSection> {
   }
 
   Future<void> _addChild() async {
-    await showDialog(
-      context: context,
-      builder: (_) => _AddChildDialog(ref: ref),
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => ProviderScope(
+        parent: ProviderScope.containerOf(context),
+        child: const _AddChildScreen(),
+      )),
     );
-    widget.onChanged();
+    if (result == true) widget.onChanged();
   }
 
   @override
@@ -645,65 +647,83 @@ class _ChildrenSectionState extends ConsumerState<_ChildrenSection> {
   }
 }
 
-class _AddChildDialog extends ConsumerStatefulWidget {
-  final WidgetRef ref;
-  const _AddChildDialog({required this.ref});
+// ──────────────────────────────────────────────────────────────────
+// 자녀 추가 — 전체화면 학교 검색 (SchoolSelectScreen과 동일한 UX)
+// ──────────────────────────────────────────────────────────────────
+
+class _AddChildScreen extends ConsumerStatefulWidget {
+  const _AddChildScreen();
 
   @override
-  ConsumerState<_AddChildDialog> createState() => _AddChildDialogState();
+  ConsumerState<_AddChildScreen> createState() => _AddChildScreenState();
 }
 
-class _AddChildDialogState extends ConsumerState<_AddChildDialog> {
-  final _schoolCtrl = TextEditingController();
-  String? _selectedSchoolCode;
-  String? _selectedSchoolName;
-  String? _selectedSchoolType;
-  String? _selectedRegion;
+class _AddChildScreenState extends ConsumerState<_AddChildScreen> {
+  final _searchCtrl = TextEditingController();
+  String? _selectedType;
+  List<Map<String, dynamic>> _results = [];
+  Map<String, dynamic>? _selected;
   int _grade = 1;
-  List<Map<String, dynamic>> _searchResults = [];
-  bool _searching = false;
+  bool _loading = false;
   bool _saving = false;
+  bool _searched = false;
+
+  static const _typeOptions = [
+    (null, '전체'),
+    ('elementary', '초'),
+    ('middle', '중'),
+    ('high', '고'),
+  ];
 
   @override
   void dispose() {
-    _schoolCtrl.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _searchSchools(String q) async {
-    if (q.length < 2) {
-      setState(() => _searchResults = []);
-      return;
-    }
-    setState(() => _searching = true);
+  Future<void> _search() async {
+    final q = _searchCtrl.text.trim();
+    if (q.length < 2) return;
+    setState(() { _loading = true; _results = []; _selected = null; _searched = true; });
     try {
       final dio = ref.read(dioProvider);
-      final resp = await dio.get('/schools/search', queryParameters: {'q': q});
-      if (mounted) {
-        setState(() => _searchResults = List<Map<String, dynamic>>.from(resp.data));
-      }
-    } catch (_) {
+      final params = <String, dynamic>{'q': q};
+      if (_selectedType != null) params['school_type'] = _selectedType;
+      final resp = await dio.get('/schools/search', queryParameters: params);
+      setState(() => _results = List<Map<String, dynamic>>.from(resp.data));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('검색 오류: $e')));
     } finally {
-      if (mounted) setState(() => _searching = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _save() async {
-    if (_selectedSchoolCode == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('학교를 선택해주세요.')));
-      return;
+  String _extractRegion(String address) {
+    final parts = address.split(' ');
+    if (parts.length >= 2) {
+      final c = parts[1];
+      if (c.endsWith('구') || c.endsWith('군')) return c;
     }
+    return parts.isNotEmpty ? parts[0] : address;
+  }
+
+  Future<void> _save() async {
+    if (_selected == null) return;
     setState(() => _saving = true);
     try {
       final dio = ref.read(dioProvider);
+      final address = _selected!['address'] as String? ?? '';
+      final region = (_selected!['region'] as String? ?? '').isNotEmpty
+          ? _selected!['region'] as String
+          : _extractRegion(address);
       await dio.post('/auth/me/children', data: {
-        'school_code': _selectedSchoolCode,
-        'school_name': _selectedSchoolName,
+        'school_code': _selected!['school_code'],
+        'school_name': _selected!['school_name'],
         'grade': _grade,
-        'school_type': _selectedSchoolType,
-        'region': _selectedRegion,
+        'school_type': _selected!['school_type'],
+        'region': region,
       });
-      if (mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('추가 실패: $e')));
     } finally {
@@ -711,73 +731,176 @@ class _AddChildDialogState extends ConsumerState<_AddChildDialog> {
     }
   }
 
+  int get _maxGrade => _selected?['school_type'] == 'elementary' ? 6 : 3;
+
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('자녀 추가'),
-      content: SizedBox(
-        width: 320,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: _schoolCtrl,
-              decoration: const InputDecoration(labelText: '학교 검색', prefixIcon: Icon(Icons.search)),
-              onChanged: _searchSchools,
+    return Scaffold(
+      appBar: AppBar(title: const Text('자녀 추가 — 학교 검색')),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.4),
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: const Text(
+              '자녀가 다니는 학교를 검색하세요.\n학교명(예: 행복초) 또는 지역명(예: 강남구)으로 찾을 수 있어요.',
+              style: TextStyle(fontSize: 13, height: 1.5),
             ),
-            if (_searching)
-              const Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2)),
-            if (_searchResults.isNotEmpty && _selectedSchoolCode == null)
-              SizedBox(
-                height: 160,
-                child: ListView.builder(
-                  itemCount: _searchResults.length,
-                  itemBuilder: (_, i) {
-                    final s = _searchResults[i];
-                    return ListTile(
-                      dense: true,
-                      title: Text(s['school_name'] as String? ?? '', style: const TextStyle(fontSize: 13)),
-                      subtitle: Text(s['region'] as String? ?? '', style: const TextStyle(fontSize: 11)),
-                      onTap: () {
-                        setState(() {
-                          _selectedSchoolCode = s['school_code'] as String?;
-                          _selectedSchoolName = s['school_name'] as String?;
-                          _selectedSchoolType = s['school_type'] as String?;
-                          _selectedRegion = s['region'] as String?;
-                          _schoolCtrl.text = _selectedSchoolName ?? '';
-                          _searchResults = [];
-                        });
-                      },
-                    );
-                  },
-                ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: TextField(
+              controller: _searchCtrl,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: '학교명 또는 지역명 (예: 행복초, 강남구)',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchCtrl.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear, size: 20),
+                        onPressed: () {
+                          _searchCtrl.clear();
+                          setState(() { _results = []; _selected = null; _searched = false; });
+                        },
+                      )
+                    : null,
               ),
-            if (_selectedSchoolCode != null) ...[
-              const SizedBox(height: 12),
-              Row(
+              textInputAction: TextInputAction.search,
+              onChanged: (_) => setState(() {}),
+              onSubmitted: (_) => _search(),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Wrap(
+              spacing: 8,
+              children: _typeOptions.map((opt) {
+                final selected = _selectedType == opt.$1;
+                return FilterChip(
+                  label: Text(opt.$2),
+                  selected: selected,
+                  onSelected: (_) {
+                    setState(() { _selectedType = opt.$1; _results = []; _selected = null; });
+                    if (_searched) _search();
+                  },
+                  visualDensity: VisualDensity.compact,
+                );
+              }).toList(),
+            ),
+          ),
+          if (_loading) const LinearProgressIndicator(),
+          Expanded(
+            child: !_searched
+                ? Center(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.search, size: 56, color: Colors.grey.shade300),
+                      const SizedBox(height: 12),
+                      Text('학교명 또는 지역명을 입력 후 엔터를 누르세요',
+                          style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
+                    ]),
+                  )
+                : _results.isEmpty && !_loading
+                    ? const Center(child: Text('검색 결과가 없어요.\n다른 이름이나 지역으로 검색해보세요.',
+                        textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)))
+                    : ListView.builder(
+                        itemCount: _results.length,
+                        itemBuilder: (_, i) {
+                          final s = _results[i];
+                          final isSelected = _selected?['school_code'] == s['school_code'];
+                          return ListTile(
+                            leading: _SchoolTypeChip(type: s['school_type'] as String? ?? ''),
+                            title: Text(s['school_name'] as String? ?? '',
+                                style: const TextStyle(fontWeight: FontWeight.w600)),
+                            subtitle: Text(s['address'] as String? ?? '',
+                                style: const TextStyle(fontSize: 12)),
+                            trailing: isSelected
+                                ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary)
+                                : null,
+                            selected: isSelected,
+                            selectedTileColor:
+                                Theme.of(context).colorScheme.primaryContainer.withOpacity(0.35),
+                            onTap: () => setState(() { _selected = s; _grade = 1; }),
+                          );
+                        },
+                      ),
+          ),
+          if (_selected != null) ...[
+            const Divider(height: 1),
+            Container(
+              color: Theme.of(context).colorScheme.surface,
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text('학년: ', style: TextStyle(fontSize: 13)),
-                  const SizedBox(width: 8),
-                  DropdownButton<int>(
+                  Row(children: [
+                    Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _selected!['school_name'] as String? ?? '',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
                     value: _grade,
-                    items: List.generate(6, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}학년'))),
-                    onChanged: (v) => setState(() => _grade = v ?? 1),
+                    decoration: const InputDecoration(
+                        labelText: '자녀 학년', border: OutlineInputBorder(), isDense: true),
+                    items: List.generate(_maxGrade, (i) => i + 1)
+                        .map((g) => DropdownMenuItem(value: g, child: Text('$g학년')))
+                        .toList(),
+                    onChanged: (v) => setState(() => _grade = v!),
                   ),
                 ],
               ),
-            ],
+            ),
           ],
-        ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: FilledButton(
+                onPressed: _selected == null || _saving ? null : _save,
+                style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                child: _saving
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('자녀 추가', style: TextStyle(fontSize: 15)),
+              ),
+            ),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: _saving
-              ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Text('추가'),
-        ),
-      ],
+    );
+  }
+}
+
+class _SchoolTypeChip extends StatelessWidget {
+  final String type;
+  const _SchoolTypeChip({required this.type});
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (type) {
+      'elementary' => ('초', Colors.green),
+      'middle' => ('중', Colors.blue),
+      'high' => ('고', Colors.purple),
+      _ => ('?', Colors.grey),
+    };
+    return CircleAvatar(
+      radius: 16,
+      backgroundColor: color.withOpacity(0.15),
+      child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
     );
   }
 }
