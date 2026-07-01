@@ -110,15 +110,7 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.canPop() ? context.pop() : context.go('/academy'),
         ),
-        actions: [
-          FilledButton.tonal(
-            onPressed: () => context
-                .push('/academy/${widget.academyId}/review/write')
-                .then((_) => _load()),
-            child: const Text('후기 작성'),
-          ),
-          const SizedBox(width: 8),
-        ],
+        actions: const [],
       ),
       body: ListView(
         children: [
@@ -197,8 +189,21 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
 
           // ── 후기 목록 ────────────────────────────────────
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: Text('후기', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+            child: Row(
+              children: [
+                Text('후기', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => context
+                      .push('/academy/${widget.academyId}/review/write')
+                      .then((_) => _load()),
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('후기 작성'),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                ),
+              ],
+            ),
           ),
           if (_reviews.isEmpty)
             Padding(
@@ -210,12 +215,7 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                     const SizedBox(height: 8),
                     Text('아직 후기가 없습니다', style: TextStyle(color: Colors.grey.shade500)),
                     const SizedBox(height: 4),
-                    TextButton(
-                      onPressed: () => context
-                          .push('/academy/${widget.academyId}/review/write')
-                          .then((_) => _load()),
-                      child: const Text('첫 번째 후기를 작성해보세요'),
-                    ),
+                    Text('첫 번째 후기를 작성해보세요', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
                   ],
                 ),
               ),
