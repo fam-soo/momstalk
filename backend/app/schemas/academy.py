@@ -69,6 +69,7 @@ class AcademyReviewResponse(BaseModel):
     nickname_type: str = "anon"
     is_anonymous: bool = True
     is_seed: bool = False
+    is_view_limited: bool = False  # True이면 텍스트/상세 내용이 제거된 잠금 상태
     author_display_name: Optional[str] = None
     author_school_name: Optional[str] = None
     author_grade: Optional[int] = None
@@ -80,10 +81,11 @@ class AcademyReviewResponse(BaseModel):
 
 
 class QuotaInfo(BaseModel):
-    visible: int
-    total: int
-    can_unlock_more: bool
-    next_unlock_at: int  # 다음 해금까지 필요한 후기 수
+    readable: int       # 현재 읽을 수 있는 후기 수
+    total: int          # 전체 후기 수 (잠금 포함)
+    is_limited: bool    # 제한 중 여부
+    next_unlock_at: int # 다음 해금까지 필요한 후기 작성 수 (0이면 이미 전체 해제)
+    user_review_count: int  # 유저가 작성한 후기 수
 
 
 class AcademyReviewListResponse(BaseModel):

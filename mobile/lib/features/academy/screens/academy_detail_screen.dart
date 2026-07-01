@@ -21,8 +21,10 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
   bool _kakaoLoading = false;
   bool _reviewsLocked = false;  // 로그인 미인증
   int _totalReviews = 0;
-  bool _canUnlockMore = false;
+  int _readableReviews = 0;
+  bool _isLimited = false;
   int _nextUnlockAt = 1;
+  int _userReviewCount = 0;
 
   @override
   void initState() {
@@ -47,8 +49,10 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
           setState(() {
             _reviews = List<Map<String, dynamic>>.from(data['reviews'] as List? ?? []);
             _totalReviews = quotaInfo['total'] as int? ?? 0;
-            _canUnlockMore = quotaInfo['can_unlock_more'] as bool? ?? false;
+            _readableReviews = quotaInfo['readable'] as int? ?? _totalReviews;
+            _isLimited = quotaInfo['is_limited'] as bool? ?? false;
             _nextUnlockAt = quotaInfo['next_unlock_at'] as int? ?? 1;
+            _userReviewCount = quotaInfo['user_review_count'] as int? ?? 0;
             _reviewsLocked = false;
           });
         }
@@ -227,6 +231,18 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
               ],
             ),
           ),
+
+          // ── 조회 쿼터 배너 ─────────────────────────────
+          if (!_reviewsLocked && _totalReviews > 0)
+            _QuotaBanner(
+              readable: _readableReviews,
+              total: _totalReviews,
+              isLimited: _isLimited,
+              nextUnlockAt: _nextUnlockAt,
+              userReviewCount: _userReviewCount,
+              onWriteTap: () => context.push('/academy/${widget.academyId}/review/write').then((_) => _load()),
+            ),
+
           if (_reviewsLocked)
             Padding(
               padding: const EdgeInsets.all(24),
@@ -261,70 +277,126 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
               ),
             )
           else ...[
-            // 해금 안내 배너
-            if (_canUnlockMore)
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primaryContainer.withOpacity(0.4),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.lock_open_outlined, size: 16, color: theme.colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '후기 $_nextUnlockAt건 더 작성하면 더 많은 후기를 볼 수 있어요',
-                        style: TextStyle(fontSize: 12, color: theme.colorScheme.primary),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => context.push('/academy/${widget.academyId}/review/write').then((_) => _load()),
-                      style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero),
-                      child: const Text('작성하기', style: TextStyle(fontSize: 12)),
-                    ),
-                  ],
-                ),
-              ),
             ...List.generate(_reviews.length, (i) => _ReviewCard(review: _reviews[i])),
-            // 잠금 카드 (더 보기 가능한 경우)
-            if (_canUnlockMore)
-              Card(
-                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                color: Colors.grey.shade50,
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      Icon(Icons.lock_outline, size: 32, color: Colors.grey.shade300),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${_totalReviews - _reviews.length}개의 후기가 더 있습니다',
-                        style: TextStyle(color: Colors.grey.shade500, fontSize: 13),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '후기를 작성하면 더 많은 후기를 볼 수 있어요',
-                        style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-                      ),
-                      const SizedBox(height: 12),
-                      FilledButton.tonal(
-                        onPressed: () => context.push('/academy/${widget.academyId}/review/write').then((_) => _load()),
-                        child: const Text('후기 작성하기'),
-                      ),
-                    ],
+            // 하단 잠금 안내 (제한 중일 때)
+            if (_isLimited)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+                child: OutlinedButton.icon(
+                  onPressed: () => context.push('/academy/${widget.academyId}/review/write').then((_) => _load()),
+                  icon: const Icon(Icons.edit_outlined, size: 15),
+                  label: Text('후기 $_nextUnlockAt건 작성하면 더 보기'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.grey.shade600,
+                    textStyle: const TextStyle(fontSize: 13),
+                    minimumSize: const Size(double.infinity, 44),
                   ),
                 ),
               ),
           ],
+
         ],
       ),
     );
   }
 }
+
+// ── 조회 쿼터 배너 ──────────────────────────────────────────────
+
+class _QuotaBanner extends StatelessWidget {
+  final int readable;
+  final int total;
+  final bool isLimited;
+  final int nextUnlockAt;
+  final int userReviewCount;
+  final VoidCallback onWriteTap;
+
+  const _QuotaBanner({
+    required this.readable,
+    required this.total,
+    required this.isLimited,
+    required this.nextUnlockAt,
+    required this.userReviewCount,
+    required this.onWriteTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (!isLimited) {
+      // 전체 열람 가능 — 간단히 상태만 표시
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.green.shade50,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.check_circle_outline, size: 14, color: Colors.green.shade600),
+            const SizedBox(width: 6),
+            Text(
+              '전체 $total개 후기 조회 가능',
+              style: TextStyle(fontSize: 12, color: Colors.green.shade700),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 제한 중 — "N/M 조회 가능" 배너
+    final limitLabel = userReviewCount == 0 ? '제목만 조회 가능' : '$readable/$total 조회 가능';
+    final unlockMsg = nextUnlockAt > 0
+        ? '후기 $nextUnlockAt건 더 작성하면 ${userReviewCount == 0 ? "내용" : "더 많이"} 열람'
+        : '';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.25)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.lock_outline, size: 15, color: theme.colorScheme.secondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  limitLabel,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.secondary,
+                  ),
+                ),
+                if (unlockMsg.isNotEmpty)
+                  Text(unlockMsg, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onWriteTap,
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              visualDensity: VisualDensity.compact,
+              textStyle: const TextStyle(fontSize: 12),
+            ),
+            child: const Text('후기 작성'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 후기 카드 ────────────────────────────────────────────────────
 
 class _ReviewCard extends StatelessWidget {
   final Map<String, dynamic> review;
@@ -335,6 +407,7 @@ class _ReviewCard extends StatelessWidget {
     final theme = Theme.of(context);
     final rating = (review['rating'] as num?)?.toInt() ?? 0;
     final isSeed = review['is_seed'] as bool? ?? false;
+    final isViewLimited = review['is_view_limited'] as bool? ?? false;
     final isAnon = review['is_anonymous'] as bool? ?? true;
     final authorName = isSeed
         ? '맘스톡'
@@ -353,9 +426,11 @@ class _ReviewCard extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      color: isSeed
-          ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.4)
-          : null,
+      color: isViewLimited
+          ? Colors.grey.shade50
+          : isSeed
+              ? theme.colorScheme.surfaceContainerHighest.withOpacity(0.4)
+              : null,
       shape: isSeed
           ? RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
@@ -394,15 +469,24 @@ class _ReviewCard extends StatelessWidget {
             ],
             Row(
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(authorName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: isSeed ? theme.colorScheme.primary : null)),
-                    if (schoolInfo.isNotEmpty)
-                      Text(schoolInfo, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-                  ],
-                ),
-                if (subjects.isNotEmpty) ...[
+                if (!isViewLimited)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(authorName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: isSeed ? theme.colorScheme.primary : null)),
+                      if (schoolInfo.isNotEmpty)
+                        Text(schoolInfo, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                    ],
+                  )
+                else
+                  Row(
+                    children: [
+                      Icon(Icons.lock_outline, size: 13, color: Colors.grey.shade400),
+                      const SizedBox(width: 4),
+                      Text('후기 열람 잠금', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+                    ],
+                  ),
+                if (!isViewLimited && subjects.isNotEmpty) ...[
                   const SizedBox(width: 6),
                   Wrap(
                     spacing: 4,
@@ -421,29 +505,36 @@ class _ReviewCard extends StatelessWidget {
                   children: List.generate(5, (i) => Icon(
                     i < rating ? Icons.star : Icons.star_border,
                     size: 14,
-                    color: Colors.amber.shade600,
+                    color: isViewLimited ? Colors.grey.shade300 : Colors.amber.shade600,
                   )),
                 ),
               ],
             ),
-            if (text.isNotEmpty) ...[
+            if (isViewLimited) ...[
+              const SizedBox(height: 6),
+              Text('후기를 작성하면 내용을 볼 수 있습니다.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontStyle: FontStyle.italic)),
+            ],
+            if (!isViewLimited && text.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(text, style: const TextStyle(fontSize: 14, height: 1.5)),
             ],
             const SizedBox(height: 6),
-            if (!isSeed) ...[
+            if (!isSeed && !isViewLimited) ...[
               if (teacherStyles.isNotEmpty)
                 _ReviewDetail(label: '선생님 스타일', value: teacherStyles.join(' · ')),
               _ReviewDetail(label: '숙제량', value: review['homework_level'] as String?),
               _ReviewDetail(label: '성적 향상', value: review['score_improvement'] as String?),
             ],
-            const SizedBox(height: 4),
-            Text(
-              isSeed
-                  ? '수강생 후기를 바탕으로 AI가 요약한 정보입니다.'
-                  : '이 후기는 작성자 개인 경험을 바탕으로 한 의견입니다.',
-              style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontStyle: FontStyle.italic),
-            ),
+            if (!isViewLimited) ...[
+              const SizedBox(height: 4),
+              Text(
+                isSeed
+                    ? '수강생 후기를 바탕으로 AI가 요약한 정보입니다.'
+                    : '이 후기는 작성자 개인 경험을 바탕으로 한 의견입니다.',
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontStyle: FontStyle.italic),
+              ),
+            ],
           ],
         ),
       ),

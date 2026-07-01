@@ -385,24 +385,25 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
     total = len(rows)
 
     quota = _review_quota(user)
-    visible_rows = rows if quota is None else rows[:quota]
-    can_unlock_more = quota is not None and total > quota
+    readable = total if quota is None else min(quota, total)
+    is_limited = quota is not None and total > quota
 
     # 다음 해금까지 필요한 후기 수 계산
     count = user.academy_review_count
-    if count >= 5 or quota is None:
+    if quota is None:
         next_unlock_at = 0
     elif count >= 1:
-        next_unlock_at = 5 - count  # 5건 작성하면 전체 해제
+        next_unlock_at = max(0, 5 - count)
     else:
         next_unlock_at = 1
 
     out = []
-    for review, author in visible_rows:
+    for i, (review, author) in enumerate(rows):
+        view_limited = quota is not None and i >= quota
+
         author_display = None
-        if author and not review.is_anonymous:
+        if author and not review.is_anonymous and not view_limited:
             author_display = author.nickname
-        # active_child 기반 학교 정보 우선, fallback으로 user 직접 컬럼
         if author:
             active = author.active_child
             school_name = (active.school_name if active else None) or author.school_name
@@ -410,20 +411,22 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
         else:
             school_name = None
             grade = None
+
         out.append(AcademyReviewResponse(
             id=review.id,
             academy_id=review.academy_id,
-            subjects=review.subjects or [],
-            teacher_styles=review.teacher_styles or [],
-            homework_level=review.homework_level,
-            score_improvement=review.score_improvement,
-            review_text=review.review_text,
-            rating=review.rating,
+            subjects=[] if view_limited else (review.subjects or []),
+            teacher_styles=[] if view_limited else (review.teacher_styles or []),
+            homework_level=None if view_limited else review.homework_level,
+            score_improvement=None if view_limited else review.score_improvement,
+            review_text="" if view_limited else review.review_text,
+            rating=review.rating,  # 별점은 항상 표시
             nickname_type=review.nickname_type,
             is_anonymous=review.is_anonymous,
+            is_view_limited=view_limited,
             author_display_name=author_display,
-            author_school_name=school_name,
-            author_grade=grade,
+            author_school_name=None if view_limited else school_name,
+            author_grade=None if view_limited else grade,
             report_count=review.report_count or 0,
             is_hidden=review.is_hidden or False,
             is_seed=review.is_seed or False,
@@ -433,9 +436,10 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
     return AcademyReviewListResponse(
         reviews=out,
         quota_info=QuotaInfo(
-            visible=len(out),
+            readable=readable,
             total=total,
-            can_unlock_more=can_unlock_more,
+            is_limited=is_limited,
             next_unlock_at=next_unlock_at,
+            user_review_count=count,
         ),
     )
