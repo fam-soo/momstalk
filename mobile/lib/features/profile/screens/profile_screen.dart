@@ -153,6 +153,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final isMember = isAdmin || (_profile!['member_grade'] as String? ?? 'lurker') == 'member';
     final isPending = !isAdmin && (_profile!['auth_pending'] as bool? ?? false);
 
+    // active_child 기반 학교/지역 정보
+    final activeChildId = _profile!['active_child_id'] as int?;
+    final children = (_profile!['children'] as List?) ?? [];
+    final activeChild = activeChildId != null
+        ? children.firstWhere((c) => (c as Map)['id'] == activeChildId, orElse: () => null)
+        : null;
+    final displayRegion = (activeChild?['region'] ?? _profile!['region']) as String?;
+    final displaySchool = (activeChild?['school_name'] ?? _profile!['school_name']) as String?;
+    final displayGrade = (activeChild?['grade'] ?? _profile!['grade']) as int?;
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -207,15 +217,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 if (!isAdmin) ...[
                   const Divider(height: 24),
                   _row(Icons.location_on_outlined, '지역',
-                      isMember ? (_profile!['region'] ?? '-') : '미인증'),
+                      isMember ? (displayRegion ?? '-') : '미인증'),
                   const SizedBox(height: 8),
-                  _row(Icons.school_outlined, '학교',
-                      isMember
-                          ? '${_profile!['school_name'] ?? '-'} (${_schoolTypeLabel(_profile!['school_type'])})'
-                          : '미인증'),
-                  const SizedBox(height: 8),
-                  _row(Icons.grade_outlined, '학년',
-                      isMember ? '${_profile!['grade'] ?? '-'}학년' : '미인증'),
+                  _row(Icons.school_outlined, '학교', () {
+                      if (!isMember) return '미인증';
+                      final name = displaySchool ?? '-';
+                      return displayGrade != null ? '$name ($displayGrade학년)' : name;
+                    }()),
                 ],
               ],
             ),
