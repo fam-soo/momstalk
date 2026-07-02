@@ -147,19 +147,15 @@ def _detect_subjects_from_name(name: str) -> list[str]:
 async def search_academies(
     db: AsyncSession,
     name: Optional[str] = None,
-    region: Optional[str] = None,
-    subjects: Optional[list[str]] = None,   # 복수 과목 필터
+    regions: Optional[list[str]] = None,     # 복수 지역 필터 ["강남구", "양천구"]
+    subjects: Optional[list[str]] = None,    # 복수 과목 필터
     school_level: Optional[str] = None,      # 초등|중등|고등
     reviewer_school: Optional[str] = None,   # 후기 작성자 아이의 학교명
     reviewer_grades: Optional[list[int]] = None,  # 후기 작성자 아이의 학년(들)
 ) -> list[AcademyResponse]:
-    """DB 우선 검색 → 결과 없으면 NEIS API 조회 후 DB 캐싱.
-
-    이름 검색 시 region 필터 미적용 (전국 검색) — region은 지역 목록 조회에만 사용.
-    """
+    """DB 우선 검색 → 결과 없으면 NEIS API 조회 후 DB 캐싱."""
     filters = []
     if name:
-        # 입력 검색어 + 브랜드 alias 확장 (한글↔영문 양방향)
         aliases = _expand_name_aliases(name)
         if aliases:
             name_filters = [Academy.name.ilike(f"%{name}%")] + [
@@ -168,8 +164,11 @@ async def search_academies(
             filters.append(sa.or_(*name_filters))
         else:
             filters.append(Academy.name.ilike(f"%{name}%"))
-    if region:
-        filters.append(Academy.region.ilike(f"%{region}%"))
+    if regions:
+        if len(regions) == 1:
+            filters.append(Academy.region.ilike(f"%{regions[0]}%"))
+        else:
+            filters.append(sa.or_(*[Academy.region.ilike(f"%{r}%") for r in regions]))
     if subjects:
         # 선택한 과목 중 하나라도 포함하면 표시 (OR 조건)
         # JSONB @> 체크 + 학원명 키워드 fallback (subjects 미입력 학원 대응)

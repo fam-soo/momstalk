@@ -20,9 +20,10 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
 
   // 필터 상태
   final Set<String> _selectedSubjects = {};
-  String _selectedLevel = '';       // 초등|중등|고등|''
-  String _reviewerSchool = '';      // 후기 작성자 아이 학교명
-  final Set<int> _reviewerGrades = {}; // 후기 작성자 아이 학년
+  String _selectedLevel = '';           // 초등|중등|고등|''
+  String _reviewerSchool = '';          // 후기 작성자 아이 학교명
+  final Set<int> _reviewerGrades = {};  // 후기 작성자 아이 학년
+  final Set<String> _selectedRegions = {}; // 추가 지역 (기본 지역 외)
 
   // 사용자 프로필 (필터 기본값 제공용)
   String _userRegion = '';
@@ -40,12 +41,25 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   static const _subjects = ['수학', '영어', '과학', '국어', '음악', '미술', '체육', '코딩', '기타'];
   static const _levels = ['초등', '중등', '고등'];
   static const _grades = [1, 2, 3, 4, 5, 6];
+  static const _seoulDistricts = [
+    '강남구', '강동구', '강북구', '강서구', '관악구', '광진구', '구로구', '금천구',
+    '노원구', '도봉구', '동대문구', '동작구', '마포구', '서대문구', '서초구',
+    '성동구', '성북구', '송파구', '양천구', '영등포구', '용산구', '은평구',
+    '종로구', '중구', '중랑구',
+  ];
 
   bool get _hasFilter =>
       _selectedSubjects.isNotEmpty ||
       _selectedLevel.isNotEmpty ||
       _reviewerSchool.isNotEmpty ||
-      _reviewerGrades.isNotEmpty;
+      _reviewerGrades.isNotEmpty ||
+      _selectedRegions.isNotEmpty;
+
+  // 실제 검색에 사용할 지역 목록 (기본 + 추가 선택)
+  Set<String> get _activeRegions {
+    final base = <String>{if (_userRegion.isNotEmpty) _userRegion};
+    return {...base, ..._selectedRegions};
+  }
 
   @override
   void initState() {
@@ -97,14 +111,17 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
 
   Future<void> _search({String? regionOverride}) async {
     final q = _searchCtrl.text.trim();
-    final searchRegion = regionOverride ?? _userRegion;
+    // regionOverride: 초기 로딩 시 사용자 지역. 이후엔 _activeRegions 사용
+    final regions = regionOverride != null
+        ? {regionOverride}
+        : _activeRegions;
 
     if (mounted) setState(() { _loading = true; _searched = true; _error = null; });
     try {
       final dio = ref.read(dioProvider);
       final params = <String, dynamic>{};
       if (q.isNotEmpty) params['name'] = q;
-      if (searchRegion.isNotEmpty) params['region'] = searchRegion;
+      if (regions.isNotEmpty) params['region'] = regions.join(',');
       if (_selectedSubjects.isNotEmpty) params['subjects'] = _selectedSubjects.join(',');
       if (_selectedLevel.isNotEmpty) params['school_level'] = _selectedLevel;
       if (_reviewerSchool.isNotEmpty) params['reviewer_school'] = _reviewerSchool;
@@ -147,6 +164,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
     var tempLevel = _selectedLevel;
     var tempSchool = _reviewerSchool.isNotEmpty ? _reviewerSchool : _userSchoolName;
     final tempGrades = Set<int>.from(_reviewerGrades);
+    final tempRegions = Set<String>.from(_selectedRegions);
     final schoolCtrl = TextEditingController(text: tempSchool);
 
     await showModalBottomSheet(
@@ -188,6 +206,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                           tempSubjects.clear();
                           tempLevel = '';
                           tempGrades.clear();
+                          tempRegions.clear();
                           schoolCtrl.clear();
                         });
                       },
@@ -201,6 +220,47 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                     controller: scrollCtrl,
                     padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
                     children: [
+                      // ── 지역 추가 선택 ────────────────────
+                      Row(children: [
+                        const Text('지역', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                        const SizedBox(width: 8),
+                        Text(
+                          _userRegion.isNotEmpty ? '(기본: $_userRegion)' : '',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                        ),
+                      ]),
+                      const SizedBox(height: 4),
+                      Text(
+                        '기본 지역 외 추가로 볼 지역을 선택하세요.',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: _seoulDistricts.map((district) {
+                          final isBase = district == _userRegion;
+                          final sel = tempRegions.contains(district);
+                          return FilterChip(
+                            label: Text(district, style: const TextStyle(fontSize: 12)),
+                            selected: isBase || sel,
+                            onSelected: isBase ? null : (_) => setBS(() {
+                              sel ? tempRegions.remove(district) : tempRegions.add(district);
+                            }),
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor: isBase
+                                ? Theme.of(ctx).colorScheme.primary.withOpacity(0.08)
+                                : null,
+                            selectedColor: isBase
+                                ? Theme.of(ctx).colorScheme.primary.withOpacity(0.2)
+                                : null,
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 12),
+
                       // ── 과목 (복수 선택, 3개씩) ──────────
                       const Text('과목', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 8),
@@ -302,20 +362,17 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                           final school = schoolCtrl.text.trim();
                           Navigator.pop(ctx);
                           setState(() {
-                            _selectedSubjects
-                              ..clear()
-                              ..addAll(tempSubjects);
+                            _selectedSubjects..clear()..addAll(tempSubjects);
                             _selectedLevel = tempLevel;
                             _reviewerSchool = school;
-                            _reviewerGrades
-                              ..clear()
-                              ..addAll(tempGrades);
+                            _reviewerGrades..clear()..addAll(tempGrades);
+                            _selectedRegions..clear()..addAll(tempRegions);
                           });
                           _search();
                         },
                         style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
                         child: Text(
-                          _buildFilterLabel(tempSubjects, tempLevel, schoolCtrl.text.trim(), tempGrades),
+                          _buildFilterLabel(tempSubjects, tempLevel, schoolCtrl.text.trim(), tempGrades, tempRegions),
                         ),
                       ),
                     ),
@@ -330,8 +387,9 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
     schoolCtrl.dispose();
   }
 
-  String _buildFilterLabel(Set<String> subjects, String level, String school, Set<int> grades) {
+  String _buildFilterLabel(Set<String> subjects, String level, String school, Set<int> grades, [Set<String>? regions]) {
     final parts = <String>[
+      if ((regions ?? {}).isNotEmpty) '지역 ${(regions ?? {}).length}개 추가',
       if (subjects.isNotEmpty) '과목 ${subjects.length}개',
       if (level.isNotEmpty) level,
       if (school.isNotEmpty) school,
@@ -361,6 +419,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                   Expanded(
                     child: Text(
                       [
+                        if (_selectedRegions.isNotEmpty) '+지역: ${_selectedRegions.join(', ')}',
                         if (_selectedSubjects.isNotEmpty) '과목: ${_selectedSubjects.join(', ')}',
                         if (_selectedLevel.isNotEmpty) '학교급: $_selectedLevel',
                         if (_reviewerSchool.isNotEmpty) '학교: $_reviewerSchool',
@@ -378,6 +437,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                         _selectedLevel = '';
                         _reviewerSchool = '';
                         _reviewerGrades.clear();
+                        _selectedRegions.clear();
                       });
                       _search();
                     },
@@ -437,8 +497,12 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                                     Padding(
                                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
                                       child: Text(
-                                        '학원 ${_results.length}곳'
-                                        '${_userRegion.isNotEmpty && !_hasFilter ? " · $_userRegion" : ""}',
+                                        () {
+                                          final regionLabel = _activeRegions.length > 1
+                                              ? _activeRegions.join(', ')
+                                              : _userRegion;
+                                          return '학원 ${_results.length}곳 · $regionLabel';
+                                        }(),
                                         style: TextStyle(
                                           fontSize: 13,
                                           color: Colors.grey.shade600,
@@ -472,7 +536,11 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   PreferredSizeWidget _buildNormalAppBar(ThemeData theme) {
     return AppBar(
       title: Text(
-        _isAdmin ? '전지역 학원 후기' : (_userRegion.isNotEmpty ? '$_userRegion 학원 후기' : '학원 후기'),
+        _isAdmin
+            ? '전지역 학원 후기'
+            : _selectedRegions.isNotEmpty
+                ? '${_activeRegions.length}개 지역 학원 후기'
+                : (_userRegion.isNotEmpty ? '$_userRegion 학원 후기' : '학원 후기'),
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
       centerTitle: false,
