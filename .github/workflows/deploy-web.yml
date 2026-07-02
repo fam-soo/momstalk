@@ -38,11 +38,10 @@ jobs:
         run: flutter build web --release --base-href / --no-tree-shake-icons --dart-define=ENVIRONMENT=production
 
       - name: Deploy to Vercel
-        working-directory: mobile/build/web
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           npm i -g vercel@latest
-          vercel deploy --prod --token=$VERCEL_TOKEN --yes
+          vercel deploy mobile/build/web --prod --token=$VERCEL_TOKEN --yes
