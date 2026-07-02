@@ -116,6 +116,7 @@ class InviteGenerateResponse(BaseModel):
     token: str
     expires_at: str
     deeplink: str
+    school_name: str = ""
 
 
 class InviteUseRequest(BaseModel):

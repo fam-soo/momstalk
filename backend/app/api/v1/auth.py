@@ -329,18 +329,27 @@ async def capture_submit(
 
 # ── 추천 링크 (가입 루트 C) ──────────────────────────
 
+class InviteGenerateRequest(BaseModel):
+    child_id: Optional[int] = None  # 다자녀 시 특정 자녀 지정. None이면 active_child 사용
+
+
 @router.post("/invite/generate", response_model=InviteGenerateResponse)
 async def generate_invite(
+    req: InviteGenerateRequest = InviteGenerateRequest(),
     user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ):
-    """정회원만 추천 링크 발급. 발급자의 school_code 고정, 48시간 유효."""
-    link = await invite_service.generate_invite(user, db)
+    """정회원만 추천 링크 발급. active_child(또는 지정 child_id) 학교 고정, 48시간 유효."""
+    try:
+        link = await invite_service.generate_invite(user, db, child_id=req.child_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     deeplink = f"{settings.INVITE_DEEPLINK_BASE}/{link.token}"
     return InviteGenerateResponse(
         token=link.token,
         expires_at=link.expires_at.isoformat(),
         deeplink=deeplink,
+        school_name=link.school_name,
     )
 
 
@@ -351,7 +360,12 @@ async def check_invite(token: str, db: AsyncSession = Depends(get_db)):
         link = await invite_service.validate_invite(token, db)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    return {"school_name": link.school_name, "school_code": link.school_code, "expires_at": link.expires_at.isoformat()}
+    return {
+        "school_name": link.school_name,
+        "school_code": link.school_code,
+        "school_type": link.school_type,
+        "expires_at": link.expires_at.isoformat(),
+    }
 
 
 @router.post("/invite/use", status_code=status.HTTP_204_NO_CONTENT)

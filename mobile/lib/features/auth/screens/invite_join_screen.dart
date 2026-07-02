@@ -146,7 +146,22 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
     }
 
     final schoolName = _inviteInfo?['school_name'] as String? ?? '';
+    final schoolType = _inviteInfo?['school_type'] as String? ?? 'elementary';
+    final maxGrade = schoolType == 'elementary' ? 6 : 3;
+    final schoolTypeLabel = switch (schoolType) {
+      'elementary' => '초등학교',
+      'middle' => '중학교',
+      'high' => '고등학교',
+      _ => '',
+    };
     final isBusy = _joining || _loggingIn;
+
+    // 학년이 범위를 벗어나면 리셋
+    if (_grade > maxGrade) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) setState(() => _grade = 1);
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('초대 링크로 가입')),
@@ -164,7 +179,13 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
                   Text(
                     schoolName,
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
                   ),
+                  if (schoolTypeLabel.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(schoolTypeLabel,
+                        style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+                  ],
                   const SizedBox(height: 4),
                   Text('학부모 커뮤니티 초대', style: TextStyle(color: Colors.grey.shade600)),
                 ]),
@@ -174,9 +195,9 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
             const Text('자녀 학년', style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             DropdownButtonFormField<int>(
-              value: _grade,
+              value: _grade.clamp(1, maxGrade),
               decoration: const InputDecoration(border: OutlineInputBorder()),
-              items: List.generate(6, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}학년'))),
+              items: List.generate(maxGrade, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}학년'))),
               onChanged: isBusy ? null : (v) => setState(() => _grade = v ?? 1),
             ),
             const SizedBox(height: 16),

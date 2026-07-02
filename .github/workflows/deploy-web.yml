@@ -32,6 +32,14 @@ jobs:
           flutter-version: '3.32.2'
           channel: 'stable'
           cache: true
+          cache-key: flutter-${{ runner.os }}-3.32.2
+
+      - name: Cache pub packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('mobile/pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
 
       - name: Flutter pub get
         working-directory: mobile
@@ -39,7 +47,7 @@ jobs:
 
       - name: Build Flutter Web
         working-directory: mobile
-        run: flutter build web --release --base-href / --dart-define=ENVIRONMENT=production --dart-define=FLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/
+        run: flutter build web --release --base-href / --no-tree-shake-icons --dart-define=ENVIRONMENT=production --dart-define=FLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/
 
       - uses: actions/configure-pages@v4
 

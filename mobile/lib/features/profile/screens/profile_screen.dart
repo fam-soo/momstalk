@@ -92,17 +92,60 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _generateInvite() async {
+    final children = (_profile?['children'] as List? ?? []);
+    int? selectedChildId;
+
+    // 자녀가 2명 이상이면 어느 학교 링크를 공유할지 선택
+    if (children.length > 1) {
+      final activeChildId = _profile?['active_child_id'] as int?;
+      selectedChildId = await showDialog<int>(
+        context: context,
+        builder: (ctx) => SimpleDialog(
+          title: const Text('어느 학교 초대 링크를 만들까요?'),
+          children: children.map<Widget>((c) {
+            final id = c['id'] as int;
+            final name = c['school_name'] as String? ?? '';
+            final grade = c['grade'] as int? ?? 1;
+            final isActive = id == activeChildId;
+            return SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, id),
+              child: Row(children: [
+                Expanded(child: Text('$name ($grade학년)', style: const TextStyle(fontSize: 14))),
+                if (isActive)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Theme.of(ctx).colorScheme.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text('활성', style: TextStyle(fontSize: 11, color: Theme.of(ctx).colorScheme.primary)),
+                  ),
+              ]),
+            );
+          }).toList(),
+        ),
+      );
+      if (selectedChildId == null) return; // 취소
+    }
+
     try {
       final dio = ref.read(dioProvider);
-      final resp = await dio.post('/auth/invite/generate');
+      final resp = await dio.post('/auth/invite/generate',
+          data: selectedChildId != null ? {'child_id': selectedChildId} : {});
       final deeplink = resp.data['deeplink'] as String;
+      final schoolName = resp.data['school_name'] as String? ?? '';
       if (!mounted) return;
       await showDialog(
         context: context,
-        builder: (ctx) => _InviteShareDialog(deeplink: deeplink),
+        builder: (ctx) => _InviteShareDialog(deeplink: deeplink, schoolName: schoolName),
       );
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('링크 생성 실패: $e')));
+      if (mounted) {
+        final msg = e is DioException
+            ? (e.response?.data?['detail'] as String? ?? '링크 생성 실패')
+            : '링크 생성 실패: $e';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      }
     }
   }
 
@@ -750,28 +793,43 @@ class _AddChildScreenState extends ConsumerState<_AddChildScreen> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: TextField(
-              controller: _searchCtrl,
-              autofocus: true,
-              decoration: InputDecoration(
-                hintText: '학교명 또는 지역명 (예: 행복초, 강남구)',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchCtrl.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 20),
-                        onPressed: () {
-                          _searchCtrl.clear();
-                          setState(() { _results = []; _selected = null; _searched = false; });
-                        },
-                      )
-                    : null,
+            child: Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchCtrl,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: '학교명 또는 지역명 (예: 행복초, 강남구)',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchCtrl.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 20),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              setState(() { _results = []; _selected = null; _searched = false; });
+                            },
+                          )
+                        : null,
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => _search(),
+                ),
               ),
-              textInputAction: TextInputAction.search,
-              onChanged: (_) => setState(() {}),
-              onSubmitted: (_) => _search(),
-            ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: _loading ? null : _search,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: _loading
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('검색'),
+              ),
+            ]),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
@@ -1313,7 +1371,8 @@ class _TemperatureChip extends StatelessWidget {
 
 class _InviteShareDialog extends StatelessWidget {
   final String deeplink;
-  const _InviteShareDialog({required this.deeplink});
+  final String schoolName;
+  const _InviteShareDialog({required this.deeplink, this.schoolName = ''});
 
   Future<void> _copyLink(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: deeplink));
@@ -1365,6 +1424,21 @@ class _InviteShareDialog extends StatelessWidget {
     return AlertDialog(
       title: const Text('초대 링크 생성 완료'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (schoolName.isNotEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.4),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '📍 $schoolName 학부모 초대 링크',
+              style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
+            ),
+          ),
         const Text(
           '아래 링크를 공유해 주세요.\n48시간 내 1회만 사용 가능합니다.',
           style: TextStyle(fontSize: 13, color: Colors.grey),
