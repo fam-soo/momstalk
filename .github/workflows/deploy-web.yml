@@ -44,4 +44,4 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           npm i -g vercel@latest
-          vercel deploy mobile/build/web --prod --token=$VERCEL_TOKEN --yes
+          vercel deploy mobile/build/web --prod --token=$VERCEL_TOKEN --yes --no-git
