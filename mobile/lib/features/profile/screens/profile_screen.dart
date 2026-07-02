@@ -1154,26 +1154,6 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   }
 }
 
-class _SchoolTypeChip extends StatelessWidget {
-  final String type;
-  const _SchoolTypeChip({required this.type});
-
-  @override
-  Widget build(BuildContext context) {
-    final (label, color) = switch (type) {
-      'elementary' => ('초', Colors.green),
-      'middle' => ('중', Colors.blue),
-      'high' => ('고', Colors.purple),
-      _ => ('?', Colors.grey),
-    };
-    return CircleAvatar(
-      radius: 16,
-      backgroundColor: color.withOpacity(0.15),
-      child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color)),
-    );
-  }
-}
-
 // ──────────────────────────────────────────────────────────────────
 // 스크랩한 게시글 목록 화면
 // ──────────────────────────────────────────────────────────────────
