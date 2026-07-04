@@ -1,5 +1,5 @@
 """
-관리자 API — MVP.
+관리자 API
 
 인증: 일반 유저 JWT + users.is_admin = true
 """
@@ -8,17 +8,19 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
-from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, desc, or_, cast, String
 
 from app.db import get_service_db
 from app.models.service_models import (
+    Academy,
+    AcademyReview,
     AdminAction,
     AuthCapture,
     Comment,
     Post,
+    ProfanityWord,
     Report,
     User,
     UserWarning,
@@ -420,3 +422,420 @@ async def review_report(
                 db.add(UserWarning(user_id=author_id, reason=req.reason or "영구 정지", warning_type="banned", issued_by=admin.id))
 
     await db.commit()
+
+
+# ── 통계 대시보드 ──────────────────────────────────────
+
+@router.get("/stats")
+async def get_stats(
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    now = datetime.utcnow()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_ago = now - timedelta(days=7)
+
+    total_users = (await db.execute(select(func.count(User.id)))).scalar()
+    member_count = (await db.execute(
+        select(func.count(User.id)).where(User.member_grade == "member")
+    )).scalar()
+    lurker_count = (await db.execute(
+        select(func.count(User.id)).where(User.member_grade == "lurker")
+    )).scalar()
+    banned_count = (await db.execute(
+        select(func.count(User.id)).where(User.is_banned == True)
+    )).scalar()
+    suspended_count = (await db.execute(
+        select(func.count(User.id)).where(User.suspended_until > now)
+    )).scalar()
+    new_today = (await db.execute(
+        select(func.count(User.id)).where(User.created_at >= today)
+    )).scalar()
+    new_week = (await db.execute(
+        select(func.count(User.id)).where(User.created_at >= week_ago)
+    )).scalar()
+
+    pending_captures = (await db.execute(
+        select(func.count(AuthCapture.id)).where(AuthCapture.status == "pending")
+    )).scalar()
+    pending_reports = (await db.execute(
+        select(func.count(Report.id)).where(Report.status == "pending")
+    )).scalar()
+
+    total_posts = (await db.execute(
+        select(func.count(Post.id)).where(Post.is_deleted == False)
+    )).scalar()
+    posts_today = (await db.execute(
+        select(func.count(Post.id)).where(Post.created_at >= today, Post.is_deleted == False)
+    )).scalar()
+    posts_week = (await db.execute(
+        select(func.count(Post.id)).where(Post.created_at >= week_ago, Post.is_deleted == False)
+    )).scalar()
+    hidden_posts = (await db.execute(
+        select(func.count(Post.id)).where(Post.is_hidden == True, Post.is_deleted == False)
+    )).scalar()
+
+    total_reviews = (await db.execute(
+        select(func.count(AcademyReview.id)).where(AcademyReview.is_seed == False)
+    )).scalar()
+    hidden_reviews = (await db.execute(
+        select(func.count(AcademyReview.id)).where(
+            AcademyReview.is_hidden == True, AcademyReview.is_seed == False
+        )
+    )).scalar()
+
+    from sqlalchemy import text
+    daily_rows = (await db.execute(text(
+        "SELECT DATE(created_at) as d, COUNT(*) as cnt "
+        "FROM users WHERE created_at >= NOW() - INTERVAL '7 days' "
+        "GROUP BY d ORDER BY d"
+    ))).fetchall()
+    daily_signup = [{"date": str(r.d), "count": r.cnt} for r in daily_rows]
+
+    return {
+        "users": {
+            "total": total_users,
+            "member": member_count,
+            "lurker": lurker_count,
+            "banned": banned_count,
+            "suspended": suspended_count,
+            "new_today": new_today,
+            "new_week": new_week,
+        },
+        "pending": {
+            "captures": pending_captures,
+            "reports": pending_reports,
+        },
+        "posts": {
+            "total": total_posts,
+            "today": posts_today,
+            "week": posts_week,
+            "hidden": hidden_posts,
+        },
+        "reviews": {
+            "total": total_reviews,
+            "hidden": hidden_reviews,
+        },
+        "daily_signup": daily_signup,
+    }
+
+
+# ── 게시글 목록 (관리자용) ─────────────────────────────
+
+@router.get("/posts")
+async def list_posts_admin(
+    q: Optional[str] = Query(None),
+    filter: str = Query("all"),
+    page: int = Query(1, ge=1),
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    limit = 30
+    offset = (page - 1) * limit
+    query = select(Post).where(Post.is_deleted == False)
+    if filter == "hidden":
+        query = query.where(Post.is_hidden == True)
+    elif filter == "reported":
+        reported_ids = (await db.execute(
+            select(Report.target_id).where(Report.target_type == "post", Report.status == "pending")
+        )).scalars().all()
+        query = query.where(Post.id.in_(reported_ids))
+    if q:
+        query = query.where(or_(Post.title.ilike(f"%{q}%"), Post.content.ilike(f"%{q}%")))
+    total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar()
+    posts = (await db.execute(query.order_by(desc(Post.created_at)).limit(limit).offset(offset))).scalars().all()
+    author_ids = list({p.author_id for p in posts if p.author_id})
+    authors: dict[int, str] = {}
+    if author_ids:
+        for u in (await db.execute(select(User).where(User.id.in_(author_ids)))).scalars().all():
+            authors[u.id] = u.nickname or "?"
+    return {
+        "total": total,
+        "page": page,
+        "items": [
+            {
+                "id": p.id,
+                "title": p.title,
+                "content": (p.content or "")[:100],
+                "board_type": p.board_type,
+                "author_nickname": authors.get(p.author_id, "알수없음"),
+                "author_id": p.author_id,
+                "is_hidden": p.is_hidden,
+                "report_count": p.report_count,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in posts
+        ],
+    }
+
+
+# ── 댓글 관리 ──────────────────────────────────────────
+
+@router.get("/comments")
+async def list_comments_admin(
+    q: Optional[str] = Query(None),
+    filter: str = Query("all"),
+    page: int = Query(1, ge=1),
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    limit = 30
+    offset = (page - 1) * limit
+    query = select(Comment).where(Comment.is_deleted == False)
+    if filter == "hidden":
+        query = query.where(Comment.is_hidden == True)
+    elif filter == "reported":
+        reported_ids = (await db.execute(
+            select(Report.target_id).where(Report.target_type == "comment", Report.status == "pending")
+        )).scalars().all()
+        query = query.where(Comment.id.in_(reported_ids))
+    if q:
+        query = query.where(Comment.content.ilike(f"%{q}%"))
+    total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar()
+    comments = (await db.execute(query.order_by(desc(Comment.created_at)).limit(limit).offset(offset))).scalars().all()
+    author_ids = list({c.author_id for c in comments if c.author_id})
+    authors: dict[int, str] = {}
+    if author_ids:
+        for u in (await db.execute(select(User).where(User.id.in_(author_ids)))).scalars().all():
+            authors[u.id] = u.nickname or "?"
+    return {
+        "total": total,
+        "page": page,
+        "items": [
+            {
+                "id": c.id,
+                "content": (c.content or "")[:200],
+                "post_id": c.post_id,
+                "author_nickname": authors.get(c.author_id, "알수없음"),
+                "author_id": c.author_id,
+                "is_hidden": c.is_hidden,
+                "report_count": c.report_count,
+                "created_at": c.created_at.isoformat() if c.created_at else None,
+            }
+            for c in comments
+        ],
+    }
+
+
+@router.post("/comments/{comment_id}/hide", status_code=status.HTTP_204_NO_CONTENT)
+async def hide_comment(
+    comment_id: int,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    comment = (await db.execute(select(Comment).where(Comment.id == comment_id))).scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="댓글을 찾을 수 없습니다.")
+    comment.is_hidden = True
+    db.add(AdminAction(admin_id=admin.id, action_type="hide_comment", target_type="comment", target_id=comment_id))
+    await db.commit()
+
+
+@router.post("/comments/{comment_id}/unhide", status_code=status.HTTP_204_NO_CONTENT)
+async def unhide_comment(
+    comment_id: int,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    comment = (await db.execute(select(Comment).where(Comment.id == comment_id))).scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="댓글을 찾을 수 없습니다.")
+    comment.is_hidden = False
+    db.add(AdminAction(admin_id=admin.id, action_type="unhide_comment", target_type="comment", target_id=comment_id))
+    await db.commit()
+
+
+@router.delete("/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def force_delete_comment(
+    comment_id: int,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    comment = (await db.execute(select(Comment).where(Comment.id == comment_id))).scalar_one_or_none()
+    if not comment:
+        raise HTTPException(status_code=404, detail="댓글을 찾을 수 없습니다.")
+    comment.is_deleted = True
+    comment.is_hidden = True
+    db.add(AdminAction(admin_id=admin.id, action_type="delete_comment", target_type="comment", target_id=comment_id))
+    await db.commit()
+
+
+# ── 학원 후기 관리 ────────────────────────────────────
+
+@router.get("/reviews")
+async def list_reviews_admin(
+    q: Optional[str] = Query(None),
+    filter: str = Query("all"),
+    page: int = Query(1, ge=1),
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    limit = 30
+    offset = (page - 1) * limit
+    query = select(AcademyReview)
+    if filter == "hidden":
+        query = query.where(AcademyReview.is_hidden == True)
+    elif filter == "seed":
+        query = query.where(AcademyReview.is_seed == True)
+    elif filter == "user":
+        query = query.where(AcademyReview.is_seed == False)
+    if q:
+        query = query.where(AcademyReview.review_text.ilike(f"%{q}%"))
+    total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar()
+    reviews = (await db.execute(query.order_by(desc(AcademyReview.created_at)).limit(limit).offset(offset))).scalars().all()
+    academy_ids = list({r.academy_id for r in reviews})
+    academies: dict[int, str] = {}
+    if academy_ids:
+        for a in (await db.execute(select(Academy).where(Academy.id.in_(academy_ids)))).scalars().all():
+            academies[a.id] = a.name
+    author_ids = list({r.author_id for r in reviews if r.author_id})
+    authors: dict[int, str] = {}
+    if author_ids:
+        for u in (await db.execute(select(User).where(User.id.in_(author_ids)))).scalars().all():
+            authors[u.id] = u.nickname or "?"
+    return {
+        "total": total,
+        "page": page,
+        "items": [
+            {
+                "id": r.id,
+                "academy_id": r.academy_id,
+                "academy_name": academies.get(r.academy_id, "?"),
+                "author_nickname": authors.get(r.author_id, "알수없음"),
+                "author_id": r.author_id,
+                "rating": r.rating,
+                "review_text": (r.review_text or "")[:200],
+                "is_hidden": r.is_hidden,
+                "is_seed": r.is_seed,
+                "report_count": r.report_count,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in reviews
+        ],
+    }
+
+
+@router.post("/reviews/{review_id}/hide", status_code=status.HTTP_204_NO_CONTENT)
+async def hide_review(
+    review_id: int,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    review = (await db.execute(select(AcademyReview).where(AcademyReview.id == review_id))).scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="후기를 찾을 수 없습니다.")
+    review.is_hidden = True
+    db.add(AdminAction(admin_id=admin.id, action_type="hide_review", target_type="review", target_id=review_id))
+    await db.commit()
+
+
+@router.post("/reviews/{review_id}/unhide", status_code=status.HTTP_204_NO_CONTENT)
+async def unhide_review(
+    review_id: int,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    review = (await db.execute(select(AcademyReview).where(AcademyReview.id == review_id))).scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="후기를 찾을 수 없습니다.")
+    review.is_hidden = False
+    db.add(AdminAction(admin_id=admin.id, action_type="unhide_review", target_type="review", target_id=review_id))
+    await db.commit()
+
+
+@router.delete("/reviews/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_review_admin(
+    review_id: int,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    review = (await db.execute(select(AcademyReview).where(AcademyReview.id == review_id))).scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=404, detail="후기를 찾을 수 없습니다.")
+    await db.delete(review)
+    db.add(AdminAction(admin_id=admin.id, action_type="delete_review", target_type="review", target_id=review_id))
+    await db.commit()
+
+
+# ── 금칙어 관리 ───────────────────────────────────────
+
+@router.get("/profanity")
+async def list_profanity(
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    words = (await db.execute(select(ProfanityWord).order_by(ProfanityWord.word))).scalars().all()
+    return [{"id": w.id, "word": w.word, "created_at": w.created_at.isoformat() if w.created_at else None} for w in words]
+
+
+class ProfanityRequest(BaseModel):
+    word: str
+
+
+@router.post("/profanity", status_code=status.HTTP_201_CREATED)
+async def add_profanity(
+    req: ProfanityRequest,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    word = req.word.strip().lower()
+    if not word:
+        raise HTTPException(status_code=400, detail="단어를 입력해주세요.")
+    existing = (await db.execute(select(ProfanityWord).where(ProfanityWord.word == word))).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=409, detail="이미 등록된 금칙어입니다.")
+    db.add(ProfanityWord(word=word))
+    db.add(AdminAction(admin_id=admin.id, action_type="add_profanity", detail=word))
+    await db.commit()
+    return {"word": word}
+
+
+@router.delete("/profanity/{word_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_profanity(
+    word_id: int,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    word = (await db.execute(select(ProfanityWord).where(ProfanityWord.id == word_id))).scalar_one_or_none()
+    if not word:
+        raise HTTPException(status_code=404, detail="금칙어를 찾을 수 없습니다.")
+    db.add(AdminAction(admin_id=admin.id, action_type="delete_profanity", detail=word.word))
+    await db.delete(word)
+    await db.commit()
+
+
+# ── 관리자 행동 로그 ───────────────────────────────────
+
+@router.get("/logs")
+async def list_admin_logs(
+    page: int = Query(1, ge=1),
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    limit = 50
+    offset = (page - 1) * limit
+    total = (await db.execute(select(func.count(AdminAction.id)))).scalar()
+    logs = (await db.execute(
+        select(AdminAction).order_by(desc(AdminAction.created_at)).limit(limit).offset(offset)
+    )).scalars().all()
+    admin_ids = list({log.admin_id for log in logs if log.admin_id})
+    admins: dict[int, str] = {}
+    if admin_ids:
+        for u in (await db.execute(select(User).where(User.id.in_(admin_ids)))).scalars().all():
+            admins[u.id] = u.nickname or "?"
+    return {
+        "total": total,
+        "page": page,
+        "items": [
+            {
+                "id": log.id,
+                "admin_nickname": admins.get(log.admin_id, "?"),
+                "action_type": log.action_type,
+                "target_type": log.target_type,
+                "target_id": log.target_id,
+                "detail": log.detail,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            }
+            for log in logs
+        ],
+    }
