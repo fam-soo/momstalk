@@ -243,11 +243,10 @@ async def approve_capture(capture_id: int, admin: User, db: AsyncSession) -> Non
 
         if not user.active_child_id:
             user.active_child_id = child.id
-
-        # deprecated 필드 동기화
-        user.school_code = capture.input_school_code
-        user.school_name = capture.input_school_name
-        user.grade = capture.input_grade
+            # 첫 자녀인 경우에만 deprecated 필드 동기화
+            user.school_code = capture.input_school_code
+            user.school_name = capture.input_school_name
+            user.grade = capture.input_grade
 
         push_title = "자녀 학교 인증 완료!"
         push_body = f"{capture.input_school_name} 학부모로 확인되었습니다."
@@ -261,8 +260,8 @@ async def approve_capture(capture_id: int, admin: User, db: AsyncSession) -> Non
         if capture.input_class_num:
             user.class_num = capture.input_class_num
 
-        push_title = "가입 승인 ��료!"
-        push_body = "���스토크 정회원이 되었습니다."
+        push_title = "가입 승인 완료!"
+        push_body = "맘스토크 정회원이 되었습니다."
 
     db.add(AdminAction(
         admin_id=admin.id,
