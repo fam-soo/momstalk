@@ -1,11 +1,9 @@
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
-import 'package:http_parser/http_parser.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
@@ -55,19 +53,14 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
 
   static const _allowedExtensions = {'jpg', 'jpeg', 'png', 'heic', 'heif'};
 
-  String _mimeFromName(String name) {
-    final ext = name.split('.').last.toLowerCase();
-    switch (ext) {
-      case 'png': return 'image/png';
-      case 'heic': return 'image/heic';
-      case 'heif': return 'image/heif';
-      default: return 'image/jpeg';
-    }
-  }
-
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1200,
+      maxHeight: 1600,
+      imageQuality: 75,
+    );
     if (picked == null) return;
     final ext = picked.name.split('.').last.toLowerCase();
     if (!_allowedExtensions.contains(ext)) {
@@ -89,47 +82,37 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
     }
     setState(() => _uploading = true);
     try {
-      final token = await ref.read(tokenStorageProvider).read(AppConstants.tokenKey);
-      final uri = Uri.parse('${AppConstants.baseUrl}/auth/capture/upload');
+      final dio = ref.read(dioProvider);
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          _imageBytes!,
+          filename: _pickedFile!.name,
+        ),
+        'school_code': '${widget.schoolInfo['school_code'] ?? ''}',
+        'school_name': '${widget.schoolInfo['school_name'] ?? ''}',
+        'grade': '${widget.schoolInfo['grade'] ?? 1}',
+        'school_type': '${widget.schoolInfo['school_type'] ?? ''}',
+        'region': '${widget.schoolInfo['region'] ?? ''}',
+        'capture_type': widget.captureType,
+        if (widget.schoolInfo['class_num'] != null)
+          'class_num': '${widget.schoolInfo['class_num']}',
+      });
 
-      final request = http.MultipartRequest('POST', uri);
-      if (token != null) request.headers['Authorization'] = 'Bearer $token';
+      await dio.post(
+        '/auth/capture/upload',
+        data: formData,
+        options: Options(receiveTimeout: const Duration(minutes: 3)),
+      );
 
-      final mime = _mimeFromName(_pickedFile!.name);
-      request.files.add(http.MultipartFile.fromBytes(
-        'file',
-        _imageBytes!,
-        filename: _pickedFile!.name,
-        contentType: MediaType.parse(mime),
-      ));
-      request.fields['school_code'] = '${widget.schoolInfo['school_code'] ?? ''}';
-      request.fields['school_name'] = '${widget.schoolInfo['school_name'] ?? ''}';
-      request.fields['grade'] = '${widget.schoolInfo['grade'] ?? 1}';
-      request.fields['school_type'] = '${widget.schoolInfo['school_type'] ?? ''}';
-      request.fields['region'] = '${widget.schoolInfo['region'] ?? ''}';
-      request.fields['capture_type'] = widget.captureType;
-      if (widget.schoolInfo['class_num'] != null) {
-        request.fields['class_num'] = '${widget.schoolInfo['class_num']}';
-      }
-
-      // http 패키지는 브라우저 네이티브 XHR/fetch를 사용 → Dio 웹 어댑터 충돌 없음
-      final streamed = await request.send().timeout(const Duration(minutes: 3));
-      final status = streamed.statusCode;
-
-      if (status == 204 || status == 200) {
-        if (mounted) {
-          if (widget.captureType == 'child_add') {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('제출 완료! 관리자 확인 후 자녀 학교가 추가됩니다.')),
-            );
-            context.pop(true);
-          } else {
-            context.go('/auth/pending');
-          }
+      if (mounted) {
+        if (widget.captureType == 'child_add') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('제출 완료! 관리자 확인 후 자녀 학교가 추가됩니다.')),
+          );
+          context.pop(true);
+        } else {
+          context.go('/auth/pending');
         }
-      } else {
-        final body = await streamed.stream.bytesToString();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('업로드 실패 ($status): $body')));
       }
     } on DioException catch (e) {
       final detail = (e.response?.data is Map) ? e.response!.data['detail'] : e.message;

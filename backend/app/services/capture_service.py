@@ -196,7 +196,66 @@ async def submit_capture(
 
     await db.commit()
     await db.refresh(capture)
+
+    # 신뢰된 사용자: 심사 없이 즉시 승인 처리
+    if getattr(user, "is_trusted", False):
+        await _auto_approve_trusted(user, capture, school_code, school_name, grade, class_num, school_type, region, db)
+
     return capture
+
+
+async def _auto_approve_trusted(
+    user: User,
+    capture: AuthCapture,
+    school_code: str,
+    school_name: str,
+    grade: int,
+    class_num: int | None,
+    school_type: str,
+    region: str,
+    db: AsyncSession,
+) -> None:
+    """is_trusted 유저의 캡처를 즉시 승인."""
+    from app.models.service_models import UserChild
+    capture.status = "approved"
+    capture.reviewed_at = datetime.utcnow()
+
+    if capture.capture_type == "child_add":
+        from sqlalchemy import select as _select
+        existing_child = (await db.execute(
+            _select(UserChild).where(
+                UserChild.user_id == user.id,
+                UserChild.school_code == school_code,
+            )
+        )).scalar_one_or_none()
+        if existing_child:
+            existing_child.grade = grade
+            existing_child.class_num = class_num
+            existing_child.school_type = school_type or existing_child.school_type
+        else:
+            child = UserChild(
+                user_id=user.id,
+                school_code=school_code,
+                school_name=school_name,
+                grade=grade,
+                class_num=class_num,
+                school_type=school_type or None,
+                region=region or user.region,
+            )
+            db.add(child)
+            await db.flush()
+            if not user.active_child_id:
+                user.active_child_id = child.id
+    else:
+        user.member_grade = "member"
+        user.auth_pending = False
+        user.school_code = school_code
+        user.school_name = school_name
+        user.grade = grade
+        if class_num:
+            user.class_num = class_num
+
+    await db.commit()
 
 
 async def approve_capture(capture_id: int, admin: User, db: AsyncSession) -> None:

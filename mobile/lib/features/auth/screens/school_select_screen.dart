@@ -228,31 +228,53 @@ class _SchoolSelectScreenState extends ConsumerState<SchoolSelectScreen> {
                     ),
                   ]),
                   const SizedBox(height: 12),
-                  // 학년 / 반 선택
-                  Row(children: [
-                    Expanded(
-                      child: DropdownButtonFormField<int>(
-                        value: _grade,
-                        decoration: const InputDecoration(labelText: '자녀 학년', border: OutlineInputBorder(), isDense: true),
-                        items: List.generate(_maxGrade, (i) => i + 1)
-                            .map((g) => DropdownMenuItem(value: g, child: Text('$g학년')))
-                            .toList(),
-                        onChanged: (v) => setState(() => _grade = v!),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButtonFormField<int?>(
-                        value: _classNum,
-                        decoration: const InputDecoration(labelText: '반 (선택)', border: OutlineInputBorder(), isDense: true),
-                        items: [
-                          const DropdownMenuItem<int?>(value: null, child: Text('선택 안함')),
-                          ...List.generate(15, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}반'))),
-                        ],
-                        onChanged: (v) => setState(() => _classNum = v),
-                      ),
-                    ),
-                  ]),
+                  // 학년 선택 — 버튼 행
+                  const Text('자녀 학년', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: List.generate(_maxGrade, (i) {
+                      final g = i + 1;
+                      final selected = _grade == g;
+                      return Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(right: i < _maxGrade - 1 ? 6 : 0),
+                          child: GestureDetector(
+                            onTap: () => setState(() => _grade = g),
+                            child: Container(
+                              height: 38,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
+                                border: Border.all(
+                                  color: selected ? Theme.of(context).colorScheme.primary : Colors.grey.shade300,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '$g학년',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+                                  color: selected ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 10),
+                  // 반 선택 (드롭다운 유지)
+                  DropdownButtonFormField<int?>(
+                    value: _classNum,
+                    decoration: const InputDecoration(labelText: '반 (선택)', border: OutlineInputBorder(), isDense: true),
+                    items: [
+                      const DropdownMenuItem<int?>(value: null, child: Text('선택 안함')),
+                      ...List.generate(15, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}반'))),
+                    ],
+                    onChanged: (v) => setState(() => _classNum = v),
+                  ),
                 ],
               ),
             ),

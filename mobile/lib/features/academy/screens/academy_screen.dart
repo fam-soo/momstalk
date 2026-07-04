@@ -372,7 +372,11 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                       const SizedBox(height: 6),
                       Wrap(
                         spacing: 8,
-                        children: _grades.map((g) {
+                        children: (tempLevel == '초등'
+                            ? [1, 2, 3, 4, 5, 6]
+                            : (tempLevel == '중등' || tempLevel == '고등')
+                                ? [1, 2, 3]
+                                : _grades).map((g) {
                           final sel = tempGrades.contains(g);
                           return FilterChip(
                             label: Text('$g학년'),

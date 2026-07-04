@@ -406,6 +406,10 @@ class _UserListPaneState extends ConsumerState<_UserListPane> {
         await dio.post('/admin/users/$userId/ban', data: {'reason': reason});
       } else if (action == 'unban') {
         await dio.post('/admin/users/$userId/unban');
+      } else if (action == 'grant_trust') {
+        await dio.post('/admin/users/$userId/grant-trust');
+      } else if (action == 'revoke_trust') {
+        await dio.post('/admin/users/$userId/revoke-trust');
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('처리 완료')));
@@ -465,7 +469,9 @@ class _UserTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isBanned = user['is_banned'] as bool? ?? false;
     final isSuspended = user['suspended_until'] != null;
+    final isTrusted = user['is_trusted'] as bool? ?? false;
     final grade = user['member_grade'] as String? ?? '';
+    final kakaoId = user['kakao_id'] as String?;
 
     return ExpansionTile(
       dense: true,
@@ -482,6 +488,7 @@ class _UserTile extends StatelessWidget {
         Expanded(child: Text(user['nickname'] as String? ?? '-',
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
         _statusChip(_gradeLabel(grade), _gradeColor(grade)),
+        if (isTrusted) ...[const SizedBox(width: 4), _statusChip('면제', Colors.teal)],
         if (isBanned) ...[const SizedBox(width: 4), _statusChip('차단', Colors.red)],
         if (isSuspended && !isBanned) ...[const SizedBox(width: 4), _statusChip('정지', Colors.orange)],
       ]),
@@ -495,6 +502,11 @@ class _UserTile extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('ID: ${user['id']} · 경고: ${user['warning_count'] ?? 0}회',
                 style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            if (kakaoId != null) ...[
+              const SizedBox(height: 2),
+              Text('카카오 ID: $kakaoId',
+                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            ],
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 4, children: [
               if (grade == 'lurker')
@@ -507,6 +519,10 @@ class _UserTile extends StatelessWidget {
               ],
               if (isBanned || isSuspended)
                 _ActionBtn('해제', Colors.blue, () => onAction(user['id'] as int, 'unban')),
+              if (!isTrusted)
+                _ActionBtn('인증면제 부여', Colors.teal, () => onAction(user['id'] as int, 'grant_trust'))
+              else
+                _ActionBtn('인증면제 해제', Colors.teal.shade200, () => onAction(user['id'] as int, 'revoke_trust')),
             ]),
           ]),
         ),

@@ -45,9 +45,12 @@ async def kakao_login(
     result = await service_db.execute(select(User).where(User.anon_id == anon_id))
     user = result.scalar_one_or_none()
 
+    raw_kakao_id = profile["kakao_id"]
+
     if not user:
         user = User(
             anon_id=anon_id,
+            kakao_id=raw_kakao_id,
             nickname=_random_nickname(),
             # school 정보는 이후 단계(캡처/초대)에서 채움
             school_code="__pending__",
@@ -62,9 +65,15 @@ async def kakao_login(
         await service_db.commit()
         await service_db.refresh(user)
     else:
-        # 기존 유저 — 소셜 프로바이더 업데이트
+        # 기존 유저 — 소셜 프로바이더·kakao_id 업데이트
+        changed = False
         if not user.social_provider:
             user.social_provider = "kakao"
+            changed = True
+        if not user.kakao_id:
+            user.kakao_id = raw_kakao_id
+            changed = True
+        if changed:
             await service_db.commit()
             await service_db.refresh(user)
 

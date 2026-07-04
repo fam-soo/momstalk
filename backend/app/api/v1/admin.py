@@ -141,12 +141,17 @@ async def list_users(
     admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
-    query = select(User).order_by(User.created_at.desc()).limit(100)
+    from sqlalchemy import or_, cast, String
     if q:
-        from sqlalchemy import or_, cast, String
         query = select(User).where(
-            or_(User.nickname.ilike(f"%{q}%"), cast(User.id, String) == q)
+            or_(
+                User.nickname.ilike(f"%{q}%"),
+                cast(User.id, String) == q,
+                User.kakao_id == q,
+            )
         ).order_by(User.created_at.desc()).limit(50)
+    else:
+        query = select(User).where(User.is_admin == False).order_by(User.created_at.desc()).limit(100)
     users = (await db.execute(query)).scalars().all()
     return [
         {
@@ -156,6 +161,8 @@ async def list_users(
             "grade": u.grade,
             "member_grade": u.member_grade,
             "is_banned": u.is_banned,
+            "is_trusted": u.is_trusted,
+            "kakao_id": u.kakao_id,
             "suspended_until": u.suspended_until.isoformat() if u.suspended_until else None,
             "warning_count": u.warning_count,
             "created_at": u.created_at.isoformat() if u.created_at else None,
@@ -280,6 +287,36 @@ async def unban_user(
     user.is_banned = False
     user.suspended_until = None
     db.add(AdminAction(admin_id=admin.id, action_type="unban", target_type="user", target_id=user_id))
+    await db.commit()
+
+
+@router.post("/users/{user_id}/grant-trust", status_code=status.HTTP_204_NO_CONTENT)
+async def grant_trust(
+    user_id: int,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """자녀 추가·인증 심사 면제 권한 부여. 부여된 사용자는 캡처 제출 시 자동 승인."""
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+    user.is_trusted = True
+    db.add(AdminAction(admin_id=admin.id, action_type="grant_trust", target_type="user", target_id=user_id))
+    await db.commit()
+
+
+@router.post("/users/{user_id}/revoke-trust", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_trust(
+    user_id: int,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """자녀 추가·인증 심사 면제 권한 해제."""
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+    user.is_trusted = False
+    db.add(AdminAction(admin_id=admin.id, action_type="revoke_trust", target_type="user", target_id=user_id))
     await db.commit()
 
 
