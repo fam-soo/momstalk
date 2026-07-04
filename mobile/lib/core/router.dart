@@ -11,6 +11,7 @@ import '../features/board/screens/post_write_screen.dart';
 import '../features/board/screens/region_board_screen.dart';
 import '../features/board/screens/school_board_screen.dart';
 import '../features/profile/screens/profile_screen.dart';
+import '../features/profile/screens/add_child_screen.dart';
 import '../features/search/screens/search_screen.dart';
 import '../features/dm/screens/dm_list_screen.dart';
 import '../features/dm/screens/dm_chat_screen.dart';
@@ -93,6 +94,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(path: '/profile', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const ProfileScreen()),
+      GoRoute(path: '/profile/add-child', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const AddChildScreen()),
       GoRoute(path: '/terms', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const TermsScreen()),
       GoRoute(path: '/privacy', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const PrivacyScreen()),
       GoRoute(path: '/search', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const SearchScreen()),

@@ -616,12 +616,7 @@ class _ChildrenSectionState extends ConsumerState<_ChildrenSection> {
   }
 
   Future<void> _addChild() async {
-    final result = await Navigator.of(context, rootNavigator: true).push<bool>(
-      MaterialPageRoute(builder: (_) => ProviderScope(
-        parent: ProviderScope.containerOf(context),
-        child: const _AddChildScreen(),
-      )),
-    );
+    final result = await context.push<bool>('/profile/add-child');
     if (result == true) widget.onChanged();
   }
 

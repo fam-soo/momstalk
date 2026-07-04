@@ -287,11 +287,10 @@ async def search_academies(
         academies = [(a, urc, sc) for a, urc, sc in result2.all()]
 
     return [
-        AcademyResponse(
-            **{k: v for k, v in AcademyResponse.model_validate(a).model_dump().items()},
-            user_review_count=urc or 0,
-            has_seed=(sc or 0) > 0,
-        )
+        AcademyResponse.model_validate(a).model_copy(update={
+            "user_review_count": urc or 0,
+            "has_seed": (sc or 0) > 0,
+        })
         for a, urc, sc in academies
     ]
 
