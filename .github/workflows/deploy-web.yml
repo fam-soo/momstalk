@@ -41,4 +41,8 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           npm i -g vercel@latest
-          vercel deploy mobile/build/web --prod --token=$VERCEL_TOKEN --yes
+          vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+          mkdir -p .vercel/output/static
+          cp -r mobile/build/web/. .vercel/output/static/
+          echo '{"version":3,"routes":[{"handle":"filesystem"},{"src":".*","dest":"/index.html"}]}' > .vercel/output/config.json
+          vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN
