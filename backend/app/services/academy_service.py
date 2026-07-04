@@ -381,7 +381,9 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
         .order_by(AcademyReview.is_seed.desc(), AcademyReview.created_at.asc())
     )
     rows = result.all()
-    total = len(rows)
+    # seed 후기는 학원 소개용 — 사용자 후기 카운트·쿼터에서 제외
+    user_rows = [(r, u) for r, u in rows if not (r.is_seed or False)]
+    total = len(user_rows)
 
     quota = _review_quota(user)
     readable = total if quota is None else min(quota, total)
@@ -397,8 +399,15 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
         next_unlock_at = 1
 
     out = []
-    for i, (review, author) in enumerate(rows):
-        view_limited = quota is not None and i >= quota
+    user_idx = 0
+    for review, author in rows:
+        is_seed = review.is_seed or False
+        # seed는 항상 열람 가능, 사용자 후기만 쿼터 적용
+        if is_seed:
+            view_limited = False
+        else:
+            view_limited = quota is not None and user_idx >= quota
+            user_idx += 1
 
         author_display = None
         if author and not review.is_anonymous and not view_limited:

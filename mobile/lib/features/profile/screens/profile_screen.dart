@@ -797,6 +797,7 @@ class _AddChildScreenState extends ConsumerState<_AddChildScreen> {
               Expanded(
                 child: TextField(
                   controller: _searchCtrl,
+                  autofocus: true,
                   decoration: InputDecoration(
                     hintText: '학교명 또는 지역명 (예: 행복초, 강남구)',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),

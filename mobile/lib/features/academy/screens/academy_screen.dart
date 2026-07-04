@@ -241,33 +241,29 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                         ],
                       ]),
                       const SizedBox(height: 8),
-                      SizedBox(
-                        height: 36,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _seoulDistricts.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 6),
-                          itemBuilder: (_, idx) {
-                            final district = _seoulDistricts[idx];
-                            final isBase = district == _userRegion;
-                            final sel = tempRegions.contains(district);
-                            return FilterChip(
-                              label: Text(district, style: const TextStyle(fontSize: 12)),
-                              selected: isBase || sel,
-                              onSelected: isBase ? null : (_) => setBS(() {
-                                sel ? tempRegions.remove(district) : tempRegions.add(district);
-                              }),
-                              visualDensity: VisualDensity.compact,
-                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              backgroundColor: isBase
-                                  ? Theme.of(ctx).colorScheme.primary.withOpacity(0.08)
-                                  : null,
-                              selectedColor: isBase
-                                  ? Theme.of(ctx).colorScheme.primary.withOpacity(0.2)
-                                  : null,
-                            );
-                          },
-                        ),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: _seoulDistricts.map((district) {
+                          final isBase = district == _userRegion;
+                          final sel = tempRegions.contains(district);
+                          return FilterChip(
+                            label: Text(district, style: const TextStyle(fontSize: 11)),
+                            selected: isBase || sel,
+                            onSelected: isBase ? null : (_) => setBS(() {
+                              sel ? tempRegions.remove(district) : tempRegions.add(district);
+                            }),
+                            visualDensity: VisualDensity.compact,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                            backgroundColor: isBase
+                                ? Theme.of(ctx).colorScheme.primary.withOpacity(0.08)
+                                : null,
+                            selectedColor: isBase
+                                ? Theme.of(ctx).colorScheme.primary.withOpacity(0.2)
+                                : null,
+                          );
+                        }).toList(),
                       ),
                       const SizedBox(height: 16),
                       const Divider(),
