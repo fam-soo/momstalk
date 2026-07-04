@@ -147,6 +147,7 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
 
     final schoolName = _inviteInfo?['school_name'] as String? ?? '';
     final schoolType = _inviteInfo?['school_type'] as String? ?? 'elementary';
+    final isUsed = _inviteInfo?['is_used'] as bool? ?? false;
     final maxGrade = schoolType == 'elementary' ? 6 : 3;
     final schoolTypeLabel = switch (schoolType) {
       'elementary' => '초등학교',
@@ -154,6 +155,8 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
       'high' => '고등학교',
       _ => '',
     };
+    // 이미 사용된 링크는 기존 정회원(자녀 추가 목적)만 허용
+    final isBlocked = isUsed && !_wasAlreadyMember;
     final isBusy = _joining || _loggingIn;
 
     // 학년이 범위를 벗어나면 리셋
@@ -216,7 +219,22 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
               onChanged: isBusy ? null : (v) => setState(() => _classNum = v),
             ),
             const Spacer(),
-            if (!_isLoggedIn) ...[
+            if (isBlocked) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: const Text(
+                  '이미 사용된 초대 링크입니다.\n새 초대 링크를 받아 다시 시도해주세요.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: Colors.red),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ] else if (!_isLoggedIn) ...[
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -233,7 +251,7 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
               const SizedBox(height: 12),
             ],
             FilledButton.icon(
-              onPressed: isBusy ? null : _join,
+              onPressed: isBusy || isBlocked ? null : _join,
               icon: isBusy
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : Icon(_isLoggedIn ? Icons.check : Icons.login),

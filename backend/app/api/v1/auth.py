@@ -360,16 +360,21 @@ async def generate_invite(
 
 @router.get("/invite/{token}")
 async def check_invite(token: str, db: AsyncSession = Depends(get_db)):
-    """초대 링크 유효성 미리 확인 (사용 전 정보 표시용)."""
-    try:
-        link = await invite_service.validate_invite(token, db)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    """초대 링크 정보 표시 (사용 전 미리 보기).
+    사용 여부와 관계없이 링크 존재·만료 여부만 확인한다.
+    사용 제한 검증은 POST /invite/use 에서 수행."""
+    link = await invite_service.get_invite(token, db)
+    if not link:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효하지 않은 초대 링크입니다.")
+    from datetime import datetime
+    if datetime.utcnow() > link.expires_at:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="만료된 초대 링크입니다.")
     return {
         "school_name": link.school_name,
         "school_code": link.school_code,
         "school_type": link.school_type,
         "expires_at": link.expires_at.isoformat(),
+        "is_used": link.used_by is not None,
     }
 
 

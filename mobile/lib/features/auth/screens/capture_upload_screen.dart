@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
@@ -53,6 +54,16 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
 
   static const _allowedExtensions = {'jpg', 'jpeg', 'png', 'heic', 'heif'};
 
+  String _mimeFromName(String name) {
+    final ext = name.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'png': return 'image/png';
+      case 'heic': return 'image/heic';
+      case 'heif': return 'image/heif';
+      default: return 'image/jpeg';
+    }
+  }
+
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
@@ -83,10 +94,12 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
     setState(() => _uploading = true);
     try {
       final dio = ref.read(dioProvider);
+      final mime = _mimeFromName(_pickedFile!.name);
       final formData = FormData.fromMap({
         'file': MultipartFile.fromBytes(
           _imageBytes!,
           filename: _pickedFile!.name,
+          contentType: MediaType.parse(mime),
         ),
         'school_code': '${widget.schoolInfo['school_code'] ?? ''}',
         'school_name': '${widget.schoolInfo['school_name'] ?? ''}',
