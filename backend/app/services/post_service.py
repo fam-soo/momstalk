@@ -139,9 +139,18 @@ async def list_posts(
         _DEFAULT_REGION = "양천구"
         if board_type == "region":
             effective_region = user.region or _DEFAULT_REGION
-            query = query.where(Post.school_code.in_(
-                select(User.school_code).where(User.region == effective_region)
-            ))
+            # 일반 유저 글: 같은 지역 유저의 school_code 기준
+            # 관리자 공지: School 테이블의 region 기준 (등록된 유저 없어도 표시)
+            query = query.where(
+                or_(
+                    Post.school_code.in_(
+                        select(User.school_code).where(User.region == effective_region)
+                    ),
+                    Post.school_code.in_(
+                        select(School.school_code).where(School.region == effective_region)
+                    ),
+                )
+            )
         elif board_type == "free":
             pass
         else:

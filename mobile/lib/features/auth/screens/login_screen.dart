@@ -40,20 +40,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     await _loadSavedAccounts();
   }
 
-  /// 저장된 계정 탭 → 약관 동의 없이 바로 카카오 로그인
-  /// Prompt.selectAccount: 기존 세션이 있어도 계정 선택 화면을 강제 표시
-  Future<void> _quickLogin() async {
+  /// 저장된 계정 탭 → 해당 카카오 계정으로 자동 로그인
+  /// kakaoUserId가 저장되어 있으면 현재 카카오 세션으로 시도 후 계정 일치 확인
+  Future<void> _quickLogin(SavedAccount account) async {
     setState(() => _loading = true);
     try {
       OAuthToken token;
+      // 저장된 kakaoUserId가 있는 경우: 기존 세션 재사용 시도 (selectAccount 없음)
+      // 없는 경우(구 버전): selectAccount로 계정 선택
+      final hasLinked = account.kakaoUserId != null;
       if (!kIsWeb && await isKakaoTalkInstalled()) {
         token = await UserApi.instance.loginWithKakaoTalk();
       } else {
         token = await UserApi.instance.loginWithKakaoAccount(
-          prompts: [Prompt.selectAccount],
+          prompts: hasLinked ? [] : [Prompt.selectAccount],
         );
       }
-      await _authenticateWithBackend(token);
+
+      // kakaoUserId가 있으면 현재 토큰의 카카오 계정이 맞는지 확인
+      if (hasLinked) {
+        try {
+          final kakaoUser = await UserApi.instance.me();
+          final currentKakaoId = kakaoUser.id.toString();
+          if (currentKakaoId != account.kakaoUserId) {
+            // 다른 카카오 계정이 로그인돼 있음 → selectAccount로 재시도
+            token = await UserApi.instance.loginWithKakaoAccount(
+              prompts: [Prompt.selectAccount],
+            );
+          }
+        } catch (_) {}
+      }
+
+      await _authenticateWithBackend(token, expectedNickname: account.nickname);
     } catch (e) {
       if (mounted) _showKakaoError(e.toString());
     } finally {
@@ -106,7 +124,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Future<void> _authenticateWithBackend(OAuthToken token) async {
+  Future<void> _authenticateWithBackend(OAuthToken token, {String? expectedNickname}) async {
     final dio = ref.read(dioProvider);
     try {
       final resp = await dio.post('/auth/kakao', data: {'kakao_access_token': token.accessToken});
@@ -119,13 +137,35 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final data = meResp.data as Map<String, dynamic>;
       final memberGrade = data['member_grade'] as String? ?? 'lurker';
       final isAdmin = data['is_admin'] as bool? ?? false;
+      final nickname = data['nickname'] as String? ?? '';
 
-      // 로그인 성공 시 계정 정보 저장
+      // 카카오 user ID 조회 → SavedAccount에 연결 저장
+      String? kakaoUserId;
+      try {
+        final kakaoUser = await UserApi.instance.me();
+        kakaoUserId = kakaoUser.id.toString();
+      } catch (_) {}
+
+      // 로그인 성공 시 계정 정보 저장 (닉네임 변경 자동 반영)
       await SavedAccountsStorage.upsert(SavedAccount(
-        nickname: data['nickname'] as String? ?? '',
+        nickname: nickname,
         schoolName: data['school_name'] as String? ?? '',
         memberGrade: memberGrade,
+        kakaoUserId: kakaoUserId,
       ));
+
+      // 저장된 다른 계정 중 같은 kakaoUserId가 있으면 nickname 갱신
+      if (kakaoUserId != null) {
+        await SavedAccountsStorage.updateByKakaoId(kakaoUserId, nickname);
+      }
+
+      // 예상 계정과 다른 경우 경고 (같은 기기에서 다른 카카오 계정 로그인)
+      if (expectedNickname != null && nickname != expectedNickname && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('"$nickname" 계정으로 로그인되었습니다.')),
+        );
+
+      }
 
       if (!mounted) return;
       if (memberGrade == 'member' || isAdmin) {
@@ -211,7 +251,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const SizedBox(height: 8),
                 ...(_savedAccounts.map((account) => _AccountTile(
                   account: account,
-                  onTap: _loading ? null : _quickLogin,
+                  onTap: _loading ? null : () => _quickLogin(account),
                   onRemove: () => _removeAccount(account),
                 ))),
                 const SizedBox(height: 16),
@@ -267,7 +307,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               _loading
                   ? const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 14), child: CircularProgressIndicator()))
                   : GestureDetector(
-                      onTap: hasSavedAccounts ? _quickLogin : _kakaoLogin,
+                      onTap: hasSavedAccounts
+                          ? () => _quickLogin(_savedAccounts.first)
+                          : _kakaoLogin,
                       child: Container(
                         height: 52,
                         decoration: BoxDecoration(
