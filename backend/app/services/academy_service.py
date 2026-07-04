@@ -202,8 +202,26 @@ async def search_academies(
         )
         filters.append(Academy.id.in_(reviewer_subq))
 
+    # 사용자 후기 수 / seed 보유 여부 서브쿼리
+    user_review_subq = (
+        select(func.count(AcademyReview.id))
+        .where(AcademyReview.academy_id == Academy.id, AcademyReview.is_seed.isnot(True), AcademyReview.is_hidden.isnot(True))
+        .correlate(Academy)
+        .scalar_subquery()
+    )
+    has_seed_subq = (
+        select(func.count(AcademyReview.id))
+        .where(AcademyReview.academy_id == Academy.id, AcademyReview.is_seed.is_(True))
+        .correlate(Academy)
+        .scalar_subquery()
+    )
+
     result = await db.execute(
-        select(Academy).where(*filters).order_by(
+        select(
+            Academy,
+            user_review_subq.label("user_review_count"),
+            has_seed_subq.label("seed_count"),
+        ).where(*filters).order_by(
             # 숫자로 시작하는 이름은 맨 뒤
             sa.case((Academy.name.op("~")(r"^[0-9]"), 1), else_=0).asc(),
             # 후기 많은 것, 별점 높은 것 우선
@@ -213,7 +231,8 @@ async def search_academies(
             Academy.name.asc(),
         ).limit(10000)
     )
-    academies = result.scalars().all()
+    rows = result.all()
+    academies = [(academy, urc, sc) for academy, urc, sc in rows]
 
     # DB에 결과 없을 때만 NEIS에서 추가 데이터 가져오기
     if not academies:
@@ -254,19 +273,27 @@ async def search_academies(
             await db.commit()
 
         result2 = await db.execute(
-            select(Academy).where(*filters).order_by(
-            # 숫자로 시작하는 이름은 맨 뒤
-            sa.case((Academy.name.op("~")(r"^[0-9]"), 1), else_=0).asc(),
-            # 후기 많은 것, 별점 높은 것 우선
-            Academy.review_count.desc(),
-            Academy.avg_rating.desc().nulls_last(),
-            # 이름 가나다 순
-            Academy.name.asc(),
-        ).limit(10000)
+            select(
+                Academy,
+                user_review_subq.label("user_review_count"),
+                has_seed_subq.label("seed_count"),
+            ).where(*filters).order_by(
+                sa.case((Academy.name.op("~")(r"^[0-9]"), 1), else_=0).asc(),
+                Academy.review_count.desc(),
+                Academy.avg_rating.desc().nulls_last(),
+                Academy.name.asc(),
+            ).limit(10000)
         )
-        academies = result2.scalars().all()
+        academies = [(a, urc, sc) for a, urc, sc in result2.all()]
 
-    return [AcademyResponse.model_validate(a) for a in academies]
+    return [
+        AcademyResponse(
+            **{k: v for k, v in AcademyResponse.model_validate(a).model_dump().items()},
+            user_review_count=urc or 0,
+            has_seed=(sc or 0) > 0,
+        )
+        for a, urc, sc in academies
+    ]
 
 
 async def patch_subjects(academy_id: int, subjects: list[str], db: AsyncSession) -> None:

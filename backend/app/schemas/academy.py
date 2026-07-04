@@ -19,10 +19,12 @@ class AcademyResponse(BaseModel):
     @classmethod
     def coerce_is_b2b(cls, v: object) -> bool:
         return bool(v) if v is not None else False
-    review_count: int = 0
+    review_count: int = 0          # 전체 (seed 포함, DB 원본)
+    user_review_count: int = 0     # 사용자 후기만 (seed 제외)
+    has_seed: bool = False         # AI 요약 정보(seed) 보유 여부
     avg_rating: Optional[float] = None
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class AcademyReviewCreate(BaseModel):

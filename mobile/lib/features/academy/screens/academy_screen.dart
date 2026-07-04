@@ -162,7 +162,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   Future<void> _openFilter() async {
     final tempSubjects = Set<String>.from(_selectedSubjects);
     var tempLevel = _selectedLevel;
-    var tempSchool = _reviewerSchool.isNotEmpty ? _reviewerSchool : _userSchoolName;
+    var tempSchool = _reviewerSchool; // 기본값 빈칸 (자녀 학교 버튼으로 선택)
     final tempGrades = Set<int>.from(_reviewerGrades);
     final tempRegions = Set<String>.from(_selectedRegions);
     final schoolCtrl = TextEditingController(text: tempSchool);
@@ -323,18 +323,46 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                       ),
                       const SizedBox(height: 10),
+                      // 자녀 학교 빠른 선택 버튼
+                      if (_userSchoolName.isNotEmpty) ...[
+                        Wrap(
+                          spacing: 6,
+                          children: [
+                            ActionChip(
+                              avatar: const Icon(Icons.child_care, size: 14),
+                              label: Text(_userSchoolName, style: const TextStyle(fontSize: 12)),
+                              onPressed: () => setBS(() {
+                                schoolCtrl.text = _userSchoolName;
+                                tempSchool = _userSchoolName;
+                              }),
+                              visualDensity: VisualDensity.compact,
+                              backgroundColor: schoolCtrl.text == _userSchoolName
+                                  ? Theme.of(ctx).colorScheme.primaryContainer
+                                  : null,
+                            ),
+                            if (schoolCtrl.text.isNotEmpty)
+                              ActionChip(
+                                avatar: const Icon(Icons.close, size: 14),
+                                label: const Text('초기화', style: TextStyle(fontSize: 12)),
+                                onPressed: () => setBS(() { schoolCtrl.clear(); tempSchool = ''; }),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                      ],
                       TextField(
                         controller: schoolCtrl,
-                        onChanged: (_) => setBS(() {}),
+                        onChanged: (v) => setBS(() => tempSchool = v),
                         decoration: InputDecoration(
-                          labelText: '학교명',
-                          hintText: _userSchoolName.isNotEmpty ? _userSchoolName : '예: 양천초등학교',
+                          labelText: '학교명 직접 입력',
+                          hintText: '예: 양천초등학교',
                           isDense: true,
                           border: const OutlineInputBorder(),
                           suffixIcon: schoolCtrl.text.isNotEmpty
                               ? IconButton(
                                   icon: const Icon(Icons.close, size: 16),
-                                  onPressed: () => setBS(() => schoolCtrl.clear()),
+                                  onPressed: () => setBS(() { schoolCtrl.clear(); tempSchool = ''; }),
                                 )
                               : null,
                         ),
@@ -502,8 +530,9 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    // ── 결과 수 + 쿼터 배너 ──────────────
                                     Padding(
-                                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
                                       child: Text(
                                         () {
                                           final regionLabel = _activeRegions.length > 1
@@ -511,13 +540,14 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                                               : _userRegion;
                                           return '학원 ${_results.length}곳 · $regionLabel';
                                         }(),
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.grey.shade600,
-                                          fontWeight: FontWeight.w500,
-                                        ),
+                                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                                       ),
                                     ),
+                                    if (!_isAdmin && _memberGrade != 'lurker')
+                                      _ListQuotaBanner(
+                                        userReviewCount: _userReviewCount,
+                                        onWriteTap: () => context.push('/academy/write'),
+                                      ),
                                     Expanded(
                                       child: ListView.separated(
                                         padding: const EdgeInsets.only(bottom: 20),
@@ -525,11 +555,6 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                                         separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
                                         itemBuilder: (_, i) => _AcademyTile(
                                           academy: _results[i],
-                                          isQuotaLimited: !_isAdmin &&
-                                              _memberGrade != 'lurker' &&
-                                              _userReviewCount < 5 &&
-                                              (_results[i]['review_count'] as int? ?? 0) > 0,
-                                          userReviewCount: _userReviewCount,
                                         ),
                                       ),
                                     ),
@@ -619,18 +644,14 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
 
 class _AcademyTile extends StatelessWidget {
   final Map<String, dynamic> academy;
-  final bool isQuotaLimited;
-  final int userReviewCount;
-  const _AcademyTile({required this.academy, this.isQuotaLimited = false, this.userReviewCount = 0});
+  const _AcademyTile({required this.academy});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final rating = (academy['avg_rating'] as num?)?.toDouble() ?? 0.0;
-    final reviewCount = academy['review_count'] as int? ?? 0;
-    final readableCount = isQuotaLimited
-        ? (userReviewCount == 0 ? 1 : (userReviewCount * 5)).clamp(0, reviewCount)
-        : reviewCount;
+    final userReviewCount = academy['user_review_count'] as int? ?? 0;
+    final hasSeed = academy['has_seed'] as bool? ?? false;
     final rawSubjects = (academy['subjects'] as List?)?.cast<String>() ?? [];
     const knownSubjects = ['수학', '영어', '과학', '국어', '음악', '미술', '체육', '코딩', '기타'];
     final subjects = rawSubjects.where((s) => knownSubjects.contains(s)).toList();
@@ -686,21 +707,21 @@ class _AcademyTile extends StatelessWidget {
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             const SizedBox(width: 4),
-            Text('후기 $reviewCount개', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-            if (isQuotaLimited && reviewCount > 0) ...[
+            Text('후기 $userReviewCount개', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            if (hasSeed) ...[
               const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                 decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
+                  color: Colors.purple.shade50,
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: Colors.orange.shade200),
+                  border: Border.all(color: Colors.purple.shade200),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.lock_outline, size: 11, color: Colors.orange.shade700),
+                  Icon(Icons.auto_awesome, size: 10, color: Colors.purple.shade700),
                   const SizedBox(width: 2),
-                  Text('$readableCount개 열람 가능',
-                    style: TextStyle(fontSize: 10, color: Colors.orange.shade700, fontWeight: FontWeight.w600)),
+                  Text('AI 소개',
+                    style: TextStyle(fontSize: 10, color: Colors.purple.shade700, fontWeight: FontWeight.w600)),
                 ]),
               ),
             ],
@@ -718,6 +739,81 @@ class _AcademyTile extends StatelessWidget {
         ],
       ),
       trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+    );
+  }
+}
+
+// ── 리스트 상단 후기 열람 권한 배너 ──────────────────────────────────
+class _ListQuotaBanner extends StatelessWidget {
+  final int userReviewCount;
+  final VoidCallback? onWriteTap;
+  const _ListQuotaBanner({required this.userReviewCount, this.onWriteTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final int readable;
+    final String msg;
+    final bool unlimited = userReviewCount >= 5;
+
+    if (unlimited) return const SizedBox.shrink();
+
+    if (userReviewCount == 0) {
+      readable = 1;
+      msg = '후기 1건 작성 시 학원당 5개 열람 가능';
+    } else {
+      readable = userReviewCount * 5;
+      msg = '후기 ${5 - userReviewCount}건 더 작성하면 전체 열람';
+    }
+
+    return GestureDetector(
+      onTap: () => showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('후기 열람 권한 안내'),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('후기를 작성할수록 더 많은 후기를 볼 수 있습니다.', style: TextStyle(fontWeight: FontWeight.w600)),
+              SizedBox(height: 12),
+              Text('• 후기 0건: 학원당 1개 열람'),
+              Text('• 후기 1건: 학원당 5개 열람'),
+              Text('• 후기 2건: 학원당 10개 열람'),
+              Text('• 후기 3건: 학원당 15개 열람'),
+              Text('• 후기 4건: 학원당 20개 열람'),
+              Text('• 후기 5건 이상: 전체 열람'),
+              SizedBox(height: 12),
+              Text('AI 요약(학원 소개)은 권한과 무관하게 항상 열람 가능합니다.',
+                style: TextStyle(fontSize: 12, color: Colors.grey)),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('닫기')),
+          ],
+        ),
+      ),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 4, 12, 2),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.secondaryContainer.withOpacity(0.35),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
+        ),
+        child: Row(children: [
+          Icon(Icons.lock_outline, size: 14, color: theme.colorScheme.secondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('내 작성 후기 $userReviewCount건 · 학원당 $readable개 열람 가능',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.secondary)),
+              Text(msg, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            ]),
+          ),
+          Icon(Icons.info_outline, size: 15, color: Colors.grey.shade500),
+        ]),
+      ),
     );
   }
 }
