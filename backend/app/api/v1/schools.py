@@ -1,9 +1,10 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.rate_limit import RateLimit
 from app.db import get_db
 from app.models.service_models import School
 from app.schemas.school import SchoolSearchResult
@@ -14,12 +15,14 @@ router = APIRouter(prefix="/schools", tags=["schools"])
 
 @router.get("/search", response_model=list[SchoolSearchResult])
 async def search(
+    request: Request,
     q: Optional[str] = Query(None, min_length=2),
     keyword: Optional[str] = Query(None),
     region_code: Optional[str] = Query(None),
     school_type: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
+    await RateLimit.school_search(request)
     """학교 통합 검색 — DB 우선, 없으면 NEIS 실시간."""
     search_term = q or keyword
 

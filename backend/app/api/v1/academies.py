@@ -1,10 +1,11 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_optional_user
+from app.core.rate_limit import RateLimit
 from app.db import get_service_db
 from app.models.service_models import User
 from app.schemas.academy import AcademyResponse, AcademyReviewCreate, AcademyReviewResponse, AcademyReviewListResponse
@@ -15,6 +16,7 @@ router = APIRouter(prefix="/academies", tags=["academies"])
 
 @router.get("", response_model=list[AcademyResponse])
 async def search_academies(
+    request: Request,
     name: Optional[str] = Query(None),
     region: Optional[str] = Query(None),          # 단일 또는 콤마 구분 복수 "강남구,양천구"
     subject: Optional[str] = Query(None),            # 단일 과목 (레거시)
@@ -25,6 +27,7 @@ async def search_academies(
     user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_service_db),
 ):
+    await RateLimit.academy_search(request)
     subject_list: Optional[list[str]] = None
     if subjects:
         subject_list = [s.strip() for s in subjects.split(",") if s.strip()]
@@ -53,9 +56,11 @@ async def search_academies(
 @router.get("/{academy_id}", response_model=AcademyResponse)
 async def get_academy(
     academy_id: int,
+    request: Request,
     user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_service_db),
 ):
+    await RateLimit.academy_detail(request)
     academy = await academy_service.get_academy(academy_id, db)
     if not academy:
         raise HTTPException(status_code=404, detail="학원을 찾을 수 없습니다.")
@@ -110,9 +115,11 @@ async def get_kakao_place(
 @router.get("/{academy_id}/reviews", response_model=AcademyReviewListResponse)
 async def list_reviews(
     academy_id: int,
+    request: Request,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_service_db),
 ):
+    await RateLimit.academy_detail(request)
     return await academy_service.list_reviews(academy_id, user, db)
 
 

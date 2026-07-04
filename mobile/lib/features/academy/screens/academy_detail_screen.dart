@@ -175,30 +175,23 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                     ],
                   ),
                 ],
-                const SizedBox(height: 12),
-                if (subjects.isNotEmpty)
-                  Wrap(
-                    spacing: 6,
-                    children: subjects.map((s) => Chip(
-                      label: Text(s, style: const TextStyle(fontSize: 12)),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      backgroundColor: theme.colorScheme.secondaryContainer.withOpacity(0.5),
-                    )).toList(),
-                  ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(Icons.star, size: 20, color: Colors.amber.shade600),
-                    const SizedBox(width: 4),
-                    Text(
-                      rating > 0 ? rating.toStringAsFixed(1) : '-',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
+                const SizedBox(height: 8),
+                Row(children: [
+                  ...List.generate(5, (i) => Icon(
+                    i < rating.round() ? Icons.star_rounded : Icons.star_outline_rounded,
+                    size: 15, color: Colors.amber.shade600)),
+                  const SizedBox(width: 4),
+                  Text(rating > 0 ? rating.toStringAsFixed(1) : '-',
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 6),
+                  Text('후기 $reviewCount개', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                  if (subjects.isNotEmpty) ...[
                     const SizedBox(width: 8),
-                    Text('후기 $reviewCount개', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                    Expanded(child: Text(subjects.join(' · '),
+                      style: TextStyle(fontSize: 12, color: theme.colorScheme.primary),
+                      maxLines: 1, overflow: TextOverflow.ellipsis)),
                   ],
-                ),
+                ]),
               ],
             ),
           ),
@@ -437,7 +430,7 @@ class _ReviewCard extends StatelessWidget {
           ].join(' ');
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       color: isViewLimited
           ? Colors.grey.shade50
           : isSeed
@@ -450,7 +443,7 @@ class _ReviewCard extends StatelessWidget {
             )
           : null,
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

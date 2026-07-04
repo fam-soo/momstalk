@@ -1,9 +1,10 @@
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
@@ -78,6 +79,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 글로벌 Rate Limit 미들웨어 — IP당 분당 200회 초과 시 429
+_global_rl_store: dict[str, list[float]] = {}
+
+
+@app.middleware("http")
+async def global_rate_limit(request: Request, call_next) -> Response:
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+    forwarded = request.headers.get("X-Forwarded-For")
+    ip = forwarded.split(",")[0].strip() if forwarded else (
+        request.client.host if request.client else "unknown"
+    )
+    now = time.time()
+    window = 60.0
+    limit = 200
+    hits = _global_rl_store.get(ip, [])
+    hits = [t for t in hits if now - t < window]
+    hits.append(now)
+    _global_rl_store[ip] = hits
+    if len(hits) > limit:
+        return Response(
+            content='{"detail":"요청이 너무 많습니다. 잠시 후 다시 시도해주세요."}',
+            status_code=429,
+            headers={"Content-Type": "application/json", "Retry-After": "60"},
+        )
+    return await call_next(request)
+
 
 from app.api.v1.router import api_router  # noqa: E402
 app.include_router(api_router, prefix="/api/v1")

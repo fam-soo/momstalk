@@ -92,3 +92,21 @@ class RateLimit:
         """신고: IP당 1분에 5회"""
         ip = _client_ip(request)
         await _check(f"rl:report:{ip}", limit=5, window_sec=60, request=request)
+
+    @staticmethod
+    async def academy_search(request: Request) -> None:
+        """학원 검색: IP당 1분에 30회 (스크래핑 방어)"""
+        ip = _client_ip(request)
+        await _check(f"rl:acad_search:{ip}", limit=30, window_sec=60, request=request)
+
+    @staticmethod
+    async def academy_detail(request: Request) -> None:
+        """학원 상세/후기: IP당 1분에 60회"""
+        ip = _client_ip(request)
+        await _check(f"rl:acad_detail:{ip}", limit=60, window_sec=60, request=request)
+
+    @staticmethod
+    async def school_search(request: Request) -> None:
+        """학교 검색: IP당 1분에 20회"""
+        ip = _client_ip(request)
+        await _check(f"rl:school:{ip}", limit=20, window_sec=60, request=request)
