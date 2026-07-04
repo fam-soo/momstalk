@@ -56,6 +56,7 @@ async def list_captures(
             "input_school_name": c.input_school_name,
             "input_grade": c.input_grade,
             "input_class_num": c.input_class_num,
+            "capture_type": c.capture_type if hasattr(c, "capture_type") else "initial",
             "has_image": bool(c.s3_key and not c.s3_key.startswith("dev/")),
             "created_at": c.created_at.isoformat() if c.created_at else None,
         })

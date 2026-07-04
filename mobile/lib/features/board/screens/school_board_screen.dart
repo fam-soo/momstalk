@@ -16,7 +16,7 @@ class SchoolBoardScreen extends ConsumerStatefulWidget {
 }
 
 class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   bool _loading = true;
   bool _isMember = false;
   bool _isLurker = false; // 로그인 했지만 미인증
@@ -26,6 +26,10 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   int _previewTaps = 0;
   int _lurkerReads = 0; // lurker 읽기 횟수 (계정당 1회, 초기화 없음)
   TabController? _tabController;
+  // 다자녀 지원
+  List<Map<String, dynamic>> _children = [];
+  int _selectedChildIdx = 0; // 선택된 자녀 인덱스
+  TabController? _childTabController;
   static const _tapLimit = 2;
   static const _prefKey = 'preview_taps_school';
   static const _lurkerReadKey = 'school_lurker_reads';
@@ -39,6 +43,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   @override
   void dispose() {
     _tabController?.dispose();
+    _childTabController?.dispose();
     super.dispose();
   }
 
@@ -60,13 +65,24 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       final isMember = (profile['member_grade'] as String? ?? 'lurker') == 'member';
       final isAdmin = profile['is_admin'] as bool? ?? false;
       if (mounted) {
-        final tabs = (isMember || isAdmin) ? TabController(length: 2, vsync: this) : null;
+        final children = (profile['children'] as List? ?? [])
+            .map((c) => Map<String, dynamic>.from(c as Map))
+            .toList();
+        // 자녀 수에 맞게 탭 컨트롤러 생성
+        final subTabCount = 2; // 학교 전체 + N학년
+        final tabs = (isMember || isAdmin) ? TabController(length: subTabCount, vsync: this) : null;
+        final childTabs = (isMember || isAdmin) && children.length > 1
+            ? TabController(length: children.length, vsync: this)
+            : null;
         setState(() {
           _isMember = isMember || isAdmin;
-          _isLurker = !isMember && !isAdmin; // 로그인은 됐지만 미인증
+          _isLurker = !isMember && !isAdmin;
           _schoolName = profile['school_name'] as String? ?? '';
           _grade = profile['grade'] as int? ?? 1;
+          _children = children;
+          _selectedChildIdx = 0;
           _tabController = tabs;
+          _childTabController = childTabs;
           _loading = false;
         });
       }
@@ -130,26 +146,61 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
 
     if (_isMember) {
       final tc = _tabController!;
+      final hasMultiChild = _children.length > 1;
+      // 현재 선택된 자녀 정보
+      final selChild = hasMultiChild && _selectedChildIdx < _children.length
+          ? _children[_selectedChildIdx]
+          : null;
+      final displaySchool = selChild != null
+          ? (selChild['school_name'] as String? ?? _schoolName)
+          : _schoolName;
+      final displayGrade = selChild != null
+          ? (selChild['grade'] as int? ?? _grade)
+          : _grade;
+      final selectedChildId = selChild?['id'] as int?;
+
       return Scaffold(
         appBar: AppBar(
-          title: Text(_schoolName.isNotEmpty ? _schoolName : '학교 게시판',
-              style: const TextStyle(fontWeight: FontWeight.bold)),
+          title: Text(displaySchool.isNotEmpty ? displaySchool : '학교 게시판',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          titleSpacing: hasMultiChild ? 0 : null,
           actions: [
             IconButton(icon: const Icon(Icons.search), onPressed: () => context.push('/search')),
           ],
-          bottom: TabBar(
-            controller: tc,
-            tabs: [
-              const Tab(text: '학교'),
-              Tab(text: '$_grade학년'),
-            ],
+          bottom: PreferredSize(
+            preferredSize: Size.fromHeight(hasMultiChild ? 96 : 48),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 다자녀일 때 자녀 선택 탭
+                if (hasMultiChild) _ChildSelectorTabs(
+                  children: _children,
+                  selectedIdx: _selectedChildIdx,
+                  tabController: _childTabController!,
+                  onChanged: (idx) {
+                    setState(() {
+                      _selectedChildIdx = idx;
+                      // 학년 탭 리셋
+                      if (tc.index != 0) tc.animateTo(0);
+                    });
+                  },
+                ),
+                TabBar(
+                  controller: tc,
+                  tabs: [
+                    const Tab(text: '학교 전체'),
+                    Tab(text: '$displayGrade학년'),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
         body: TabBarView(
           controller: tc,
-          children: const [
-            PostListWidget(boardType: 'school'),
-            PostListWidget(boardType: 'grade'),
+          children: [
+            PostListWidget(boardType: 'school', childId: selectedChildId),
+            PostListWidget(boardType: 'grade', childId: selectedChildId),
           ],
         ),
         floatingActionButton: FloatingActionButton.extended(
@@ -311,6 +362,88 @@ class _SchoolPreviewBoard extends StatelessWidget {
     );
   }
 }
+
+// ── 다자녀 선택 탭 바 ────────────────────────────────────
+
+class _ChildSelectorTabs extends StatelessWidget {
+  final List<Map<String, dynamic>> children;
+  final int selectedIdx;
+  final TabController tabController;
+  final void Function(int) onChanged;
+
+  const _ChildSelectorTabs({
+    required this.children,
+    required this.selectedIdx,
+    required this.tabController,
+    required this.onChanged,
+  });
+
+  String _schoolTypeLabel(String? type) => switch (type) {
+    'elementary' => '초',
+    'middle' => '중',
+    'high' => '고',
+    _ => '',
+  };
+
+  Color _typeColor(String? type) => switch (type) {
+    'elementary' => Colors.green,
+    'middle' => Colors.blue,
+    'high' => Colors.purple,
+    _ => Colors.grey,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return TabBar(
+      controller: tabController,
+      isScrollable: true,
+      tabAlignment: TabAlignment.start,
+      onTap: onChanged,
+      indicatorSize: TabBarIndicatorSize.tab,
+      tabs: children.map((child) {
+        final idx = children.indexOf(child);
+        final isSelected = idx == selectedIdx;
+        final schoolName = child['school_name'] as String? ?? '학교';
+        final grade = child['grade'] as int? ?? 1;
+        final type = child['school_type'] as String?;
+        final typeLabel = _schoolTypeLabel(type);
+        final typeColor = _typeColor(type);
+
+        return Tab(
+          height: 44,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: typeColor.withValues(alpha: isSelected ? 0.2 : 0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(typeLabel,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: typeColor)),
+            ),
+            const SizedBox(width: 6),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  schoolName.length > 8 ? '${schoolName.substring(0, 7)}…' : schoolName,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                Text('$grade학년',
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+              ],
+            ),
+          ]),
+        );
+      }).toList(),
+    );
+  }
+}
+
 
 class _CertifyCta extends StatelessWidget {
   final VoidCallback onCertify;

@@ -667,6 +667,11 @@ class _CapturesPaneState extends ConsumerState<_CapturesPane> {
                 Row(children: [
                   Text(c['nickname'] as String? ?? '-',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(width: 6),
+                  if ((c['capture_type'] as String? ?? 'initial') == 'child_add')
+                    _statusChip('자녀 추가', Colors.purple)
+                  else
+                    _statusChip('신규 가입', Colors.blue),
                   const Spacer(),
                   Text(_timeAgo(c['created_at'] as String?),
                       style: const TextStyle(fontSize: 11, color: Colors.grey)),

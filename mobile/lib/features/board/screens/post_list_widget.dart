@@ -9,7 +9,9 @@ import 'post_detail_screen.dart' show showReportDialog;
 class PostListWidget extends ConsumerStatefulWidget {
   final String boardType;
   final bool isAdmin;
-  const PostListWidget({super.key, required this.boardType, this.isAdmin = false});
+  /// 다자녀 조회 시 특정 자녀 ID (null이면 active_child 사용)
+  final int? childId;
+  const PostListWidget({super.key, required this.boardType, this.isAdmin = false, this.childId});
 
   @override
   ConsumerState<PostListWidget> createState() => _PostListWidgetState();
@@ -60,6 +62,7 @@ class _PostListWidgetState extends ConsumerState<PostListWidget> {
         'size': 20,
       };
       if (!reset && _nextCursor != null) params['cursor'] = _nextCursor;
+      if (widget.childId != null) params['child_id'] = widget.childId;
       final resp = await dio.get('/posts', queryParameters: params);
       final data = Map<String, dynamic>.from(resp.data as Map);
       final items = (data['items'] as List)

@@ -267,14 +267,17 @@ class AuthCapture(Base):
     __tablename__ = "auth_captures"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
-    s3_key = Column(String(300), nullable=False)         # S3 오브젝트 키 (관리자 확인 후 삭제)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    capture_type = Column(String(20), server_default="initial", nullable=False)  # initial / child_add
+    s3_key = Column(String(300), nullable=False)
     input_school_code = Column(String(20), nullable=False)
     input_school_name = Column(String(100), nullable=False)
     input_grade = Column(Integer, nullable=False)
     input_class_num = Column(Integer, nullable=True)
+    input_school_type = Column(String(20), nullable=True)
+    input_region = Column(String(50), nullable=True)
     status = Column(String(20), default="pending")       # pending / approved / rejected
-    reviewed_by = Column(Integer, nullable=True)         # admin_users.id
+    reviewed_by = Column(Integer, nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     reject_reason = Column(String(200), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

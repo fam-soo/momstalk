@@ -20,14 +20,34 @@ async def list_posts(
     cursor: int = Query(None, description="이전 응답의 next_cursor 값 (첫 페이지는 생략)"),
     sort: str = Query("recent", description="recent | popular"),
     q: str = Query(None, description="검색어 (제목+내용)"),
+    child_id: int = Query(None, description="다자녀 조회 시 특정 자녀의 학교 보기. 본인 자녀만 허용."),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_service_db),
 ):
     """게시판별 게시글 목록. cursor 기반 무한 스크롤."""
-    active = user.active_child
-    school_code = (active.school_code if active else None) or user.school_code
-    grade = (active.grade if active else None) or user.grade
-    class_num = (active.class_num if active else None) or user.class_num
+    from sqlalchemy import select as sa_select
+    from app.models.service_models import UserChild
+
+    if child_id is not None:
+        # 보안: 요청한 child_id가 본인 자녀인지 확인
+        child = (await db.execute(
+            sa_select(UserChild).where(UserChild.id == child_id, UserChild.user_id == user.id)
+        )).scalar_one_or_none()
+        if child:
+            school_code = child.school_code
+            grade = child.grade
+            class_num = child.class_num
+        else:
+            active = user.active_child
+            school_code = (active.school_code if active else None) or user.school_code
+            grade = (active.grade if active else None) or user.grade
+            class_num = (active.class_num if active else None) or user.class_num
+    else:
+        active = user.active_child
+        school_code = (active.school_code if active else None) or user.school_code
+        grade = (active.grade if active else None) or user.grade
+        class_num = (active.class_num if active else None) or user.class_num
+
     return await post_service.list_posts(
         board_type=board_type,
         school_code=school_code,

@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.fcm import send_push
-from app.models.service_models import AdminAction, AuthCapture, User
+from app.models.service_models import AdminAction, AuthCapture, User, UserChild
 
 _SUPABASE_BUCKET = "captures"
 
@@ -111,40 +111,89 @@ async def submit_capture(
     class_num: int | None,
     db: AsyncSession,
     region: str = "",
+    school_type: str = "",
+    capture_type: str = "initial",
 ) -> AuthCapture:
-    """캡처 제출 → auth_captures 행 생성, user.auth_pending = True."""
-    existing = (await db.execute(
-        select(AuthCapture).where(AuthCapture.user_id == user.id)
-    )).scalar_one_or_none()
-
-    if existing:
-        _delete_storage_object(existing.s3_key)
-        existing.s3_key = storage_key
-        existing.input_school_code = school_code
-        existing.input_school_name = school_name
-        existing.input_grade = grade
-        existing.input_class_num = class_num
-        existing.status = "pending"
-        existing.reviewed_by = None
-        existing.reviewed_at = None
-        existing.reject_reason = None
-        existing.created_at = datetime.utcnow()
-        capture = existing
+    """캡처 ���출 → auth_captures 행 생성.
+    capture_type='initial': 최초 가입 인증 (user.auth_pending = True)
+    capture_type='child_add': 자녀 추가 인증 (기존 캡처 덮어쓰기 없이 새 행 추가)
+    """
+    if capture_type == "initial":
+        # 최초 가입: 기존 pending 캡처가 있으면 덮어쓰기
+        existing = (await db.execute(
+            select(AuthCapture).where(
+                AuthCapture.user_id == user.id,
+                AuthCapture.capture_type == "initial",
+            )
+        )).scalar_one_or_none()
+        if existing:
+            _delete_storage_object(existing.s3_key)
+            existing.s3_key = storage_key
+            existing.input_school_code = school_code
+            existing.input_school_name = school_name
+            existing.input_grade = grade
+            existing.input_class_num = class_num
+            existing.input_school_type = school_type or None
+            existing.input_region = region or None
+            existing.status = "pending"
+            existing.reviewed_by = None
+            existing.reviewed_at = None
+            existing.reject_reason = None
+            existing.created_at = datetime.utcnow()
+            capture = existing
+        else:
+            capture = AuthCapture(
+                user_id=user.id,
+                capture_type="initial",
+                s3_key=storage_key,
+                input_school_code=school_code,
+                input_school_name=school_name,
+                input_grade=grade,
+                input_class_num=class_num,
+                input_school_type=school_type or None,
+                input_region=region or None,
+            )
+            db.add(capture)
+        if region:
+            user.region = region
+        user.auth_pending = True
+        user.auth_route = "capture"
     else:
-        capture = AuthCapture(
-            user_id=user.id,
-            s3_key=storage_key,
-            input_school_code=school_code,
-            input_school_name=school_name,
-            input_grade=grade,
-            input_class_num=class_num,
-        )
-        db.add(capture)
+        # 자녀 추가: 항상 새 행 추가 (같은 학교 기존 pending 있으면 덮어쓰기)
+        existing = (await db.execute(
+            select(AuthCapture).where(
+                AuthCapture.user_id == user.id,
+                AuthCapture.capture_type == "child_add",
+                AuthCapture.input_school_code == school_code,
+                AuthCapture.status == "pending",
+            )
+        )).scalar_one_or_none()
+        if existing:
+            _delete_storage_object(existing.s3_key)
+            existing.s3_key = storage_key
+            existing.input_grade = grade
+            existing.input_class_num = class_num
+            existing.input_school_type = school_type or None
+            existing.input_region = region or None
+            existing.reviewed_by = None
+            existing.reviewed_at = None
+            existing.reject_reason = None
+            existing.created_at = datetime.utcnow()
+            capture = existing
+        else:
+            capture = AuthCapture(
+                user_id=user.id,
+                capture_type="child_add",
+                s3_key=storage_key,
+                input_school_code=school_code,
+                input_school_name=school_name,
+                input_grade=grade,
+                input_class_num=class_num,
+                input_school_type=school_type or None,
+                input_region=region or None,
+            )
+            db.add(capture)
 
-    if region:
-        user.region = region  # 캡처 제출 시 지역 즉시 반영 (승인 전에도 지역게시판/학원탭 사용 가능)
-    user.auth_pending = True
-    user.auth_route = "capture"
     await db.commit()
     await db.refresh(capture)
     return capture
@@ -165,26 +214,69 @@ async def approve_capture(capture_id: int, admin: User, db: AsyncSession) -> Non
     capture.reviewed_by = admin.id
     capture.reviewed_at = datetime.utcnow()
 
-    user.member_grade = "member"
-    user.auth_pending = False
-    user.school_code = capture.input_school_code
-    user.school_name = capture.input_school_name
-    user.grade = capture.input_grade
-    if capture.input_class_num:
-        user.class_num = capture.input_class_num
+    if capture.capture_type == "child_add":
+        # 자녀 추가 승인: UserChild 생성 또는 학년 업데이트
+        existing_child = (await db.execute(
+            select(UserChild).where(
+                UserChild.user_id == user.id,
+                UserChild.school_code == capture.input_school_code,
+            )
+        )).scalar_one_or_none()
+
+        if existing_child:
+            existing_child.grade = capture.input_grade
+            if capture.input_class_num:
+                existing_child.class_num = capture.input_class_num
+            child = existing_child
+        else:
+            child = UserChild(
+                user_id=user.id,
+                school_code=capture.input_school_code,
+                school_name=capture.input_school_name,
+                grade=capture.input_grade,
+                class_num=capture.input_class_num,
+                school_type=capture.input_school_type,
+                region=capture.input_region or user.region,
+            )
+            db.add(child)
+            await db.flush()
+
+        if not user.active_child_id:
+            user.active_child_id = child.id
+
+        # deprecated 필드 동기화
+        user.school_code = capture.input_school_code
+        user.school_name = capture.input_school_name
+        user.grade = capture.input_grade
+
+        push_title = "자녀 학교 인증 완료!"
+        push_body = f"{capture.input_school_name} 학부모로 확인되었습니다."
+    else:
+        # 최초 가입 승인: 정회원 승급
+        user.member_grade = "member"
+        user.auth_pending = False
+        user.school_code = capture.input_school_code
+        user.school_name = capture.input_school_name
+        user.grade = capture.input_grade
+        if capture.input_class_num:
+            user.class_num = capture.input_class_num
+
+        push_title = "가입 승인 ��료!"
+        push_body = "���스토크 정회원이 되었습니다."
 
     db.add(AdminAction(
         admin_id=admin.id,
         action_type="approve_capture",
         target_type="capture",
         target_id=capture.id,
+        detail=capture.capture_type,
     ))
     await db.commit()
 
     _delete_storage_object(capture.s3_key)
 
     if user.fcm_token:
-        await send_push(user.fcm_token, title="가입 승인 완료!", body="맘스토크 정회원이 되었습니다.", data={"type": "auth_approved"})
+        await send_push(user.fcm_token, title=push_title, body=push_body, data={"type": "auth_approved"})
 
 
 async def reject_capture(capture_id: int, admin: User, reason: str, db: AsyncSession) -> None:
@@ -201,7 +293,7 @@ async def reject_capture(capture_id: int, admin: User, reason: str, db: AsyncSes
     capture.reviewed_at = datetime.utcnow()
     capture.reject_reason = reason
 
-    if user:
+    if user and capture.capture_type == "initial":
         user.auth_pending = False
 
     db.add(AdminAction(
@@ -216,9 +308,10 @@ async def reject_capture(capture_id: int, admin: User, reason: str, db: AsyncSes
     _delete_storage_object(capture.s3_key)
 
     if user and user.fcm_token:
+        title = "자녀 추가 심사 결과" if capture.capture_type == "child_add" else "가입 심사 결과"
         await send_push(
             user.fcm_token,
-            title="가입 심사 결과",
+            title=title,
             body=f"심사가 반려되었습니다. 사유: {reason[:60]}",
             data={"type": "auth_rejected"},
         )

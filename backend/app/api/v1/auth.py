@@ -298,6 +298,7 @@ async def capture_upload(
     class_num: int | None = Form(None),
     school_type: str = Form(...),
     region: str = Form(""),
+    capture_type: str = Form("initial"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -313,7 +314,10 @@ async def capture_upload(
         storage_key = await capture_service.upload_capture_image(user.id, data, content_type)
     except RuntimeError as e:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
-    await capture_service.submit_capture(user, storage_key, school_code, school_name, grade, class_num, db, region=region)
+    await capture_service.submit_capture(
+        user, storage_key, school_code, school_name, grade, class_num, db,
+        region=region, school_type=school_type, capture_type=capture_type,
+    )
 
 
 @router.post("/capture/submit", status_code=status.HTTP_204_NO_CONTENT)

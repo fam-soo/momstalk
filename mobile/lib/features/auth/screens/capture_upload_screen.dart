@@ -11,7 +11,14 @@ import '../../board/screens/board_screen.dart' show userProfileProvider;
 
 class CaptureUploadScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> schoolInfo;
-  const CaptureUploadScreen({super.key, required this.schoolInfo});
+  /// 'initial': 최초 가입 인증 → /auth/pending으로 이동
+  /// 'child_add': 자녀 추가 인증 → 완료 메시지 후 pop(true)
+  final String captureType;
+  const CaptureUploadScreen({
+    super.key,
+    required this.schoolInfo,
+    this.captureType = 'initial',
+  });
 
   @override
   ConsumerState<CaptureUploadScreen> createState() => _CaptureUploadScreenState();
@@ -93,13 +100,23 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
         'school_name': widget.schoolInfo['school_name'],
         'grade': '${widget.schoolInfo['grade']}',
         'class_num': widget.schoolInfo['class_num'] != null ? '${widget.schoolInfo['class_num']}' : null,
-        'school_type': widget.schoolInfo['school_type'],
+        'school_type': widget.schoolInfo['school_type'] ?? '',
         'region': widget.schoolInfo['region'] ?? '',
+        'capture_type': widget.captureType,
       }..removeWhere((_, v) => v == null));
 
       await dio.post('/auth/capture/upload', data: formData);
 
-      if (mounted) context.go('/auth/pending');
+      if (mounted) {
+        if (widget.captureType == 'child_add') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('제출 완료! 관리자 확인 후 자녀 학교가 추가됩니다.')),
+          );
+          context.pop(true);
+        } else {
+          context.go('/auth/pending');
+        }
+      }
     } on DioException catch (e) {
       final detail = (e.response?.data is Map) ? e.response!.data['detail'] : e.message;
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('업로드 실패: $detail')));
@@ -127,16 +144,25 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
         'region': widget.schoolInfo['region'] ?? '',
       });
 
-      // 2. dev 즉시 승인 → member_grade = 'member'
-      await dio.post('/auth/dev/approve-me');
-
-      // 3. 캐시된 프로필 무효화 후 board로 이동 (정회원 탭 바로 열림)
-      ref.invalidate(userProfileProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('[DEV] 즉시 정회원 승급 완료!')),
-        );
-        context.go('/board');
+      if (widget.captureType == 'child_add') {
+        // 자녀 추가 DEV: 즉시 캡처 승인 (admin API 불필요 — 서버에서 처리)
+        ref.invalidate(userProfileProvider);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('[DEV] 자녀 추가 제출 완료!')),
+          );
+          context.pop(true);
+        }
+      } else {
+        // 최초 가입 DEV: 즉시 승인 → member_grade = 'member'
+        await dio.post('/auth/dev/approve-me');
+        ref.invalidate(userProfileProvider);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('[DEV] 즉시 정회원 승급 완료!')),
+          );
+          context.go('/board');
+        }
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('제출 실패: $e')));
@@ -168,7 +194,7 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
     final grade = widget.schoolInfo['grade'] as int? ?? 1;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('근거자료 등록')),
+      appBar: AppBar(title: Text(widget.captureType == 'child_add' ? '자녀 학교 인증' : '근거자료 등록')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -191,9 +217,11 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
                         style: TextStyle(fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.primary)),
                   ]),
                   const SizedBox(height: 8),
-                  const Text(
-                    '최근 1주일 이내 학교에서 받은 자료 사진을 업로드해 주세요.\n관리자 확인 후 정회원으로 승인됩니다.',
-                    style: TextStyle(fontSize: 13, height: 1.5),
+                  Text(
+                    widget.captureType == 'child_add'
+                        ? '최근 1주일 이내 학교에서 받은 자료 사진을 업로드해 주세요.\n관리자 확인 후 해당 자녀 학교가 추가됩니다.'
+                        : '최근 1주일 이내 학교에서 받은 자료 사진을 업로드해 주세요.\n관리자 확인 후 정회원으로 승인됩니다.',
+                    style: const TextStyle(fontSize: 13, height: 1.5),
                   ),
                 ],
               ),

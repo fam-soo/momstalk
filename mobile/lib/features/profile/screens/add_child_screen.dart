@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../auth/screens/capture_upload_screen.dart';
 
 // 자녀 추가 전용 화면 — go_router 라우트로 등록되어야 autofocus/텍스트 입력이 정상 동작
 class AddChildScreen extends ConsumerStatefulWidget {
@@ -19,7 +20,6 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
   Map<String, dynamic>? _selected;
   int _grade = 1;
   bool _loading = false;
-  bool _saving = false;
   bool _searched = false;
 
   static const _typeOptions = [
@@ -63,26 +63,27 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
 
   Future<void> _save() async {
     if (_selected == null) return;
-    setState(() => _saving = true);
-    try {
-      final dio = ref.read(dioProvider);
-      final address = _selected!['address'] as String? ?? '';
-      final region = (_selected!['region'] as String? ?? '').isNotEmpty
-          ? _selected!['region'] as String
-          : _extractRegion(address);
-      await dio.post('/auth/me/children', data: {
-        'school_code': _selected!['school_code'],
-        'school_name': _selected!['school_name'],
-        'grade': _grade,
-        'school_type': _selected!['school_type'],
-        'region': region,
-      });
-      if (mounted) context.pop(true);
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('추가 실패: $e')));
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+    final address = _selected!['address'] as String? ?? '';
+    final region = (_selected!['region'] as String? ?? '').isNotEmpty
+        ? _selected!['region'] as String
+        : _extractRegion(address);
+    final schoolInfo = {
+      'school_code': _selected!['school_code'],
+      'school_name': _selected!['school_name'],
+      'grade': _grade,
+      'school_type': _selected!['school_type'] ?? 'elementary',
+      'region': region,
+    };
+    // 캡처(알림장 사진) 인증 화면으로 이동
+    final result = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CaptureUploadScreen(
+          schoolInfo: schoolInfo,
+          captureType: 'child_add',
+        ),
+      ),
+    );
+    if (result == true && mounted) context.pop(true);
   }
 
   int get _maxGrade => _selected?['school_type'] == 'elementary' ? 6 : 3;
@@ -234,11 +235,8 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               child: FilledButton(
-                onPressed: _selected == null || _saving ? null : _save,
-                child: _saving
-                    ? const SizedBox(height: 20, width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Text('자녀 추가', style: TextStyle(fontSize: 15)),
+                onPressed: _selected == null ? null : _save,
+                child: const Text('다음 — 인증 사진 업로드', style: TextStyle(fontSize: 15)),
               ),
             ),
           ),
