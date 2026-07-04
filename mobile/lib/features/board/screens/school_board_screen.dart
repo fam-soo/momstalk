@@ -28,6 +28,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   TabController? _tabController;
   List<Map<String, dynamic>> _children = [];
   int _selectedChildIdx = 0;
+  bool _authPending = false;
   static const _tapLimit = 2;
   static const _prefKey = 'preview_taps_school';
   static const _lurkerReadKey = 'school_lurker_reads';
@@ -61,15 +62,18 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       final profile = Map<String, dynamic>.from(resp.data as Map);
       final isMember = (profile['member_grade'] as String? ?? 'lurker') == 'member';
       final isAdmin = profile['is_admin'] as bool? ?? false;
+      final authPending = profile['auth_pending'] as bool? ?? false;
       if (mounted) {
         final children = (profile['children'] as List? ?? [])
             .map((c) => Map<String, dynamic>.from(c as Map))
             .toList();
-        // 자녀 수에 맞게 탭 컨트롤러 생성
-        final tabs = (isMember || isAdmin) ? TabController(length: 2, vsync: this) : null;
+        final canAccess = (isMember || isAdmin) && !authPending;
+        final tabs = canAccess ? TabController(length: 2, vsync: this) : null;
         setState(() {
-          _isMember = isMember || isAdmin;
-          _isLurker = !isMember && !isAdmin;
+          _isMember = canAccess;
+          // auth_pending 중이면 lurker도 아닌 '인증 대기' 상태로 처리
+          _isLurker = !canAccess && !authPending;
+          _authPending = authPending && !isAdmin;
           _schoolName = profile['school_name'] as String? ?? '';
           _grade = profile['grade'] as int? ?? 1;
           _children = children;
@@ -135,6 +139,35 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+
+    // 인증 사진 심사 대기 중
+    if (_authPending) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('학교 게시판', style: TextStyle(fontWeight: FontWeight.bold))),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.hourglass_top_rounded, size: 64, color: Colors.orange.shade400),
+              const SizedBox(height: 20),
+              const Text('학부모 인증 심사 중', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Text(
+                '알림장 캡처 사진을 검토하고 있습니다.\n관리자 승인 후 학교 게시판을 이용하실 수 있습니다.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, height: 1.6, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 24),
+              OutlinedButton.icon(
+                onPressed: () => context.go('/auth/pending'),
+                icon: const Icon(Icons.info_outline, size: 18),
+                label: const Text('인증 상태 확인'),
+              ),
+            ]),
+          ),
+        ),
+      );
+    }
 
     if (_isMember) {
       final tc = _tabController!;

@@ -138,10 +138,12 @@ async def list_comments(post_id: int, user: User, db: AsyncSession) -> list[Comm
             users_map[u.id] = u
 
     def _comment_display_name(c: Comment) -> str | None:
-        if c.is_anonymous:
-            return None
         author = users_map.get(c.author_id)
         if not author:
+            return None
+        if author.is_admin:
+            return "관리자"
+        if c.is_anonymous:
             return None
         nick_type = getattr(c, "nickname_type", "anon")
         if nick_type == "certified":

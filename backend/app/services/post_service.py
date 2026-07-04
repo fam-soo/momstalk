@@ -12,7 +12,9 @@ REPORT_AUTO_HIDE_THRESHOLD = 5
 
 
 def _author_display_name(post_or_comment, author: User) -> str | None:
-    """nickname_type에 따른 표시용 닉네임 반환."""
+    """nickname_type에 따른 표시용 닉네임 반환. 관리자 작성 글은 항상 '관리자' 표시."""
+    if author.is_admin:
+        return "관리자"
     nickname_type = getattr(post_or_comment, "nickname_type", "anon")
     if nickname_type == "certified":
         return author.certified_nickname or author.nickname

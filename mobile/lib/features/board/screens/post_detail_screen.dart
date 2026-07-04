@@ -390,7 +390,9 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 const SizedBox(height: 8),
                 Row(children: [
                   Text(
-                    post['is_anonymous'] == true ? '익명' : (post['author']?['nickname'] ?? ''),
+                    (post['author_display_name'] as String?)?.isNotEmpty == true
+                        ? post['author_display_name'] as String
+                        : (post['is_anonymous'] == true ? '익명' : (post['author']?['nickname'] ?? '')),
                     style: const TextStyle(color: Colors.grey, fontSize: 13),
                   ),
                   const Spacer(),

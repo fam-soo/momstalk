@@ -228,7 +228,9 @@ class PostCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  post['is_anonymous'] == true ? '익명' : (post['author_display_name'] as String? ?? '작성자'),
+                  (post['author_display_name'] as String?)?.isNotEmpty == true
+                      ? post['author_display_name'] as String
+                      : (post['is_anonymous'] == true ? '익명' : '작성자'),
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
                 if (isAdmin) ...[
