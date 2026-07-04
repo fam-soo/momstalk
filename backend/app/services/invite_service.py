@@ -53,26 +53,34 @@ async def get_invite(token: str, db: AsyncSession) -> InviteLink | None:
     return result.scalar_one_or_none()
 
 
-async def validate_invite(token: str, db: AsyncSession) -> InviteLink:
-    """유효성 검증. 실패 시 ValueError."""
+async def validate_invite(token: str, db: AsyncSession, user: "User | None" = None) -> InviteLink:
+    """유효성 검증. 실패 시 ValueError.
+    기존 정회원(user.member_grade == 'member')이 이미 사용된 링크를 쓸 때는 허용."""
     link = await get_invite(token, db)
     if not link:
         raise ValueError("유효하지 않은 초대 링크입니다.")
     if link.used_by is not None:
-        raise ValueError("이미 사용된 초대 링크입니다.")
+        # 기존 정회원이 자녀 추가 목적으로 사용하는 경우 허용
+        if user is None or user.member_grade != "member":
+            raise ValueError("이미 사용된 초대 링크입니다.")
     if datetime.utcnow() > link.expires_at:
         raise ValueError("만료된 초대 링크입니다.")
     return link
 
 
-async def use_invite(token: str, user: User, grade: int, class_num: int | None, db: AsyncSession) -> None:
-    """링크 사용 → user_children에 자녀 추가 + 비정회원이면 즉시 정회원 승급."""
+async def use_invite(token: str, user: User, grade: int, class_num: int | None, db: AsyncSession) -> dict:
+    """링크 사용 → user_children에 자녀 추가 + 비정회원이면 즉시 정회원 승급.
+    기존 정회원이 사용하는 경우 자녀만 추가하고 링크는 소모하지 않음."""
     from app.models.service_models import UserChild
     from sqlalchemy import select as sa_select
 
-    link = await validate_invite(token, db)
-    link.used_by = user.id
-    link.used_at = datetime.utcnow()
+    was_member = user.member_grade == "member"
+    link = await validate_invite(token, db, user=user)
+
+    # 기존 정회원이 아닌 경우에만 링크 소모 (신규/lurker 가입용)
+    if not was_member:
+        link.used_by = user.id
+        link.used_at = datetime.utcnow()
 
     # 같은 school_code의 자녀가 이미 있으면 학년만 업데이트, 없으면 추가
     result = await db.execute(
@@ -120,3 +128,4 @@ async def use_invite(token: str, user: User, grade: int, class_num: int | None, 
         user.auth_pending = False
 
     await db.commit()
+    return {"was_member": was_member}

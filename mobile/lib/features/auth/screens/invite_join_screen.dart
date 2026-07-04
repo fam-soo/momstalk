@@ -104,10 +104,10 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
       });
       if (mounted) {
         final msg = _wasAlreadyMember
-            ? '학교 정보가 변경되었습니다!'
+            ? '자녀 학교가 추가되었습니다!'
             : '정회원 가입이 완료되었습니다!';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-        ref.read(routerProvider).go('/region');
+        ref.read(routerProvider).go(_wasAlreadyMember ? '/my' : '/region');
       }
     } catch (e) {
       final detail = _extractDetail(e.toString());
@@ -164,7 +164,7 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('초대 링크로 가입')),
+      appBar: AppBar(title: Text(_wasAlreadyMember ? '자녀 학교 추가' : '초대 링크로 가입')),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -187,7 +187,10 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
                         style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
                   ],
                   const SizedBox(height: 4),
-                  Text('학부모 커뮤니티 초대', style: TextStyle(color: Colors.grey.shade600)),
+                  Text(
+                    _wasAlreadyMember ? '이 학교를 자녀 학교로 추가합니다' : '학부모 커뮤니티 초대',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
                 ]),
               ),
             ),
@@ -240,7 +243,7 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
                     : _joining
                         ? '가입 중...'
                         : _isLoggedIn
-                            ? '가입하기'
+                            ? (_wasAlreadyMember ? '자녀 추가하기' : '가입하기')
                             : '카카오 로그인 후 가입하기',
               ),
             ),
