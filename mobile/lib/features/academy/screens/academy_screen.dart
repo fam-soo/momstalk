@@ -222,40 +222,52 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                     children: [
                       // ── 지역 추가 선택 ────────────────────
                       Row(children: [
-                        const Text('지역', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                        const Text('타 지역 추가', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                         const SizedBox(width: 8),
-                        Text(
-                          _userRegion.isNotEmpty ? '(기본: $_userRegion)' : '',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                        ),
+                        if (_userRegion.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Theme.of(ctx).colorScheme.primary.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text('기본: $_userRegion',
+                              style: TextStyle(fontSize: 11, color: Theme.of(ctx).colorScheme.primary, fontWeight: FontWeight.w600)),
+                          ),
+                        if (tempRegions.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Text('+${tempRegions.length}개 선택',
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                        ],
                       ]),
-                      const SizedBox(height: 4),
-                      Text(
-                        '기본 지역 외 추가로 볼 지역을 선택하세요.',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                      ),
                       const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: _seoulDistricts.map((district) {
-                          final isBase = district == _userRegion;
-                          final sel = tempRegions.contains(district);
-                          return FilterChip(
-                            label: Text(district, style: const TextStyle(fontSize: 12)),
-                            selected: isBase || sel,
-                            onSelected: isBase ? null : (_) => setBS(() {
-                              sel ? tempRegions.remove(district) : tempRegions.add(district);
-                            }),
-                            visualDensity: VisualDensity.compact,
-                            backgroundColor: isBase
-                                ? Theme.of(ctx).colorScheme.primary.withOpacity(0.08)
-                                : null,
-                            selectedColor: isBase
-                                ? Theme.of(ctx).colorScheme.primary.withOpacity(0.2)
-                                : null,
-                          );
-                        }).toList(),
+                      SizedBox(
+                        height: 36,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _seoulDistricts.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 6),
+                          itemBuilder: (_, idx) {
+                            final district = _seoulDistricts[idx];
+                            final isBase = district == _userRegion;
+                            final sel = tempRegions.contains(district);
+                            return FilterChip(
+                              label: Text(district, style: const TextStyle(fontSize: 12)),
+                              selected: isBase || sel,
+                              onSelected: isBase ? null : (_) => setBS(() {
+                                sel ? tempRegions.remove(district) : tempRegions.add(district);
+                              }),
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              backgroundColor: isBase
+                                  ? Theme.of(ctx).colorScheme.primary.withOpacity(0.08)
+                                  : null,
+                              selectedColor: isBase
+                                  ? Theme.of(ctx).colorScheme.primary.withOpacity(0.2)
+                                  : null,
+                            );
+                          },
+                        ),
                       ),
                       const SizedBox(height: 16),
                       const Divider(),
@@ -521,6 +533,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                                               _memberGrade != 'lurker' &&
                                               _userReviewCount < 5 &&
                                               (_results[i]['review_count'] as int? ?? 0) > 0,
+                                          userReviewCount: _userReviewCount,
                                         ),
                                       ),
                                     ),
@@ -611,13 +624,17 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
 class _AcademyTile extends StatelessWidget {
   final Map<String, dynamic> academy;
   final bool isQuotaLimited;
-  const _AcademyTile({required this.academy, this.isQuotaLimited = false});
+  final int userReviewCount;
+  const _AcademyTile({required this.academy, this.isQuotaLimited = false, this.userReviewCount = 0});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final rating = (academy['avg_rating'] as num?)?.toDouble() ?? 0.0;
     final reviewCount = academy['review_count'] as int? ?? 0;
+    final readableCount = isQuotaLimited
+        ? (userReviewCount == 0 ? 1 : (userReviewCount * 5)).clamp(0, reviewCount)
+        : reviewCount;
     final rawSubjects = (academy['subjects'] as List?)?.cast<String>() ?? [];
     const knownSubjects = ['수학', '영어', '과학', '국어', '음악', '미술', '체육', '코딩', '기타'];
     final subjects = rawSubjects.where((s) => knownSubjects.contains(s)).toList();
@@ -674,9 +691,22 @@ class _AcademyTile extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             Text('후기 $reviewCount개', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-            if (isQuotaLimited) ...[
-              const SizedBox(width: 4),
-              Icon(Icons.lock_outline, size: 13, color: Colors.grey.shade500),
+            if (isQuotaLimited && reviewCount > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.lock_outline, size: 11, color: Colors.orange.shade700),
+                  const SizedBox(width: 2),
+                  Text('$readableCount개 열람 가능',
+                    style: TextStyle(fontSize: 10, color: Colors.orange.shade700, fontWeight: FontWeight.w600)),
+                ]),
+              ),
             ],
             if (subjects.isNotEmpty) ...[
               const SizedBox(width: 8),

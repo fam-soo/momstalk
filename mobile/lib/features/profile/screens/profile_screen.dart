@@ -797,7 +797,6 @@ class _AddChildScreenState extends ConsumerState<_AddChildScreen> {
               Expanded(
                 child: TextField(
                   controller: _searchCtrl,
-                  autofocus: true,
                   decoration: InputDecoration(
                     hintText: '학교명 또는 지역명 (예: 행복초, 강남구)',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -856,7 +855,7 @@ class _AddChildScreenState extends ConsumerState<_AddChildScreen> {
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                       Icon(Icons.search, size: 56, color: Colors.grey.shade300),
                       const SizedBox(height: 12),
-                      Text('학교명 또는 지역명을 입력 후 엔터를 누르세요',
+                      Text('학교명 또는 지역명 입력 후 검색 버튼을 누르세요',
                           style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
                     ]),
                   )

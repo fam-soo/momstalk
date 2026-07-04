@@ -17,6 +17,8 @@ class AcademyDetailScreen extends ConsumerStatefulWidget {
 class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
   Map<String, dynamic>? _academy;
   List<Map<String, dynamic>> _reviews = [];
+  List<Map<String, dynamic>> _seedReviews = [];
+  List<Map<String, dynamic>> _userReviews = [];
   bool _loading = true;
   bool _kakaoLoading = false;
   bool _reviewsLocked = false;  // 로그인 미인증
@@ -48,6 +50,8 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
         if (mounted) {
           setState(() {
             _reviews = List<Map<String, dynamic>>.from(data['reviews'] as List? ?? []);
+            _seedReviews = _reviews.where((r) => r['is_seed'] == true).toList();
+            _userReviews = _reviews.where((r) => r['is_seed'] != true).toList();
             _totalReviews = quotaInfo['total'] as int? ?? 0;
             _readableReviews = quotaInfo['readable'] as int? ?? _totalReviews;
             _isLimited = quotaInfo['is_limited'] as bool? ?? false;
@@ -138,30 +142,22 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
           // ── 학원 프로필 ─────────────────────────────────
           Container(
             color: isB2b ? theme.colorScheme.primaryContainer.withOpacity(0.2) : null,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        _academy!['name'] as String? ?? '',
-                        style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                if (isB2b)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        borderRadius: BorderRadius.circular(6),
                       ),
+                      child: const Text('공식 파트너', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
                     ),
-                    if (isB2b)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Text('공식 파트너', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
+                  ),
                 Row(
                   children: [
                     Icon(Icons.location_on_outlined, size: 15, color: Colors.grey.shade600),
@@ -207,6 +203,22 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
             ),
           ),
           const Divider(height: 1),
+
+          // ── 학원 소개 (seed 후기) ────────────────────────
+          if (_seedReviews.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Row(children: [
+                Icon(Icons.auto_awesome, size: 16, color: theme.colorScheme.primary),
+                const SizedBox(width: 6),
+                Text('학원 소개', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(width: 6),
+                Text('AI 요약 정보', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+              ]),
+            ),
+            ..._seedReviews.map((r) => _ReviewCard(review: r)),
+            const Divider(height: 1),
+          ],
 
           // ── 후기 목록 ────────────────────────────────────
           Padding(
@@ -261,7 +273,7 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                 ),
               ),
             )
-          else if (_reviews.isEmpty)
+          else if (_userReviews.isEmpty)
             Padding(
               padding: const EdgeInsets.all(32),
               child: Center(
@@ -277,7 +289,7 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
               ),
             )
           else ...[
-            ...List.generate(_reviews.length, (i) => _ReviewCard(review: _reviews[i])),
+            ..._userReviews.map((r) => _ReviewCard(review: r)),
             // 하단 잠금 안내 (제한 중일 때)
             if (_isLimited)
               Padding(
@@ -442,31 +454,6 @@ class _ReviewCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 시드 후기 상단 배지
-            if (isSeed) ...[
-              Row(
-                children: [
-                  Icon(Icons.auto_awesome, size: 13, color: theme.colorScheme.primary),
-                  const SizedBox(width: 4),
-                  Text(
-                    'AI 요약 정보',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '실제 후기 기반 자동 요약',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Divider(height: 1),
-              const SizedBox(height: 8),
-            ],
             Row(
               children: [
                 if (!isViewLimited)
