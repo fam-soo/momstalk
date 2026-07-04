@@ -44,9 +44,8 @@ final appTheme = ThemeData(
     visualDensity: VisualDensity(horizontal: 0, vertical: -1),
     contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 4),
   ),
-  chipTheme: ChipThemeData(
-    labelStyle: const TextStyle(fontSize: 12),
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
-    visualDensity: VisualDensity.compact,
+  chipTheme: const ChipThemeData(
+    labelStyle: TextStyle(fontSize: 12),
+    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 0),
   ),
 );
