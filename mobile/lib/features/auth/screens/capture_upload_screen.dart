@@ -105,7 +105,14 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
         'capture_type': widget.captureType,
       }..removeWhere((_, v) => v == null));
 
-      await dio.post('/auth/capture/upload', data: formData);
+      await dio.post(
+        '/auth/capture/upload',
+        data: formData,
+        options: Options(
+          sendTimeout: const Duration(minutes: 3),
+          receiveTimeout: const Duration(minutes: 3),
+        ),
+      );
 
       if (mounted) {
         if (widget.captureType == 'child_add') {

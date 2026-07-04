@@ -55,7 +55,6 @@ final dioProvider = Provider<Dio>((ref) {
     baseUrl: AppConstants.baseUrl,
     connectTimeout: const Duration(seconds: 30),
     receiveTimeout: const Duration(seconds: 30),
-    headers: {'Content-Type': 'application/json'},
   ));
 
   if (AppConstants.mockMode) {

@@ -1496,29 +1496,76 @@ class _NoticePane extends ConsumerStatefulWidget {
 class _NoticePaneState extends ConsumerState<_NoticePane> {
   final _titleCtrl = TextEditingController();
   final _contentCtrl = TextEditingController();
+  final _schoolSearchCtrl = TextEditingController();
   String _boardType = 'notice';
+  String? _targetRegion;
+  String? _targetSchoolCode;
+  String? _targetSchoolName;
+  List<Map<String, dynamic>> _schoolResults = [];
+  bool _schoolSearching = false;
   bool _pinned = false;
   bool _saving = false;
+
+  static const _regions = [
+    '강남구','강동구','강북구','강서구','관악구','광진구','구로구','금천구',
+    '노원구','도봉구','동대문구','동작구','마포구','서대문구','서초구','성동구',
+    '성북구','송파구','양천구','영등포구','용산구','은평구','종로구','중구','중랑구',
+    '수원시','성남시','용인시','안양시','부천시','광명시','안산시','고양시','의정부시',
+    '기타',
+  ];
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _contentCtrl.dispose();
+    _schoolSearchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _searchSchool() async {
+    final q = _schoolSearchCtrl.text.trim();
+    if (q.length < 2) return;
+    setState(() { _schoolSearching = true; _schoolResults = []; });
+    try {
+      final dio = ref.read(adminDioProvider);
+      final resp = await dio.get('/schools/search', queryParameters: {'q': q});
+      setState(() => _schoolResults = List<Map<String, dynamic>>.from(resp.data as List));
+    } catch (_) {} finally {
+      if (mounted) setState(() => _schoolSearching = false);
+    }
+  }
 
   Future<void> _submit() async {
     if (_titleCtrl.text.isEmpty || _contentCtrl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('제목과 내용을 입력해주세요.')));
       return;
     }
+    if (_boardType == 'region' && _targetRegion == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('지역을 선택해주세요.')));
+      return;
+    }
+    if (_boardType == 'school' && _targetSchoolCode == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('학교를 선택해주세요.')));
+      return;
+    }
     setState(() => _saving = true);
     try {
       final dio = ref.read(adminDioProvider);
-      await dio.post('/posts', data: {
+      final body = <String, dynamic>{
         'title': _titleCtrl.text,
         'content': _contentCtrl.text,
         'board_type': _boardType,
         'is_pinned': _pinned,
-      });
+      };
+      if (_boardType == 'region' && _targetRegion != null) body['target_region'] = _targetRegion;
+      if (_boardType == 'school' && _targetSchoolCode != null) body['target_school_code'] = _targetSchoolCode;
+      await dio.post('/posts', data: body);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('공지 작성 완료')));
         _titleCtrl.clear();
         _contentCtrl.clear();
-        setState(() => _pinned = false);
+        _schoolSearchCtrl.clear();
+        setState(() { _pinned = false; _targetRegion = null; _targetSchoolCode = null; _targetSchoolName = null; _schoolResults = []; });
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('실패: $e')));
@@ -1542,8 +1589,95 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
             DropdownMenuItem(value: 'region', child: Text('지역')),
             DropdownMenuItem(value: 'school', child: Text('학교')),
           ],
-          onChanged: (v) => setState(() => _boardType = v!),
+          onChanged: (v) => setState(() {
+            _boardType = v!;
+            _targetRegion = null;
+            _targetSchoolCode = null;
+            _targetSchoolName = null;
+            _schoolResults = [];
+            _schoolSearchCtrl.clear();
+          }),
         ),
+        // 지역 선택 (region 게시판)
+        if (_boardType == 'region') ...[
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            value: _targetRegion,
+            decoration: const InputDecoration(
+              labelText: '타겟 지역', border: OutlineInputBorder(), isDense: true),
+            hint: const Text('지역 선택'),
+            items: _regions.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+            onChanged: (v) => setState(() => _targetRegion = v),
+          ),
+        ],
+        // 학교 검색 (school 게시판)
+        if (_boardType == 'school') ...[
+          const SizedBox(height: 10),
+          if (_targetSchoolName != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(children: [
+                Expanded(child: Text('선택됨: $_targetSchoolName',
+                    style: TextStyle(fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.primary))),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  onPressed: () => setState(() { _targetSchoolCode = null; _targetSchoolName = null; }),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ]),
+            )
+          else ...[
+            Row(children: [
+              Expanded(
+                child: TextField(
+                  controller: _schoolSearchCtrl,
+                  decoration: const InputDecoration(
+                    labelText: '학교명 검색', border: OutlineInputBorder(), isDense: true,
+                    prefixIcon: Icon(Icons.search, size: 18)),
+                  onSubmitted: (_) => _searchSchool(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: _schoolSearching ? null : _searchSchool,
+                child: _schoolSearching
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('검색'),
+              ),
+            ]),
+            if (_schoolResults.isNotEmpty)
+              Container(
+                constraints: const BoxConstraints(maxHeight: 180),
+                margin: const EdgeInsets.only(top: 4),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _schoolResults.length,
+                  itemBuilder: (_, i) {
+                    final s = _schoolResults[i];
+                    return ListTile(
+                      dense: true,
+                      title: Text(s['school_name'] as String? ?? ''),
+                      subtitle: Text(s['address'] as String? ?? '', style: const TextStyle(fontSize: 11)),
+                      onTap: () => setState(() {
+                        _targetSchoolCode = s['school_code'] as String?;
+                        _targetSchoolName = s['school_name'] as String?;
+                        _schoolResults = [];
+                        _schoolSearchCtrl.clear();
+                      }),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ],
         const SizedBox(height: 10),
         TextField(
           controller: _titleCtrl,

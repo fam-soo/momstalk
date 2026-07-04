@@ -165,8 +165,12 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: TextField(
                 controller: _titleCtrl,
-                decoration: const InputDecoration(hintText: '제목', border: InputBorder.none),
-                style: theme.textTheme.titleMedium,
+                decoration: const InputDecoration(
+                  hintText: '제목',
+                  hintStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.grey),
+                  border: InputBorder.none,
+                ),
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
               ),
             ),
             const Divider(height: 1),
@@ -175,7 +179,12 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: TextField(
                   controller: _contentCtrl,
-                  decoration: const InputDecoration(hintText: '내용을 입력해주세요.', border: InputBorder.none),
+                  decoration: const InputDecoration(
+                    hintText: '내용을 입력해주세요.',
+                    hintStyle: TextStyle(fontSize: 15, color: Colors.grey),
+                    border: InputBorder.none,
+                  ),
+                  style: const TextStyle(fontSize: 15, height: 1.6),
                   maxLines: null,
                   expands: true,
                   textAlignVertical: TextAlignVertical.top,

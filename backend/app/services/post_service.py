@@ -4,7 +4,7 @@ from sqlalchemy import select, func, or_
 from sqlalchemy.exc import IntegrityError
 
 from app.core.profanity import check_profanity
-from app.models.service_models import Block, Comment, Like, Post, Report, Scrap, User
+from app.models.service_models import Block, Comment, Like, Post, Report, Scrap, School, User
 from app.schemas.post import PostCreate, PostListItem, PostResponse, ScrapResponse, PostUpdate
 from app.services import temperature_service
 
@@ -32,6 +32,16 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
     school_code = (active.school_code if active else None) or user.school_code
     grade = (active.grade if active else None) or user.grade
     class_num = (active.class_num if active else None) or user.class_num
+
+    if user.is_admin and req.target_school_code:
+        school_code = req.target_school_code
+    elif user.is_admin and req.target_region and req.board_type == "region":
+        row = (await db.execute(
+            select(School.school_code).where(School.region == req.target_region).limit(1)
+        )).scalar_one_or_none()
+        if row:
+            school_code = row
+
     post = Post(
         author_id=user.id,
         board_type=req.board_type,

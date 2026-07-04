@@ -26,10 +26,8 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   int _previewTaps = 0;
   int _lurkerReads = 0; // lurker 읽기 횟수 (계정당 1회, 초기화 없음)
   TabController? _tabController;
-  // 다자녀 지원
   List<Map<String, dynamic>> _children = [];
-  int _selectedChildIdx = 0; // 선택된 자녀 인덱스
-  TabController? _childTabController;
+  int _selectedChildIdx = 0;
   static const _tapLimit = 2;
   static const _prefKey = 'preview_taps_school';
   static const _lurkerReadKey = 'school_lurker_reads';
@@ -43,7 +41,6 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   @override
   void dispose() {
     _tabController?.dispose();
-    _childTabController?.dispose();
     super.dispose();
   }
 
@@ -69,11 +66,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
             .map((c) => Map<String, dynamic>.from(c as Map))
             .toList();
         // 자녀 수에 맞게 탭 컨트롤러 생성
-        final subTabCount = 2; // 학교 전체 + N학년
-        final tabs = (isMember || isAdmin) ? TabController(length: subTabCount, vsync: this) : null;
-        final childTabs = (isMember || isAdmin) && children.length > 1
-            ? TabController(length: children.length, vsync: this)
-            : null;
+        final tabs = (isMember || isAdmin) ? TabController(length: 2, vsync: this) : null;
         setState(() {
           _isMember = isMember || isAdmin;
           _isLurker = !isMember && !isAdmin;
@@ -82,7 +75,6 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
           _children = children;
           _selectedChildIdx = 0;
           _tabController = tabs;
-          _childTabController = childTabs;
           _loading = false;
         });
       }
@@ -147,7 +139,6 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
     if (_isMember) {
       final tc = _tabController!;
       final hasMultiChild = _children.length > 1;
-      // 현재 선택된 자녀 정보
       final selChild = hasMultiChild && _selectedChildIdx < _children.length
           ? _children[_selectedChildIdx]
           : null;
@@ -161,37 +152,27 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
 
       return Scaffold(
         appBar: AppBar(
-          title: Text(displaySchool.isNotEmpty ? displaySchool : '학교 게시판',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-          titleSpacing: hasMultiChild ? 0 : null,
+          title: hasMultiChild
+              ? _SchoolDropdownTitle(
+                  children: _children,
+                  selectedIdx: _selectedChildIdx,
+                  onChanged: (idx) => setState(() {
+                    _selectedChildIdx = idx;
+                    if (tc.index != 0) tc.animateTo(0);
+                  }),
+                )
+              : Text(displaySchool.isNotEmpty ? displaySchool : '학교 게시판',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
           actions: [
             IconButton(icon: const Icon(Icons.search), onPressed: () => context.push('/search')),
           ],
           bottom: PreferredSize(
-            preferredSize: Size.fromHeight(hasMultiChild ? 96 : 48),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 다자녀일 때 자녀 선택 탭
-                if (hasMultiChild) _ChildSelectorTabs(
-                  children: _children,
-                  selectedIdx: _selectedChildIdx,
-                  tabController: _childTabController!,
-                  onChanged: (idx) {
-                    setState(() {
-                      _selectedChildIdx = idx;
-                      // 학년 탭 리셋
-                      if (tc.index != 0) tc.animateTo(0);
-                    });
-                  },
-                ),
-                TabBar(
-                  controller: tc,
-                  tabs: [
-                    const Tab(text: '학교 전체'),
-                    Tab(text: '$displayGrade학년'),
-                  ],
-                ),
+            preferredSize: const Size.fromHeight(48),
+            child: TabBar(
+              controller: tc,
+              tabs: [
+                const Tab(text: '학교 전체'),
+                Tab(text: '$displayGrade학년'),
               ],
             ),
           ),
@@ -363,22 +344,20 @@ class _SchoolPreviewBoard extends StatelessWidget {
   }
 }
 
-// ── 다자녀 선택 탭 바 ────────────────────────────────────
+// ── 다자녀 학교 드롭다운 제목 ──────────────────────────────
 
-class _ChildSelectorTabs extends StatelessWidget {
+class _SchoolDropdownTitle extends StatelessWidget {
   final List<Map<String, dynamic>> children;
   final int selectedIdx;
-  final TabController tabController;
   final void Function(int) onChanged;
 
-  const _ChildSelectorTabs({
+  const _SchoolDropdownTitle({
     required this.children,
     required this.selectedIdx,
-    required this.tabController,
     required this.onChanged,
   });
 
-  String _schoolTypeLabel(String? type) => switch (type) {
+  String _typeLabel(String? type) => switch (type) {
     'elementary' => '초',
     'middle' => '중',
     'high' => '고',
@@ -394,52 +373,73 @@ class _ChildSelectorTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TabBar(
-      controller: tabController,
-      isScrollable: true,
-      tabAlignment: TabAlignment.start,
-      onTap: onChanged,
-      indicatorSize: TabBarIndicatorSize.tab,
-      tabs: children.map((child) {
-        final idx = children.indexOf(child);
-        final isSelected = idx == selectedIdx;
-        final schoolName = child['school_name'] as String? ?? '학교';
-        final grade = child['grade'] as int? ?? 1;
-        final type = child['school_type'] as String?;
-        final typeLabel = _schoolTypeLabel(type);
-        final typeColor = _typeColor(type);
+    final sel = children[selectedIdx];
+    final schoolName = sel['school_name'] as String? ?? '학교';
+    final grade = sel['grade'] as int? ?? 1;
+    final type = sel['school_type'] as String?;
+    final typeLabel = _typeLabel(type);
+    final typeColor = _typeColor(type);
 
-        return Tab(
-          height: 44,
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
+    return PopupMenuButton<int>(
+      onSelected: onChanged,
+      tooltip: '학교 선택',
+      offset: const Offset(0, 40),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      itemBuilder: (_) => children.asMap().entries.map((entry) {
+        final i = entry.key;
+        final c = entry.value;
+        final cSchool = c['school_name'] as String? ?? '학교';
+        final cGrade = c['grade'] as int? ?? 1;
+        final cType = c['school_type'] as String?;
+        final cLabel = _typeLabel(cType);
+        final cColor = _typeColor(cType);
+        return PopupMenuItem<int>(
+          value: i,
+          child: Row(children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: typeColor.withValues(alpha: isSelected ? 0.2 : 0.1),
+                color: cColor.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: Text(typeLabel,
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: typeColor)),
+              child: Text(cLabel,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: cColor)),
             ),
-            const SizedBox(width: 6),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  schoolName.length > 8 ? '${schoolName.substring(0, 7)}…' : schoolName,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  ),
-                ),
-                Text('$grade학년',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
-              ],
-            ),
+            const SizedBox(width: 10),
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(cSchool, style: TextStyle(
+                fontWeight: i == selectedIdx ? FontWeight.bold : FontWeight.normal,
+                fontSize: 14,
+              )),
+              Text('$cGrade학년', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            ]),
+            if (i == selectedIdx) ...[
+              const Spacer(),
+              const Icon(Icons.check, size: 16, color: Colors.blue),
+            ],
           ]),
         );
       }).toList(),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: typeColor.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(typeLabel,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: typeColor)),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          schoolName.length > 9 ? '${schoolName.substring(0, 8)}…' : schoolName,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
+        const SizedBox(width: 2),
+        Text(' $grade학년', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        const SizedBox(width: 2),
+        const Icon(Icons.arrow_drop_down, size: 20),
+      ]),
     );
   }
 }
