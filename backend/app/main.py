@@ -72,14 +72,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # 글로벌 Rate Limit 미들웨어 — IP당 분당 200회 초과 시 429
 _global_rl_store: dict[str, list[float]] = {}
 
@@ -106,6 +98,22 @@ async def global_rate_limit(request: Request, call_next) -> Response:
             headers={"Content-Type": "application/json", "Retry-After": "60"},
         )
     return await call_next(request)
+
+
+# CORSMiddleware는 반드시 위의 global_rate_limit보다 나중에 등록해야 한다.
+# Starlette는 가장 나중에 add_middleware()된 것이 최외곽(outermost) 레이어가
+# 되는데, CORSMiddleware가 global_rate_limit 안쪽에 있으면 429처럼 미들웨어가
+# 직접 반환하는 Response에는 CORS 헤더가 붙지 않는다. 브라우저는 이런 응답을
+# 오리진 정책 위반으로 보고 차단하며, 그 결과가 JS 코드에는 원인을 알 수 없는
+# "네트워크 오류"로만 보인다 (모바일 브라우저에서 재시도가 잦을수록 이 429를
+# 더 자주 유발해 재현되기 쉬웠음).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 from app.api.v1.router import api_router  # noqa: E402
