@@ -200,11 +200,38 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
             const SizedBox(height: 24),
             const Text('자녀 학년', style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            DropdownButtonFormField<int>(
-              value: _grade.clamp(1, maxGrade),
-              decoration: const InputDecoration(border: OutlineInputBorder()),
-              items: List.generate(maxGrade, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}학년'))),
-              onChanged: isBusy ? null : (v) => setState(() => _grade = v ?? 1),
+            Row(
+              children: List.generate(maxGrade, (i) {
+                final g = i + 1;
+                final selected = _grade.clamp(1, maxGrade) == g;
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(right: i < maxGrade - 1 ? 6 : 0),
+                    child: GestureDetector(
+                      onTap: isBusy ? null : () => setState(() => _grade = g),
+                      child: Container(
+                        height: 38,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
+                          border: Border.all(
+                            color: selected ? Theme.of(context).colorScheme.primary : Colors.grey.shade300,
+                          ),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '$g학년',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+                            color: selected ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
             ),
             const SizedBox(height: 16),
             const Text('반 (선택)', style: TextStyle(fontWeight: FontWeight.w600)),

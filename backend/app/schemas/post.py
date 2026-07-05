@@ -7,7 +7,7 @@ class PostCreate(BaseModel):
     board_type: str       # grade / school / free / region
     title: str
     content: str
-    is_anonymous: bool = True
+    is_anonymous: bool = False
     nickname_type: str = "anon"   # anon / certified
     mention_tags: list[str] = []  # free 게시판 전용: ["region:기장군", "school:B100", "grade:1"]
     # 관리자 전용: 특정 지역/학교를 타겟으로 공지 작성 시 사용

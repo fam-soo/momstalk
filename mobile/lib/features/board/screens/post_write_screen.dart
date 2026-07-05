@@ -17,9 +17,13 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
   final _titleCtrl = TextEditingController();
   final _contentCtrl = TextEditingController();
 
-  String _nicknameType = 'anon';
+  static const _anonAllowedBoards = {'school', 'free', 'region'};
+
+  String _nicknameType = 'nickname';
   String? _nickname;
   bool _submitting = false;
+
+  bool get _anonAllowed => _anonAllowedBoards.contains(widget.boardType);
 
   @override
   void initState() {
@@ -117,6 +121,7 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Divider(height: 1),
+            if (_anonAllowed)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Column(

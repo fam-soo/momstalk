@@ -189,7 +189,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   Map<String, dynamic>? _me;
   bool _loading = true;
   final _commentCtrl = TextEditingController();
-  bool _anonComment = true;
+  static const _anonAllowedBoards = {'school', 'free', 'region'};
+  bool _anonComment = false;
+
+  bool get _anonCommentAllowed => _anonAllowedBoards.contains(_post?['board_type']);
 
   @override
   void initState() {
@@ -428,6 +431,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
               child: Row(children: [
+                if (_anonCommentAllowed)
                 Material(
                   color: Colors.transparent,
                   child: InkWell(

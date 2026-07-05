@@ -10,6 +10,9 @@ from app.services import temperature_service
 
 REPORT_AUTO_HIDE_THRESHOLD = 5
 
+# 익명 작성 옵션을 선택할 수 있는 게시판. grade(학년/반)·notice(공지)는 실명(닉네임) 고정.
+ANON_ALLOWED_BOARDS = {"school", "free", "region"}
+
 
 def _author_display_name(post_or_comment, author: User) -> str | None:
     """nickname_type에 따른 표시용 닉네임 반환. 관리자 작성 글은 항상 '관리자' 표시."""
@@ -28,6 +31,9 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
         raise ValueError("공지사항은 관리자만 작성할 수 있습니다.")
     if req.board_type in ("school", "grade", "free", "region") and user.member_grade != "member" and not user.is_admin:
         raise ValueError("학부모 인증 정회원만 게시글을 작성할 수 있습니다.")
+    if req.board_type not in ANON_ALLOWED_BOARDS:
+        req.is_anonymous = False
+        req.nickname_type = "anon"
     check_profanity(req.title, "제목")
     check_profanity(req.content, "내용")
     active = user.active_child

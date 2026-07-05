@@ -901,14 +901,40 @@ class _AddChildScreenState extends ConsumerState<_AddChildScreen> {
                     ),
                   ]),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    value: _grade,
-                    decoration: const InputDecoration(
-                        labelText: '자녀 학년', border: OutlineInputBorder(), isDense: true),
-                    items: List.generate(_maxGrade, (i) => i + 1)
-                        .map((g) => DropdownMenuItem(value: g, child: Text('$g학년')))
-                        .toList(),
-                    onChanged: (v) => setState(() => _grade = v!),
+                  const Text('자녀 학년', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: List.generate(_maxGrade, (i) {
+                      final g = i + 1;
+                      final selected = _grade == g;
+                      return Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(right: i < _maxGrade - 1 ? 6 : 0),
+                          child: GestureDetector(
+                            onTap: () => setState(() => _grade = g),
+                            child: Container(
+                              height: 38,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
+                                border: Border.all(
+                                  color: selected ? Theme.of(context).colorScheme.primary : Colors.grey.shade300,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '$g학년',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+                                  color: selected ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
                   ),
                 ],
               ),
@@ -1162,20 +1188,46 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             Container(
               color: Theme.of(context).colorScheme.surface,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Row(children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    value: _grade,
-                    decoration: const InputDecoration(labelText: '학년', border: OutlineInputBorder(), isDense: true),
-                    items: List.generate(_maxGrade, (i) => i + 1)
-                        .map((g) => DropdownMenuItem(value: g, child: Text('$g학년')))
-                        .toList(),
-                    onChanged: (v) => setState(() => _grade = v!),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('학년', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: List.generate(_maxGrade, (i) {
+                      final g = i + 1;
+                      final selected = _grade == g;
+                      return Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(right: i < _maxGrade - 1 ? 6 : 0),
+                          child: GestureDetector(
+                            onTap: () => setState(() => _grade = g),
+                            child: Container(
+                              height: 38,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
+                                border: Border.all(
+                                  color: selected ? Theme.of(context).colorScheme.primary : Colors.grey.shade300,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '$g학년',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+                                  color: selected ? Colors.white : Colors.black87,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonFormField<int?>(
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<int?>(
                     value: _classNum,
                     decoration: const InputDecoration(labelText: '반 (선택)', border: OutlineInputBorder(), isDense: true),
                     items: [
@@ -1184,8 +1236,8 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     ],
                     onChanged: (v) => setState(() => _classNum = v),
                   ),
-                ),
-              ]),
+                ],
+              ),
             ),
           ],
           SafeArea(

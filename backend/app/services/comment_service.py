@@ -6,6 +6,7 @@ from app.core.profanity import check_profanity
 from app.models.service_models import Block, Comment, Like, Post, User
 from app.schemas.comment import CommentCreate, CommentResponse
 from app.services import temperature_service
+from app.services.post_service import ANON_ALLOWED_BOARDS
 
 
 async def create_comment(
@@ -19,6 +20,10 @@ async def create_comment(
         raise ValueError("게시글을 찾을 수 없습니다.")
 
     check_profanity(req.content, "댓글")
+
+    if post.board_type not in ANON_ALLOWED_BOARDS:
+        req.is_anonymous = False
+        req.nickname_type = "anon"
 
     comment = Comment(
         post_id=post_id,

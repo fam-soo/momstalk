@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.config import settings
+from app.core.image_sniff import sniff_image_mime
 from app.core.permissions import require_member
 from app.core.rate_limit import RateLimit
 from app.core.security import create_access_token, decode_token
@@ -303,13 +304,14 @@ async def capture_upload(
     db: AsyncSession = Depends(get_db),
 ):
     """캡처 이미지 + 학교 정보를 한 번에 제출. Supabase Storage에 저장 후 심사 대기 상태로 전환."""
-    _ALLOWED = {"image/jpeg", "image/png", "image/heic", "image/heif"}
-    content_type = file.content_type or "image/jpeg"
-    if content_type not in _ALLOWED:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JPG, PNG, HEIC 파일만 업로드 가능합니다.")
     data = await file.read()
     if len(data) > 10 * 1024 * 1024:  # 10 MB
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="파일 크기는 10MB 이하여야 합니다.")
+    # 클라이언트가 보낸 Content-Type 헤더는 신뢰하지 않고 실제 파일 바이트로 포맷을 판별한다.
+    # (Dio/http 패키지 등 클라이언트 구현체 교체 시 헤더 누락으로 인한 400 재발 방지)
+    content_type = sniff_image_mime(data)
+    if content_type is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JPG, PNG, HEIC 파일만 업로드 가능합니다.")
     try:
         storage_key = await capture_service.upload_capture_image(user.id, data, content_type)
     except RuntimeError as e:

@@ -6,7 +6,7 @@ from pydantic import BaseModel
 class CommentCreate(BaseModel):
     content: str
     parent_id: Optional[int] = None   # 대댓글이면 부모 댓글 ID
-    is_anonymous: bool = True
+    is_anonymous: bool = False
     nickname_type: str = "anon"       # anon / certified
 
     def model_post_init(self, __context) -> None:
