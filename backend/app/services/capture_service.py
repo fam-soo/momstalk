@@ -1,110 +1,31 @@
 """
 알림장 캡처 업로드 & 관리자 대조 승인 서비스.
 
-흐름 (Supabase Storage):
-  1. 유저가 POST /auth/capture/upload (multipart) → 백엔드가 Supabase Storage에 저장
-  2. auth_captures 행 생성 (storage_key 보관)
-  3. 관리자 GET /admin/captures/{id}/image → 백엔드가 Supabase에서 가져와 프록시
-  4. 승인 시 member_grade = 'member', 파일 삭제
+흐름 (Postgres 직접 저장):
+  1. 유저가 POST /auth/capture/upload (multipart) → 이미지 바이트를 auth_captures 행에 그대로 저장
+  2. 관리자 GET /admin/captures/{id}/image → DB에서 바로 읽어 반환 (외부 스토리지 왕복 없음)
+  3. 승인/반려 시 image_data를 즉시 비움 (같은 트랜잭션 — 별도 삭제 요청 불필요)
+
+이미지는 가입 인증용으로만 잠깐 보관되는 작은 파일(리사이즈된 사진)이고 심사
+직후 삭제되는 단명 데이터라, 별도 오브젝트 스토리지(Supabase 등) 없이 단일
+Postgres DB에 BYTEA로 저장해 업로드~심사 흐름의 네트워크 홉과 실패 지점을
+줄였다. (과거 Supabase Storage 왕복이 반복적인 업로드 오류의 원인 중 하나였음)
 """
-import uuid
 from datetime import datetime
 
-import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.core.config import settings
 from app.core.fcm import send_push
 from app.models.service_models import AdminAction, AuthCapture, User, UserChild
 
-_SUPABASE_BUCKET = "captures"
-
-_ALLOWED_CONTENT_TYPES = {
-    "image/jpeg": "jpg",
-    "image/png": "png",
-    "image/heic": "heic",
-    "image/heif": "heif",
-}
-
-
-def _storage_available() -> bool:
-    return bool(settings.SUPABASE_URL and settings.SUPABASE_SERVICE_KEY)
-
-
-def _storage_path(user_id: int, content_type: str) -> str:
-    ext = _ALLOWED_CONTENT_TYPES.get(content_type, "jpg")
-    return f"{user_id}/{uuid.uuid4().hex}.{ext}"
-
-
-async def upload_capture_image(user_id: int, data: bytes, content_type: str) -> str:
-    """Supabase Storage에 이미지 업로드 → storage_key 반환."""
-    if content_type not in _ALLOWED_CONTENT_TYPES:
-        content_type = "image/jpeg"
-
-    if not _storage_available():
-        # 개발 환경: 실제 저장 없이 더미 키 반환
-        return f"dev/{user_id}/{uuid.uuid4().hex}.jpg"
-
-    path = _storage_path(user_id, content_type)  # e.g. "1/abc123.jpg" (버킷명 제외)
-    url = f"{settings.SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}/{path}"
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(url, content=data, headers={
-            "Authorization": f"Bearer {settings.SUPABASE_SERVICE_KEY}",
-            "Content-Type": content_type,
-        })
-        if resp.status_code not in (200, 201):
-            raise RuntimeError(f"Supabase Storage 업로드 실패: {resp.status_code} {resp.text}")
-    return path
-
-
-async def get_capture_image(storage_key: str) -> tuple[bytes, str]:
-    """Supabase Storage에서 이미지 다운로드 → (bytes, content_type)."""
-    if not _storage_available():
-        raise RuntimeError("Supabase Storage 미설정 (SUPABASE_URL / SUPABASE_SERVICE_KEY)")
-
-    # 구 S3 키가 "captures/..." 형태로 저장된 경우 버킷명 중복 방지
-    path = storage_key.removeprefix(f"{_SUPABASE_BUCKET}/")
-    url = f"{settings.SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}/{path}"
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(url, headers={
-            "Authorization": f"Bearer {settings.SUPABASE_SERVICE_KEY}",
-        })
-        if resp.status_code == 404:
-            raise FileNotFoundError("이미지 파일을 찾을 수 없습니다.")
-        resp.raise_for_status()
-    content_type = resp.headers.get("content-type", "image/jpeg").split(";")[0]
-    return resp.content, content_type
-
-
-def _delete_storage_object(storage_key: str) -> None:
-    """동기 삭제 (approve/reject 시 호출 — fire-and-forget 방식)."""
-    if not _storage_available() or storage_key.startswith("dev/"):
-        return
-    import threading
-
-    def _do():
-        import asyncio
-        asyncio.run(_delete_async(storage_key))
-
-    threading.Thread(target=_do, daemon=True).start()
-
-
-async def _delete_async(storage_key: str) -> None:
-    url = f"{settings.SUPABASE_URL}/storage/v1/object/{_SUPABASE_BUCKET}"
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            await client.delete(
-                f"{url}/{storage_key}",
-                headers={"Authorization": f"Bearer {settings.SUPABASE_SERVICE_KEY}"},
-            )
-    except Exception:
-        pass
+_ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/heic", "image/heif"}
 
 
 async def submit_capture(
     user: User,
-    storage_key: str,
+    image_data: bytes | None,
+    image_content_type: str | None,
     school_code: str,
     school_name: str,
     grade: int,
@@ -114,10 +35,13 @@ async def submit_capture(
     school_type: str = "",
     capture_type: str = "initial",
 ) -> AuthCapture:
-    """캡처 ���출 → auth_captures 행 생성.
+    """캡처 이미지 + 학교 정보 제출 → auth_captures 행 생성.
     capture_type='initial': 최초 가입 인증 (user.auth_pending = True)
     capture_type='child_add': 자녀 추가 인증 (기존 캡처 덮어쓰기 없이 새 행 추가)
     """
+    if image_content_type not in _ALLOWED_CONTENT_TYPES:
+        image_content_type = "image/jpeg" if image_data else None
+
     if capture_type == "initial":
         # 최초 가입: 기존 pending 캡처가 있으면 덮어쓰기
         existing = (await db.execute(
@@ -127,8 +51,8 @@ async def submit_capture(
             )
         )).scalar_one_or_none()
         if existing:
-            _delete_storage_object(existing.s3_key)
-            existing.s3_key = storage_key
+            existing.image_data = image_data
+            existing.image_content_type = image_content_type
             existing.input_school_code = school_code
             existing.input_school_name = school_name
             existing.input_grade = grade
@@ -145,7 +69,8 @@ async def submit_capture(
             capture = AuthCapture(
                 user_id=user.id,
                 capture_type="initial",
-                s3_key=storage_key,
+                image_data=image_data,
+                image_content_type=image_content_type,
                 input_school_code=school_code,
                 input_school_name=school_name,
                 input_grade=grade,
@@ -169,8 +94,8 @@ async def submit_capture(
             )
         )).scalar_one_or_none()
         if existing:
-            _delete_storage_object(existing.s3_key)
-            existing.s3_key = storage_key
+            existing.image_data = image_data
+            existing.image_content_type = image_content_type
             existing.input_grade = grade
             existing.input_class_num = class_num
             existing.input_school_type = school_type or None
@@ -184,7 +109,8 @@ async def submit_capture(
             capture = AuthCapture(
                 user_id=user.id,
                 capture_type="child_add",
-                s3_key=storage_key,
+                image_data=image_data,
+                image_content_type=image_content_type,
                 input_school_code=school_code,
                 input_school_name=school_name,
                 input_grade=grade,
@@ -219,6 +145,8 @@ async def _auto_approve_trusted(
     from app.models.service_models import UserChild
     capture.status = "approved"
     capture.reviewed_at = datetime.utcnow()
+    capture.image_data = None
+    capture.image_content_type = None
 
     if capture.capture_type == "child_add":
         from sqlalchemy import select as _select
@@ -272,6 +200,8 @@ async def approve_capture(capture_id: int, admin: User, db: AsyncSession) -> Non
     capture.status = "approved"
     capture.reviewed_by = admin.id
     capture.reviewed_at = datetime.utcnow()
+    capture.image_data = None
+    capture.image_content_type = None
 
     if capture.capture_type == "child_add":
         # 자녀 추가 승인: UserChild 생성 또는 학년 업데이트
@@ -331,8 +261,6 @@ async def approve_capture(capture_id: int, admin: User, db: AsyncSession) -> Non
     ))
     await db.commit()
 
-    _delete_storage_object(capture.s3_key)
-
     if user.fcm_token:
         await send_push(user.fcm_token, title=push_title, body=push_body, data={"type": "auth_approved"})
 
@@ -350,6 +278,8 @@ async def reject_capture(capture_id: int, admin: User, reason: str, db: AsyncSes
     capture.reviewed_by = admin.id
     capture.reviewed_at = datetime.utcnow()
     capture.reject_reason = reason
+    capture.image_data = None
+    capture.image_content_type = None
 
     if user and capture.capture_type == "initial":
         user.auth_pending = False
@@ -362,8 +292,6 @@ async def reject_capture(capture_id: int, admin: User, reason: str, db: AsyncSes
         detail=reason,
     ))
     await db.commit()
-
-    _delete_storage_object(capture.s3_key)
 
     if user and user.fcm_token:
         title = "자녀 추가 심사 결과" if capture.capture_type == "child_add" else "가입 심사 결과"

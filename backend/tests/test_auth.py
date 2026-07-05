@@ -10,7 +10,6 @@
   - PATCH /auth/me/nickname
   - POST /auth/refresh
   - POST /auth/sms/send  (개발 모드: 실제 SMS 미발송)
-  - POST /auth/capture/presign
   - POST /auth/invite/generate
 """
 import pytest
@@ -103,25 +102,6 @@ async def test_sms_send_dev_mode(client):
     resp = await client.post("/api/v1/auth/sms/send", json={"phone_number": "01012345678"})
     # 204 No Content 정상, 실패 시 외부 SMS API 오류일 수 있음
     assert resp.status_code in (204, 500)
-
-
-@pytest.mark.asyncio
-async def test_capture_presign_requires_auth(client):
-    resp = await client.post("/api/v1/auth/capture/presign")
-    assert resp.status_code == 401
-
-
-@pytest.mark.asyncio
-async def test_capture_presign_with_auth(client, lurker_token):
-    resp = await client.post(
-        "/api/v1/auth/capture/presign",
-        headers={"Authorization": f"Bearer {lurker_token}"},
-    )
-    # S3 미설정 시 upload_url 이 빈 문자열이고 skip_upload=True
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "s3_key" in data
-    assert "skip_upload" in data
 
 
 @pytest.mark.asyncio

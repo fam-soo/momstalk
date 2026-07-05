@@ -4,7 +4,7 @@
 """
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, Numeric, SmallInteger, String, Text, JSON
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, LargeBinary, Numeric, SmallInteger, String, Text, JSON
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -273,7 +273,9 @@ class AuthCapture(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     capture_type = Column(String(20), server_default="initial", nullable=False)  # initial / child_add
-    s3_key = Column(String(300), nullable=False)
+    s3_key = Column(String(300), nullable=True)   # 구 Supabase Storage 키 (레거시 행 하위호환용, 신규 행은 미사용)
+    image_data = Column(LargeBinary, nullable=True)       # 캡처 이미지 원본 (심사 후 삭제)
+    image_content_type = Column(String(30), nullable=True)
     input_school_code = Column(String(20), nullable=False)
     input_school_name = Column(String(100), nullable=False)
     input_grade = Column(Integer, nullable=False)

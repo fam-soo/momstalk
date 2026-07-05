@@ -15,7 +15,6 @@ from app.db import get_db
 from app.models.service_models import User, UserChild
 from app.schemas.auth import (
     AdminLoginRequest,
-    CapturePresignResponse,
     CaptureSubmitRequest,
     DevLoginRequest,
     InviteGenerateResponse,
@@ -271,24 +270,10 @@ async def kakao_login(
 
 
 # ── 캡처 업로드 (가입 루트 A+B) ─────────────────────
-
-class CapturePresignRequest(BaseModel):
-    content_type: str = "image/jpeg"
-
-
-@router.post("/capture/presign", response_model=CapturePresignResponse)
-async def capture_presign(
-    req: CapturePresignRequest = CapturePresignRequest(),
-    user: User = Depends(get_current_user),
-):
-    """S3 presigned PUT URL 발급. 클라이언트가 이 URL로 직접 이미지를 업로드한다."""
-    try:
-        url, key = capture_service.generate_presign_url(user.id, req.content_type)
-    except RuntimeError as e:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
-    skip = not settings.AWS_ACCESS_KEY_ID  # S3 미설정 시 클라이언트가 PUT 생략
-    return CapturePresignResponse(upload_url=url, s3_key=key, skip_upload=skip)
-
+# 이미지는 별도 오브젝트 스토리지 없이 auth_captures.image_data(BYTEA)에 직접
+# 저장한다 — 업로드 즉시 DB 트랜잭션 하나로 끝나 외부 스토리지 왕복에서
+# 발생하던 실패 지점이 사라진다. 심사(승인/반려) 시 같은 트랜잭션에서 바로
+# 비워지므로 별도 삭제 요청도 필요 없다.
 
 @router.post("/capture/upload", status_code=status.HTTP_204_NO_CONTENT)
 async def capture_upload(
@@ -303,7 +288,7 @@ async def capture_upload(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """캡처 이미지 + 학교 정보를 한 번에 제출. Supabase Storage에 저장 후 심사 대기 상태로 전환."""
+    """캡처 이미지 + 학교 정보를 한 번에 제출. DB에 저장 후 심사 대기 상태로 전환."""
     data = await file.read()
     if len(data) > 10 * 1024 * 1024:  # 10 MB
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="파일 크기는 10MB 이하여야 합니다.")
@@ -312,12 +297,8 @@ async def capture_upload(
     content_type = sniff_image_mime(data)
     if content_type is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JPG, PNG, HEIC 파일만 업로드 가능합니다.")
-    try:
-        storage_key = await capture_service.upload_capture_image(user.id, data, content_type)
-    except RuntimeError as e:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
     await capture_service.submit_capture(
-        user, storage_key, school_code, school_name, grade, class_num, db,
+        user, data, content_type, school_code, school_name, grade, class_num, db,
         region=region, school_type=school_type, capture_type=capture_type,
     )
 
@@ -328,9 +309,9 @@ async def capture_submit(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """캡처 업로드 완료 후 학교 정보와 함께 제출. 관리자 검토 대기 상태로 전환."""
+    """[DEV] 이미지 없이 학교 정보만으로 제출 (더미 s3_key). 관리자 검토 대기 상태로 전환."""
     await capture_service.submit_capture(
-        user, req.s3_key, req.school_code, req.school_name, req.grade, req.class_num, db
+        user, None, None, req.school_code, req.school_name, req.grade, req.class_num, db
     )
 
 

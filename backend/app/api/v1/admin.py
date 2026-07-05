@@ -57,7 +57,7 @@ async def list_captures(
             "input_grade": c.input_grade,
             "input_class_num": c.input_class_num,
             "capture_type": c.capture_type if hasattr(c, "capture_type") else "initial",
-            "has_image": bool(c.s3_key and not c.s3_key.startswith("dev/")),
+            "has_image": bool(c.image_data),
             "created_at": c.created_at.isoformat() if c.created_at else None,
         })
     return result
@@ -69,30 +69,18 @@ async def capture_image(
     admin: User = Depends(_require_admin),
     db: AsyncSession = Depends(get_service_db),
 ):
-    """S3 이미지를 백엔드가 프록시로 반환 (CORS 우회)."""
-    from app.core.config import settings
-    import boto3
-
+    """DB에 저장된 캡처 이미지를 바로 반환 (외부 스토리지 왕복 없음)."""
     capture = (await db.execute(
         select(AuthCapture).where(AuthCapture.id == capture_id)
     )).scalar_one_or_none()
-    if not capture or not capture.s3_key:
-        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
+    if not capture or not capture.image_data:
+        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다. 이미 심사 처리되었을 수 있습니다.")
 
-    try:
-        data, content_type = await capture_service.get_capture_image(capture.s3_key)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="이미지 파일이 Storage에 없습니다.")
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    except Exception as e:
-        import logging
-        logging.getLogger("momstalk.admin").error("캡처 이미지 조회 실패: key=%s err=%s", capture.s3_key, e)
-        raise HTTPException(status_code=502, detail=f"이미지 조회 실패: {e}")
-
-    return Response(content=data, media_type=content_type, headers={
-        "Cache-Control": "private, max-age=3600",
-    })
+    return Response(
+        content=capture.image_data,
+        media_type=capture.image_content_type or "image/jpeg",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
 
 
 @router.post("/captures/{capture_id}/approve", status_code=status.HTTP_204_NO_CONTENT)

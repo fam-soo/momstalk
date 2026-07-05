@@ -501,13 +501,8 @@ class _UserTile extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('내부 순번(가입 순서): ${user['id']} · 경고: ${user['warning_count'] ?? 0}회',
+            Text('경고: ${user['warning_count'] ?? 0}회',
                 style: const TextStyle(fontSize: 11, color: Colors.grey)),
-            if (kakaoId != null) ...[
-              const SizedBox(height: 2),
-              Text('카카오 ID: $kakaoId',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
-            ],
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 4, children: [
               if (grade == 'lurker')
