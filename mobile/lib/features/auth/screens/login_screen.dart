@@ -22,75 +22,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _loading = false;
   bool _agreed = false;
   bool _isAdult = false;
-  List<SavedAccount> _savedAccounts = [];
+  bool _hasLoggedInBefore = false;
 
   @override
   void initState() {
     super.initState();
-    _loadSavedAccounts();
+    _checkReturningUser();
   }
 
-  Future<void> _loadSavedAccounts() async {
-    final accounts = await SavedAccountsStorage.load();
-    if (mounted) setState(() => _savedAccounts = accounts);
+  /// 예전에 로그인한 적 있는 기기인지만 확인 (약관 동의 UI 생략 여부 판단용).
+  /// 특정 계정을 미리 선택하지 않는다 — 로그아웃 후 재로그인 시에는 항상
+  /// 카카오 계정 선택 화면에서 직접 계정을 고르도록 한다 (닉네임 목록 사용 안 함).
+  Future<void> _checkReturningUser() async {
+    final hasLoggedIn = await SavedAccountsStorage.hasLoggedInBefore();
+    if (mounted) setState(() => _hasLoggedInBefore = hasLoggedIn);
   }
 
-  Future<void> _removeAccount(SavedAccount account) async {
-    await SavedAccountsStorage.remove(account.nickname);
-    await _loadSavedAccounts();
-  }
-
-  /// 저장된 계정 탭 → 해당 카카오 계정으로 자동 로그인
-  /// kakaoUserId가 저장되어 있으면 현재 카카오 세션으로 시도 후 계정 일치 확인
-  Future<void> _quickLogin(SavedAccount account) async {
-    setState(() => _loading = true);
-    try {
-      OAuthToken token;
-      // 저장된 kakaoUserId가 있는 경우: 기존 세션 재사용 시도 (selectAccount 없음)
-      // 없는 경우(구 버전): selectAccount로 계정 선택
-      final hasLinked = account.kakaoUserId != null;
-      if (!kIsWeb && await isKakaoTalkInstalled()) {
-        token = await UserApi.instance.loginWithKakaoTalk();
-      } else {
-        token = await UserApi.instance.loginWithKakaoAccount(
-          prompts: hasLinked ? [] : [Prompt.selectAccount],
-        );
-      }
-
-      // kakaoUserId가 있으면 현재 토큰의 카카오 계정이 맞는지 확인
-      if (hasLinked) {
-        try {
-          final kakaoUser = await UserApi.instance.me();
-          final currentKakaoId = kakaoUser.id.toString();
-          if (currentKakaoId != account.kakaoUserId) {
-            // 다른 카카오 계정이 로그인돼 있음 → selectAccount로 재시도
-            token = await UserApi.instance.loginWithKakaoAccount(
-              prompts: [Prompt.selectAccount],
-            );
-          }
-        } catch (_) {}
-      }
-
-      await _authenticateWithBackend(token, expectedNickname: account.nickname);
-    } catch (e) {
-      if (mounted) _showKakaoError(e.toString());
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
+  /// 카카오 로그인. 항상 카카오 자체 계정 선택 화면을 띄운다 — 기기에
+  /// 여러 카카오 계정이 로그인된 적 있어도 우리 앱이 닉네임으로 특정 계정을
+  /// 추측하지 않고, 사용자가 카카오 화면에서 직접 계정을 선택하게 한다.
   Future<void> _kakaoLogin() async {
-    if (!_agreed) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('이용약관 및 개인정보처리방침에 동의해주세요.')),
-      );
-      return;
-    }
-    if (!_isAdult) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('만 19세 이상 성인만 가입할 수 있습니다.')),
-      );
-      return;
+    if (!_hasLoggedInBefore) {
+      if (!_agreed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('이용약관 및 개인정보처리방침에 동의해주세요.')),
+        );
+        return;
+      }
+      if (!_isAdult) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('만 19세 이상 성인만 가입할 수 있습니다.')),
+        );
+        return;
+      }
     }
     setState(() => _loading = true);
     try {
@@ -124,7 +88,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 
-  Future<void> _authenticateWithBackend(OAuthToken token, {String? expectedNickname}) async {
+  Future<void> _authenticateWithBackend(OAuthToken token) async {
     final dio = ref.read(dioProvider);
     try {
       final resp = await dio.post('/auth/kakao', data: {'kakao_access_token': token.accessToken});
@@ -137,35 +101,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final data = meResp.data as Map<String, dynamic>;
       final memberGrade = data['member_grade'] as String? ?? 'lurker';
       final isAdmin = data['is_admin'] as bool? ?? false;
-      final nickname = data['nickname'] as String? ?? '';
 
-      // 카카오 user ID 조회 → SavedAccount에 연결 저장
-      String? kakaoUserId;
-      try {
-        final kakaoUser = await UserApi.instance.me();
-        kakaoUserId = kakaoUser.id.toString();
-      } catch (_) {}
-
-      // 로그인 성공 시 계정 정보 저장 (닉네임 변경 자동 반영)
-      await SavedAccountsStorage.upsert(SavedAccount(
-        nickname: nickname,
-        schoolName: data['school_name'] as String? ?? '',
-        memberGrade: memberGrade,
-        kakaoUserId: kakaoUserId,
-      ));
-
-      // 저장된 다른 계정 중 같은 kakaoUserId가 있으면 nickname 갱신
-      if (kakaoUserId != null) {
-        await SavedAccountsStorage.updateByKakaoId(kakaoUserId, nickname);
-      }
-
-      // 예상 계정과 다른 경우 경고 (같은 기기에서 다른 카카오 계정 로그인)
-      if (expectedNickname != null && nickname != expectedNickname && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('"$nickname" 계정으로 로그인되었습니다.')),
-        );
-
-      }
+      await SavedAccountsStorage.markLoggedIn();
 
       if (!mounted) return;
       if (memberGrade == 'member' || isAdmin) {
@@ -223,8 +160,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasSavedAccounts = _savedAccounts.isNotEmpty;
-
     return Scaffold(
       backgroundColor: const Color(0xFFFFF9F0),
       body: SafeArea(
@@ -245,29 +180,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const Text('학부모 전용 익명 커뮤니티', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 36),
 
-              // ── 저장된 계정 목록 ─────────────────────────────
-              if (hasSavedAccounts) ...[
-                Text('계정 선택', style: Theme.of(context).textTheme.titleSmall?.copyWith(color: Colors.grey.shade600)),
-                const SizedBox(height: 8),
-                ...(_savedAccounts.map((account) => _AccountTile(
-                  account: account,
-                  onTap: _loading ? null : () => _quickLogin(account),
-                  onRemove: () => _removeAccount(account),
-                ))),
-                const SizedBox(height: 16),
-                const Row(children: [
-                  Expanded(child: Divider()),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('다른 계정으로 로그인', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  ),
-                  Expanded(child: Divider()),
-                ]),
-                const SizedBox(height: 16),
-              ],
-
               // ── 약관 동의 (신규 가입자용) ─────────────────────
-              if (!hasSavedAccounts) ...[
+              if (!_hasLoggedInBefore) ...[
                 _CheckRow(
                   value: _agreed,
                   onChanged: (v) => setState(() => _agreed = v ?? false),
@@ -307,13 +221,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               _loading
                   ? const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 14), child: CircularProgressIndicator()))
                   : GestureDetector(
-                      onTap: hasSavedAccounts
-                          ? () => _quickLogin(_savedAccounts.first)
-                          : _kakaoLogin,
+                      onTap: _kakaoLogin,
                       child: Container(
                         height: 52,
                         decoration: BoxDecoration(
-                          color: (!hasSavedAccounts && (!_agreed || !_isAdult))
+                          color: (!_hasLoggedInBefore && (!_agreed || !_isAdult))
                               ? Colors.grey.shade300
                               : const Color(0xFFFEE500),
                           borderRadius: BorderRadius.circular(12),
@@ -324,17 +236,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             Icon(
                               Icons.chat_bubble,
                               size: 22,
-                              color: (!hasSavedAccounts && (!_agreed || !_isAdult))
+                              color: (!_hasLoggedInBefore && (!_agreed || !_isAdult))
                                   ? Colors.grey
                                   : const Color(0xFF3C1E1E),
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              hasSavedAccounts ? '카카오로 로그인' : '카카오로 시작하기',
+                              _hasLoggedInBefore ? '카카오 계정 선택하여 로그인' : '카카오로 시작하기',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
-                                color: (!hasSavedAccounts && (!_agreed || !_isAdult))
+                                color: (!_hasLoggedInBefore && (!_agreed || !_isAdult))
                                     ? Colors.grey
                                     : const Color(0xFF3C1E1E),
                               ),
@@ -344,19 +256,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
 
-              // 저장 계정 있을 때 약관은 접혀 있음 — 처음 가입한 게 아니므로 생략
-              if (hasSavedAccounts) ...[
-                const SizedBox(height: 8),
-                Center(
-                  child: TextButton(
-                    onPressed: () => setState(() {
-                      _savedAccounts = [];  // 임시로 숨겨서 신규 가입 폼 표시
-                    }),
-                    child: const Text('처음 가입하시나요?', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  ),
-                ),
-              ],
-
               const SizedBox(height: 16),
               if (AppConstants.devMode && !_loading)
                 TextButton(
@@ -364,72 +263,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: const Text('[DEV] 백엔드 연결 lurker 로그인', style: TextStyle(color: Colors.grey, fontSize: 12)),
                 ),
               const SizedBox(height: 32),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ── 저장된 계정 타일 ──────────────────────────────────────────────
-
-class _AccountTile extends StatelessWidget {
-  final SavedAccount account;
-  final VoidCallback? onTap;
-  final VoidCallback onRemove;
-
-  const _AccountTile({required this.account, required this.onTap, required this.onRemove});
-
-  @override
-  Widget build(BuildContext context) {
-    final isMember = account.memberGrade == 'member';
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: Colors.grey.shade200),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: isMember
-                    ? Theme.of(context).colorScheme.primaryContainer
-                    : Colors.grey.shade200,
-                child: Icon(
-                  Icons.person,
-                  size: 20,
-                  color: isMember
-                      ? Theme.of(context).colorScheme.primary
-                      : Colors.grey,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(account.nickname, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    Text(
-                      account.displaySchool,
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: Icon(Icons.close, size: 18, color: Colors.grey.shade400),
-                onPressed: onRemove,
-                tooltip: '계정 목록에서 제거',
-                visualDensity: VisualDensity.compact,
-              ),
             ],
           ),
         ),

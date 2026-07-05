@@ -428,7 +428,7 @@ class _UserListPaneState extends ConsumerState<_UserListPane> {
         child: TextField(
           controller: _ctrl,
           decoration: InputDecoration(
-            hintText: '닉네임 또는 ID 검색',
+            hintText: '닉네임, 내부 ID 또는 카카오 ID 검색',
             prefixIcon: const Icon(Icons.search, size: 18),
             isDense: true,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -493,14 +493,15 @@ class _UserTile extends StatelessWidget {
         if (isSuspended && !isBanned) ...[const SizedBox(width: 4), _statusChip('정지', Colors.orange)],
       ]),
       subtitle: Text(
-        '${user['school_name'] ?? '-'} · ${_timeAgo(user['created_at'] as String?)}',
+        '${user['school_name'] ?? '-'} · ${_timeAgo(user['created_at'] as String?)}'
+        '${kakaoId != null ? ' · 카카오 ID: $kakaoId' : ' · 카카오 ID 없음'}',
         style: const TextStyle(fontSize: 11),
       ),
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('ID: ${user['id']} · 경고: ${user['warning_count'] ?? 0}회',
+            Text('내부 순번(가입 순서): ${user['id']} · 경고: ${user['warning_count'] ?? 0}회',
                 style: const TextStyle(fontSize: 11, color: Colors.grey)),
             if (kakaoId != null) ...[
               const SizedBox(height: 2),

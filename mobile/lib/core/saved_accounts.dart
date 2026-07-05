@@ -1,85 +1,19 @@
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-const _kKey = 'saved_accounts';
-const _kMax = 5;
+const _kKey = 'has_logged_in_before';
 
-class SavedAccount {
-  final String nickname;
-  final String schoolName;
-  final String memberGrade;
-  /// 연결된 카카오 user ID (로그인 후 자동 연결, 快速 로그인 계정 매칭용)
-  final String? kakaoUserId;
-
-  const SavedAccount({
-    required this.nickname,
-    required this.schoolName,
-    required this.memberGrade,
-    this.kakaoUserId,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'nickname': nickname,
-    'schoolName': schoolName,
-    'memberGrade': memberGrade,
-    if (kakaoUserId != null) 'kakaoUserId': kakaoUserId,
-  };
-
-  factory SavedAccount.fromJson(Map<String, dynamic> j) => SavedAccount(
-    nickname: j['nickname'] as String? ?? '',
-    schoolName: j['schoolName'] as String? ?? '',
-    memberGrade: j['memberGrade'] as String? ?? 'lurker',
-    kakaoUserId: j['kakaoUserId'] as String?,
-  );
-
-  SavedAccount copyWith({String? nickname, String? schoolName, String? memberGrade, String? kakaoUserId}) =>
-      SavedAccount(
-        nickname: nickname ?? this.nickname,
-        schoolName: schoolName ?? this.schoolName,
-        memberGrade: memberGrade ?? this.memberGrade,
-        kakaoUserId: kakaoUserId ?? this.kakaoUserId,
-      );
-
-  String get displaySchool =>
-      schoolName.isEmpty ? '학교 미인증' : schoolName;
-}
-
+/// 이 기기에서 카카오 로그인을 완료한 적이 있는지만 기록한다.
+/// (약관 동의 UI를 다시 보여줄지 판단하는 용도 — 특정 계정을 기억하거나
+/// 닉네임으로 빠른 로그인을 제공하지 않는다. 재로그인 시에는 항상 카카오
+/// 자체 계정 선택 화면에서 사용자가 직접 계정을 고른다.)
 class SavedAccountsStorage {
-  static Future<List<SavedAccount>> load() async {
+  static Future<bool> hasLoggedInBefore() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList(_kKey) ?? [];
-    return raw
-        .map((s) => SavedAccount.fromJson(jsonDecode(s) as Map<String, dynamic>))
-        .toList();
+    return prefs.getBool(_kKey) ?? false;
   }
 
-  /// 로그인 성공 시 호출 — 동일 닉네임이 있으면 맨 앞으로 이동, 없으면 추가.
-  static Future<void> upsert(SavedAccount account) async {
+  static Future<void> markLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
-    var list = await load();
-    list.removeWhere((a) => a.nickname == account.nickname);
-    list.insert(0, account);
-    if (list.length > _kMax) list = list.sublist(0, _kMax);
-    await prefs.setStringList(_kKey, list.map((a) => jsonEncode(a.toJson())).toList());
-  }
-
-  static Future<void> remove(String nickname) async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = await load();
-    list.removeWhere((a) => a.nickname == nickname);
-    await prefs.setStringList(_kKey, list.map((a) => jsonEncode(a.toJson())).toList());
-  }
-
-  /// 같은 kakaoUserId를 가진 저장 계정의 닉네임을 최신값으로 갱신
-  static Future<void> updateByKakaoId(String kakaoUserId, String newNickname) async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = await load();
-    final updated = list.map((a) {
-      if (a.kakaoUserId == kakaoUserId && a.nickname != newNickname) {
-        return a.copyWith(nickname: newNickname);
-      }
-      return a;
-    }).toList();
-    await prefs.setStringList(_kKey, updated.map((a) => jsonEncode(a.toJson())).toList());
+    await prefs.setBool(_kKey, true);
   }
 }
