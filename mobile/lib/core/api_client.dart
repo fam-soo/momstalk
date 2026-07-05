@@ -93,6 +93,10 @@ final dioProvider = Provider<Dio>((ref) {
   return dio;
 });
 
+/// Dio 인터셉터 밖(예: package:http 사용 업로드)에서 401 발생 시 수동으로
+/// 토큰을 갱신할 때 사용. 성공 시 true, 실패(리프레시 토큰 만료 등) 시 false.
+Future<bool> tryRefreshToken(Dio dio) => _tryRefresh(dio);
+
 Future<bool> _tryRefresh(Dio dio) async {
   try {
     final refreshToken = await _storage.read(AppConstants.refreshTokenKey);

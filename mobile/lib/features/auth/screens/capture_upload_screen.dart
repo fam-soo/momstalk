@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/api_client.dart';
@@ -86,6 +88,45 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
     setState(() { _pickedFile = picked; _imageBytes = bytes; });
   }
 
+  /// package:http로 캡처 이미지를 업로드하고 상태 코드를 반환한다.
+  /// Dio의 웹 XHR 어댑터는 대용량 멀티파트 업로드 시 브라우저 네트워크 계층에서
+  /// "XMLHttpRequest onError"로 실패하는 경우가 반복 확인되어, 이 업로드만은
+  /// package:http로 직접 요청을 구성한다 (토큰 갱신은 수동으로 처리).
+  Future<http.StreamedResponse> _sendCaptureUpload(String accessToken) async {
+    final mime = _mimeFromName(_pickedFile!.name);
+    final uri = Uri.parse('${AppConstants.baseUrl}/auth/capture/upload');
+    final request = http.MultipartRequest('POST', uri)
+      ..headers['Authorization'] = 'Bearer $accessToken'
+      ..fields['school_code'] = '${widget.schoolInfo['school_code'] ?? ''}'
+      ..fields['school_name'] = '${widget.schoolInfo['school_name'] ?? ''}'
+      ..fields['grade'] = '${widget.schoolInfo['grade'] ?? 1}'
+      ..fields['school_type'] = '${widget.schoolInfo['school_type'] ?? ''}'
+      ..fields['region'] = '${widget.schoolInfo['region'] ?? ''}'
+      ..fields['capture_type'] = widget.captureType
+      ..files.add(http.MultipartFile.fromBytes(
+        'file',
+        _imageBytes!,
+        filename: _pickedFile!.name,
+        contentType: MediaType.parse(mime),
+      ));
+    if (widget.schoolInfo['class_num'] != null) {
+      request.fields['class_num'] = '${widget.schoolInfo['class_num']}';
+    }
+    return request.send().timeout(const Duration(minutes: 3));
+  }
+
+  /// 오류 원인을 사용자가 이해할 수 있는 한국어 메시지로 변환.
+  String _koreanUploadError(Object e) {
+    if (e is TimeoutException) {
+      return '업로드 시간이 초과되었습니다. 네트워크 상태를 확인한 후 다시 시도해주세요.';
+    }
+    final text = e.toString();
+    if (text.contains('XMLHttpRequest') || text.contains('ClientException') || text.contains('SocketException')) {
+      return '네트워크 연결 오류로 업로드에 실패했습니다. Wi-Fi/데이터 연결을 확인한 후 다시 시도해주세요.';
+    }
+    return '업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
+  }
+
   Future<void> _submit() async {
     if (_pickedFile == null || _imageBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('알림장 캡처 이미지를 선택해주세요.')));
@@ -94,44 +135,50 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
     setState(() => _uploading = true);
     try {
       final dio = ref.read(dioProvider);
-      final mime = _mimeFromName(_pickedFile!.name);
-      final formData = FormData.fromMap({
-        'file': MultipartFile.fromBytes(
-          _imageBytes!,
-          filename: _pickedFile!.name,
-          contentType: MediaType.parse(mime),
-        ),
-        'school_code': '${widget.schoolInfo['school_code'] ?? ''}',
-        'school_name': '${widget.schoolInfo['school_name'] ?? ''}',
-        'grade': '${widget.schoolInfo['grade'] ?? 1}',
-        'school_type': '${widget.schoolInfo['school_type'] ?? ''}',
-        'region': '${widget.schoolInfo['region'] ?? ''}',
-        'capture_type': widget.captureType,
-        if (widget.schoolInfo['class_num'] != null)
-          'class_num': '${widget.schoolInfo['class_num']}',
-      });
-
-      await dio.post(
-        '/auth/capture/upload',
-        data: formData,
-        options: Options(receiveTimeout: const Duration(minutes: 3)),
-      );
-
-      if (mounted) {
-        if (widget.captureType == 'child_add') {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('제출 완료! 관리자 확인 후 자녀 학교가 추가됩니다.')),
-          );
-          context.pop(true);
-        } else {
-          context.go('/auth/pending');
+      final tokenStorage = ref.read(tokenStorageProvider);
+      var token = await tokenStorage.read(AppConstants.tokenKey);
+      if (token == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('로그인이 만료되었습니다. 다시 로그인해주세요.')));
         }
+        return;
       }
-    } on DioException catch (e) {
-      final detail = (e.response?.data is Map) ? e.response!.data['detail'] : e.message;
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('업로드 실패: $detail')));
+
+      var streamed = await _sendCaptureUpload(token);
+
+      if (streamed.statusCode == 401) {
+        final refreshed = await tryRefreshToken(dio);
+        if (!refreshed) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('로그인이 만료되었습니다. 다시 로그인해주세요.')));
+          }
+          return;
+        }
+        token = await tokenStorage.read(AppConstants.tokenKey);
+        streamed = await _sendCaptureUpload(token!);
+      }
+
+      if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
+        if (mounted) {
+          if (widget.captureType == 'child_add') {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('제출 완료! 관리자 확인 후 자녀 학교가 추가됩니다.')),
+            );
+            context.pop(true);
+          } else {
+            context.go('/auth/pending');
+          }
+        }
+        return;
+      }
+
+      final body = await http.Response.fromStream(streamed);
+      String detail = '업로드에 실패했습니다. (오류 코드 ${streamed.statusCode})';
+      final match = RegExp(r'"detail"\s*:\s*"([^"]*)"').firstMatch(body.body);
+      if (match != null && match.group(1)!.isNotEmpty) detail = match.group(1)!;
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(detail)));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('업로드 실패: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_koreanUploadError(e))));
     } finally {
       if (mounted) setState(() => _uploading = false);
     }
