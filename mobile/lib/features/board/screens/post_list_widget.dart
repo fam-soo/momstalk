@@ -161,11 +161,57 @@ class _SortChip extends StatelessWidget {
   }
 }
 
-class PostCard extends StatelessWidget {
+class PostCard extends StatefulWidget {
   final Map<String, dynamic> post;
   final VoidCallback onRefresh;
   final bool isAdmin;
   const PostCard({super.key, required this.post, required this.onRefresh, this.isAdmin = false});
+
+  @override
+  State<PostCard> createState() => _PostCardState();
+}
+
+class _PostCardState extends State<PostCard> {
+  late Map<String, dynamic> post = widget.post;
+  bool _liking = false;
+
+  @override
+  void didUpdateWidget(covariant PostCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.post != widget.post) post = widget.post;
+  }
+
+  Future<void> _toggleLike(WidgetRef ref) async {
+    if (_liking) return;
+    setState(() => _liking = true);
+    final wasLiked = post['is_liked'] == true;
+    final prevCount = post['like_count'] as int? ?? 0;
+    setState(() {
+      post = {
+        ...post,
+        'is_liked': !wasLiked,
+        'like_count': wasLiked ? prevCount - 1 : prevCount + 1,
+      };
+    });
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.post('/posts/${post['id']}/like');
+      final data = Map<String, dynamic>.from(resp.data as Map);
+      if (mounted) {
+        setState(() {
+          post = {...post, 'is_liked': data['is_liked'], 'like_count': data['like_count']};
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          post = {...post, 'is_liked': wasLiked, 'like_count': prevCount};
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _liking = false);
+    }
+  }
 
   String _relativeTime(String? iso) {
     if (iso == null) return '';
@@ -201,7 +247,7 @@ class PostCard extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (_) => _PostActionSheet(post: post, ref: ref, onRefresh: onRefresh),
+      builder: (_) => _PostActionSheet(post: post, ref: ref, onRefresh: widget.onRefresh),
     );
   }
 
@@ -233,7 +279,7 @@ class PostCard extends StatelessWidget {
                       : (post['is_anonymous'] == true ? '익명' : '작성자'),
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
-                if (isAdmin) ...[
+                if (widget.isAdmin) ...[
                   const SizedBox(width: 4),
                   _adminLocationLabel(ctx),
                 ],
@@ -273,7 +319,21 @@ class PostCard extends StatelessWidget {
               ],
               const SizedBox(height: 10),
               Row(children: [
-                _Stat(icon: Icons.favorite_outline, value: post['like_count'] ?? 0),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: () => _toggleLike(ref),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                      child: _Stat(
+                        icon: post['is_liked'] == true ? Icons.favorite : Icons.favorite_outline,
+                        value: post['like_count'] ?? 0,
+                        color: post['is_liked'] == true ? Colors.red : null,
+                      ),
+                    ),
+                  ),
+                ),
                 const SizedBox(width: 12),
                 _Stat(icon: Icons.chat_bubble_outline, value: post['comment_count'] ?? 0),
                 const SizedBox(width: 12),
@@ -290,14 +350,15 @@ class PostCard extends StatelessWidget {
 class _Stat extends StatelessWidget {
   final IconData icon;
   final int value;
-  const _Stat({required this.icon, required this.value});
+  final Color? color;
+  const _Stat({required this.icon, required this.value, this.color});
 
   @override
   Widget build(BuildContext context) {
     return Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(icon, size: 13, color: Colors.grey[500]),
+      Icon(icon, size: 13, color: color ?? Colors.grey[500]),
       const SizedBox(width: 3),
-      Text('$value', style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+      Text('$value', style: TextStyle(fontSize: 12, color: color ?? Colors.grey[500])),
     ]);
   }
 }
