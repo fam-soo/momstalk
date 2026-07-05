@@ -27,6 +27,7 @@ class UserProfile(BaseModel):
     member_grade: str = "lurker"
     auth_pending: bool = False
     is_admin: bool = False
+    is_trusted: bool = False
     admin_username: Optional[str] = None
     reject_reason: Optional[str] = None
     profile_updated_at: Optional[datetime] = None

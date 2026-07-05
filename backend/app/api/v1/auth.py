@@ -399,8 +399,8 @@ async def update_profile(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """지역/학교/학년 변경. 월 1회 제한 (DEBUG 모드에서는 무제한)."""
-    if not settings.DEBUG:
+    """지역/학교/학년 변경. 월 1회 제한 (DEBUG 모드 또는 관리자가 인증 면제(is_trusted)한 사용자는 무제한)."""
+    if not settings.DEBUG and not user.is_trusted:
         if user.profile_updated_at and user.profile_updated_at > datetime.utcnow() - timedelta(days=30):
             next_date = user.profile_updated_at + timedelta(days=30)
             raise HTTPException(
@@ -474,7 +474,9 @@ async def add_child(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """자녀 추가 (최대 5명)."""
+    """자녀 추가 (최대 5명). 사진 인증 없이 즉시 추가 — 관리자가 인증 면제(is_trusted)한 사용자 전용."""
+    if not user.is_trusted and not user.is_admin:
+        raise HTTPException(status_code=403, detail="사진 인증이 필요합니다. 자녀 추가 화면에서 인증 사진을 제출해주세요.")
     if len(user.children) >= 5:
         raise HTTPException(status_code=400, detail="자녀는 최대 5명까지 등록할 수 있습니다.")
 

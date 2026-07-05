@@ -127,6 +127,52 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
     return '업로드 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
   }
 
+  /// 서버(무료 요금제 Render)는 일정 시간 요청이 없으면 슬립 상태가 되어
+  /// 깨어나는 데 최대 수십 초가 걸린다. 이 사이에 업로드를 시도하면 연결이
+  /// 끊기며 네트워크 오류로 보이는 경우가 많아, 실제 업로드 전에 가벼운
+  /// /health 핑으로 서버를 미리 깨워둔다. 실패해도 업로드는 계속 시도한다.
+  Future<void> _wakeUpServer() async {
+    try {
+      final uri = Uri.parse(AppConstants.baseUrl);
+      final healthUri = uri.replace(path: '/health', query: '');
+      await http.get(healthUri).timeout(const Duration(seconds: 40));
+    } catch (_) {
+      // 무시 — 실패해도 이후 실제 업로드를 시도한다.
+    }
+  }
+
+  bool _isTransientNetworkError(Object e) {
+    if (e is TimeoutException) return true;
+    final text = e.toString();
+    return text.contains('XMLHttpRequest') || text.contains('ClientException') || text.contains('SocketException');
+  }
+
+  /// 토큰 확보 + 업로드 + 401 시 1회 리프레시 후 재시도까지 포함한 단일 시도.
+  Future<http.StreamedResponse?> _attemptUpload(Dio dio, dynamic tokenStorage) async {
+    var token = await tokenStorage.read(AppConstants.tokenKey);
+    if (token == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('로그인이 만료되었습니다. 다시 로그인해주세요.')));
+      }
+      return null;
+    }
+
+    var streamed = await _sendCaptureUpload(token);
+
+    if (streamed.statusCode == 401) {
+      final refreshed = await tryRefreshToken(dio);
+      if (!refreshed) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('로그인이 만료되었습니다. 다시 로그인해주세요.')));
+        }
+        return null;
+      }
+      token = await tokenStorage.read(AppConstants.tokenKey);
+      streamed = await _sendCaptureUpload(token!);
+    }
+    return streamed;
+  }
+
   Future<void> _submit() async {
     if (_pickedFile == null || _imageBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('알림장 캡처 이미지를 선택해주세요.')));
@@ -136,27 +182,25 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
     try {
       final dio = ref.read(dioProvider);
       final tokenStorage = ref.read(tokenStorageProvider);
-      var token = await tokenStorage.read(AppConstants.tokenKey);
-      if (token == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('로그인이 만료되었습니다. 다시 로그인해주세요.')));
-        }
-        return;
-      }
 
-      var streamed = await _sendCaptureUpload(token);
+      // 무료 요금제 서버는 유휴 상태에서 슬립되어 있을 수 있어, 실제 업로드
+      // 전에 가볍게 깨워둔다 (실패해도 무시하고 업로드를 계속 시도).
+      await _wakeUpServer();
 
-      if (streamed.statusCode == 401) {
-        final refreshed = await tryRefreshToken(dio);
-        if (!refreshed) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('로그인이 만료되었습니다. 다시 로그인해주세요.')));
-          }
-          return;
+      http.StreamedResponse? streamed;
+      try {
+        streamed = await _attemptUpload(dio, tokenStorage);
+      } catch (e) {
+        // 콜드 스타트 등으로 인한 일시적 네트워크 오류는 서버가 깨어날 시간을
+        // 준 뒤 한 번 더 시도한다.
+        if (_isTransientNetworkError(e)) {
+          await Future.delayed(const Duration(seconds: 5));
+          streamed = await _attemptUpload(dio, tokenStorage);
+        } else {
+          rethrow;
         }
-        token = await tokenStorage.read(AppConstants.tokenKey);
-        streamed = await _sendCaptureUpload(token!);
       }
+      if (streamed == null) return; // 로그인 만료 등 — 이미 안내 메시지 표시함
 
       if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
         if (mounted) {

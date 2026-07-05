@@ -21,6 +21,8 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
   int _grade = 1;
   bool _loading = false;
   bool _searched = false;
+  bool _saving = false;
+  bool _isTrusted = false;
 
   static const _typeOptions = [
     (null, '전체'),
@@ -28,6 +30,21 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
     ('middle', '중'),
     ('high', '고'),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTrustedStatus();
+  }
+
+  Future<void> _loadTrustedStatus() async {
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.get('/auth/me');
+      final p = resp.data as Map<String, dynamic>;
+      if (mounted) setState(() => _isTrusted = p['is_trusted'] as bool? ?? false);
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
@@ -74,6 +91,27 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
       'school_type': _selected!['school_type'] ?? 'elementary',
       'region': region,
     };
+
+    // 관리자가 인증 면제(is_trusted)한 사용자는 사진 인증 없이 즉시 자녀 추가
+    if (_isTrusted) {
+      setState(() => _saving = true);
+      try {
+        final dio = ref.read(dioProvider);
+        await dio.post('/auth/me/children', data: schoolInfo);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('자녀가 추가되었습니다.')),
+          );
+          context.pop(true);
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('추가 실패: $e')));
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
+      return;
+    }
+
     // 캡처(알림장 사진) 인증 화면으로 이동
     final result = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -261,8 +299,10 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
               child: FilledButton(
-                onPressed: _selected == null ? null : _save,
-                child: const Text('다음 — 인증 사진 업로드', style: TextStyle(fontSize: 15)),
+                onPressed: (_selected == null || _saving) ? null : _save,
+                child: _saving
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : Text(_isTrusted ? '자녀 추가' : '다음 — 인증 사진 업로드', style: const TextStyle(fontSize: 15)),
               ),
             ),
           ),
