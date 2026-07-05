@@ -9,9 +9,18 @@ from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.profanity import check_profanity
-from app.models.service_models import Academy, AcademyReview, User
-from app.schemas.academy import AcademyReviewCreate, AcademyReviewResponse, AcademyResponse, AcademyReviewListResponse, QuotaInfo
+from app.models.service_models import Academy, AcademyReview, AcademyReviewUnlock, User
+from app.schemas.academy import (
+    AcademyReviewCreate,
+    AcademyReviewResponse,
+    AcademyResponse,
+    AcademyReviewListResponse,
+    AcademyUnlockQuota,
+    QuotaInfo,
+)
 from app.services import neis_service
+
+_REVIEW_PREVIEW_LEN = 40
 
 
 # 한글 표기 ↔ 영문 표기 양방향 매핑
@@ -385,18 +394,82 @@ async def create_review(
     )
 
 
-def _review_quota(user: User) -> Optional[int]:
-    """사용자의 후기 조회 가능 수 반환. None = 전체 허용."""
+def _academy_unlock_quota(user: User) -> Optional[int]:
+    """사용자가 가림 처리 없이 전체 열람 가능한 "학원 개수" 반환. None = 무제한."""
     if user.is_admin:
         return None
     if user.member_grade == "lurker":
-        return None  # lurker는 목록 전부 허용
+        return None  # lurker는 전체 허용
     count = user.academy_review_count
     if count >= 5:
         return None
     if count >= 1:
         return 5
     return 1
+
+
+def _preview_text(text: str) -> str:
+    """가림 처리 시 상단 한 줄만 노출하기 위한 미리보기 텍스트."""
+    stripped = (text or "").strip()
+    if not stripped:
+        return ""
+    first_line = stripped.splitlines()[0]
+    if len(first_line) > _REVIEW_PREVIEW_LEN:
+        return first_line[:_REVIEW_PREVIEW_LEN].rstrip() + "…"
+    if first_line != stripped:
+        return first_line + "…"
+    return first_line
+
+
+async def _unlocked_academy_count(user_id: int, db: AsyncSession) -> int:
+    return (await db.execute(
+        select(func.count(AcademyReviewUnlock.id)).where(AcademyReviewUnlock.user_id == user_id)
+    )).scalar() or 0
+
+
+async def _resolve_academy_access(user: User, academy_id: int, db: AsyncSession) -> tuple[bool, int, Optional[int]]:
+    """(unlocked 여부, 해금한 학원 수, 해금 가능 총 개수(None=무제한)) 반환.
+
+    쿼터가 남아있고 아직 이 학원을 해금한 적 없다면 이번 조회로 슬롯을 소비해
+    해금 기록을 남긴다. 한 번 해금된 학원은 이후 계속 전체 열람 가능.
+    """
+    quota = _academy_unlock_quota(user)
+    if quota is None:
+        return True, 0, None
+
+    existing = (await db.execute(
+        select(AcademyReviewUnlock).where(
+            AcademyReviewUnlock.user_id == user.id,
+            AcademyReviewUnlock.academy_id == academy_id,
+        )
+    )).scalar_one_or_none()
+    count = await _unlocked_academy_count(user.id, db)
+    if existing:
+        return True, count, quota
+    if count < quota:
+        db.add(AcademyReviewUnlock(user_id=user.id, academy_id=academy_id))
+        await db.commit()
+        return True, count + 1, quota
+    return False, count, quota
+
+
+async def get_unlock_quota_summary(user: User, db: AsyncSession) -> AcademyUnlockQuota:
+    """후기 게시판 상단 배너용 — 특정 학원과 무관한 전역 해금 현황."""
+    quota = _academy_unlock_quota(user)
+    unlocked_count = 0 if quota is None else await _unlocked_academy_count(user.id, db)
+    count = user.academy_review_count
+    if quota is None:
+        next_unlock_at = 0
+    elif count >= 1:
+        next_unlock_at = max(0, 5 - count)
+    else:
+        next_unlock_at = 1
+    return AcademyUnlockQuota(
+        unlocked_academy_count=unlocked_count,
+        unlocked_academy_limit=quota,
+        next_unlock_at=next_unlock_at,
+        user_review_count=count,
+    )
 
 
 async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> AcademyReviewListResponse:
@@ -407,15 +480,11 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
         .order_by(AcademyReview.is_seed.desc(), AcademyReview.created_at.asc())
     )
     rows = result.all()
-    # seed 후기는 학원 소개용 — 사용자 후기 카운트·쿼터에서 제외
-    user_rows = [(r, u) for r, u in rows if not (r.is_seed or False)]
-    total = len(user_rows)
+    # seed 후기는 학원 소개용 — 사용자 후기 수 표시에서는 제외
+    total = len([r for r, _ in rows if not (r.is_seed or False)])
 
-    quota = _review_quota(user)
-    readable = total if quota is None else min(quota, total)
-    is_limited = quota is not None and total > quota
+    unlocked, unlocked_count, quota = await _resolve_academy_access(user, academy_id, db)
 
-    # 다음 해금까지 필요한 후기 수 계산
     count = user.academy_review_count
     if quota is None:
         next_unlock_at = 0
@@ -425,26 +494,19 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
         next_unlock_at = 1
 
     out = []
-    user_idx = 0
     for review, author in rows:
-        is_seed = review.is_seed or False
-        # seed는 항상 열람 가능, 사용자 후기만 쿼터 적용
-        if is_seed:
-            view_limited = False
-        else:
-            view_limited = quota is not None and user_idx >= quota
-            user_idx += 1
+        # 학원이 잠겨 있으면 기본 소개(seed) + 사용자 후기 모두 가림 처리
+        view_limited = not unlocked
 
         author_display = None
-        if author and not review.is_anonymous and not view_limited:
-            author_display = author.nickname
-        if author:
+        school_name = None
+        grade = None
+        if author and not view_limited:
+            if not review.is_anonymous:
+                author_display = author.nickname
             active = author.active_child
             school_name = (active.school_name if active else None) or author.school_name
             grade = (active.grade if active else None) or author.grade
-        else:
-            school_name = None
-            grade = None
 
         out.append(AcademyReviewResponse(
             id=review.id,
@@ -453,14 +515,14 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
             teacher_styles=[] if view_limited else (review.teacher_styles or []),
             homework_level=None if view_limited else review.homework_level,
             score_improvement=None if view_limited else review.score_improvement,
-            review_text="" if view_limited else review.review_text,
+            review_text=_preview_text(review.review_text) if view_limited else review.review_text,
             rating=review.rating,  # 별점은 항상 표시
             nickname_type=review.nickname_type,
             is_anonymous=review.is_anonymous,
             is_view_limited=view_limited,
             author_display_name=author_display,
-            author_school_name=None if view_limited else school_name,
-            author_grade=None if view_limited else grade,
+            author_school_name=school_name,
+            author_grade=grade,
             report_count=review.report_count or 0,
             is_hidden=review.is_hidden or False,
             is_seed=review.is_seed or False,
@@ -470,9 +532,10 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
     return AcademyReviewListResponse(
         reviews=out,
         quota_info=QuotaInfo(
-            readable=readable,
             total=total,
-            is_limited=is_limited,
+            academy_locked=not unlocked,
+            unlocked_academy_count=unlocked_count,
+            unlocked_academy_limit=quota,
             next_unlock_at=next_unlock_at,
             user_review_count=count,
         ),

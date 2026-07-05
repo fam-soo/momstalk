@@ -388,3 +388,21 @@ class AcademyReview(Base):
     is_hidden = Column(Boolean, default=False)
     is_seed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AcademyReviewUnlock(Base):
+    """사용자가 후기를 가림 처리 없이 전체 열람할 수 있도록 허용된 학원 기록.
+
+    후기 열람 쿼터는 "학원 개수" 단위로 소비된다 — 한 번 열람 허용(해금)된
+    학원은 계속 유지되며, 해금 가능한 학원 수는 사용자가 작성한 후기 수에
+    따라 늘어난다 (academy_service._academy_unlock_quota 참고).
+    """
+    __tablename__ = "academy_review_unlocks"
+    __table_args__ = (
+        __import__("sqlalchemy").UniqueConstraint("user_id", "academy_id", name="uq_academy_review_unlock"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    academy_id = Column(Integer, ForeignKey("academies.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

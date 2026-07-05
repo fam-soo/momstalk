@@ -23,8 +23,9 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
   bool _kakaoLoading = false;
   bool _reviewsLocked = false;  // 로그인 미인증
   int _totalReviews = 0;
-  int _readableReviews = 0;
-  bool _isLimited = false;
+  bool _academyLocked = false;   // 이 학원의 후기(기본 소개 + 사용자 후기) 전체 가림 처리 여부
+  int _unlockedAcademyCount = 0;
+  int? _unlockedAcademyLimit;    // null = 무제한
   int _nextUnlockAt = 1;
   int _userReviewCount = 0;
 
@@ -53,8 +54,9 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
             _seedReviews = _reviews.where((r) => r['is_seed'] == true).toList();
             _userReviews = _reviews.where((r) => r['is_seed'] != true).toList();
             _totalReviews = quotaInfo['total'] as int? ?? 0;
-            _readableReviews = quotaInfo['readable'] as int? ?? _totalReviews;
-            _isLimited = quotaInfo['is_limited'] as bool? ?? false;
+            _academyLocked = quotaInfo['academy_locked'] as bool? ?? false;
+            _unlockedAcademyCount = quotaInfo['unlocked_academy_count'] as int? ?? 0;
+            _unlockedAcademyLimit = quotaInfo['unlocked_academy_limit'] as int?;
             _nextUnlockAt = quotaInfo['next_unlock_at'] as int? ?? 1;
             _userReviewCount = quotaInfo['user_review_count'] as int? ?? 0;
             _reviewsLocked = false;
@@ -238,11 +240,11 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
           ),
 
           // ── 조회 쿼터 배너 ─────────────────────────────
-          if (!_reviewsLocked && _totalReviews > 0)
+          if (!_reviewsLocked && (_totalReviews > 0 || _seedReviews.isNotEmpty))
             _QuotaBanner(
-              readable: _readableReviews,
-              total: _totalReviews,
-              isLimited: _isLimited,
+              academyLocked: _academyLocked,
+              unlockedCount: _unlockedAcademyCount,
+              unlockedLimit: _unlockedAcademyLimit,
               nextUnlockAt: _nextUnlockAt,
               userReviewCount: _userReviewCount,
               onWriteTap: () => context.push('/academy/${widget.academyId}/review/write').then((_) => _load()),
@@ -283,14 +285,14 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
             )
           else ...[
             ..._userReviews.map((r) => _ReviewCard(review: r)),
-            // 하단 잠금 안내 (제한 중일 때)
-            if (_isLimited)
+            // 하단 잠금 안내 (이 학원이 잠겨 있을 때)
+            if (_academyLocked)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
                 child: OutlinedButton.icon(
                   onPressed: () => context.push('/academy/${widget.academyId}/review/write').then((_) => _load()),
                   icon: const Icon(Icons.edit_outlined, size: 15),
-                  label: Text('후기 $_nextUnlockAt건 작성하면 더 보기'),
+                  label: Text('후기 $_nextUnlockAt건 작성하면 이 학원 전체 열람'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.grey.shade600,
                     textStyle: const TextStyle(fontSize: 13),
@@ -309,17 +311,17 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
 // ── 조회 쿼터 배너 ──────────────────────────────────────────────
 
 class _QuotaBanner extends StatelessWidget {
-  final int readable;
-  final int total;
-  final bool isLimited;
+  final bool academyLocked;
+  final int unlockedCount;
+  final int? unlockedLimit;   // null = 무제한
   final int nextUnlockAt;
   final int userReviewCount;
   final VoidCallback onWriteTap;
 
   const _QuotaBanner({
-    required this.readable,
-    required this.total,
-    required this.isLimited,
+    required this.academyLocked,
+    required this.unlockedCount,
+    required this.unlockedLimit,
     required this.nextUnlockAt,
     required this.userReviewCount,
     required this.onWriteTap,
@@ -329,8 +331,8 @@ class _QuotaBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    if (!isLimited) {
-      // 전체 열람 가능 — 간단히 상태만 표시
+    if (!academyLocked) {
+      // 이 학원은 이미 열람 해금됨
       return Container(
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -343,7 +345,7 @@ class _QuotaBanner extends StatelessWidget {
             Icon(Icons.check_circle_outline, size: 14, color: Colors.green.shade600),
             const SizedBox(width: 6),
             Text(
-              '전체 $total개 후기 조회 가능',
+              unlockedLimit == null ? '이 학원 후기 전체 조회 가능' : '이 학원 후기 전체 조회 가능 (열람 가능 학원 $unlockedCount/$unlockedLimit곳)',
               style: TextStyle(fontSize: 12, color: Colors.green.shade700),
             ),
           ],
@@ -351,10 +353,10 @@ class _QuotaBanner extends StatelessWidget {
       );
     }
 
-    // 제한 중 — "N/M 조회 가능" 배너
-    final limitLabel = userReviewCount == 0 ? '제목만 조회 가능' : '$readable/$total 조회 가능';
+    // 잠김 — 이 학원의 후기(기본 소개 + 사용자 후기)가 가림 처리됨
+    final limitLabel = '이 학원 후기 가림 처리됨 (열람 가능 학원 $unlockedCount/$unlockedLimit곳)';
     final unlockMsg = nextUnlockAt > 0
-        ? '후기 $nextUnlockAt건 더 작성하면 ${userReviewCount == 0 ? "내용" : "더 많이"} 열람'
+        ? '후기 $nextUnlockAt건 더 작성하면 열람 가능한 학원 수가 늘어납니다'
         : '';
 
     return Container(
@@ -492,7 +494,13 @@ class _ReviewCard extends StatelessWidget {
             ),
             if (isViewLimited) ...[
               const SizedBox(height: 6),
-              Text('후기를 작성하면 내용을 볼 수 있습니다.',
+              if (text.isNotEmpty)
+                Text(text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+              const SizedBox(height: 4),
+              Text('후기를 작성하면 전체 내용을 볼 수 있습니다.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontStyle: FontStyle.italic)),
             ],
             if (!isViewLimited && text.isNotEmpty) ...[

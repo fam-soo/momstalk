@@ -8,10 +8,25 @@ from app.api.deps import get_current_user, get_optional_user
 from app.core.rate_limit import RateLimit
 from app.db import get_service_db
 from app.models.service_models import User
-from app.schemas.academy import AcademyResponse, AcademyReviewCreate, AcademyReviewResponse, AcademyReviewListResponse
+from app.schemas.academy import (
+    AcademyResponse,
+    AcademyReviewCreate,
+    AcademyReviewResponse,
+    AcademyReviewListResponse,
+    AcademyUnlockQuota,
+)
 from app.services import academy_service
 
 router = APIRouter(prefix="/academies", tags=["academies"])
+
+
+@router.get("/review-quota", response_model=AcademyUnlockQuota)
+async def get_review_quota(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """후기 게시판 상단 배너용 — 가림 처리 없이 열람 가능한 학원 개수 현황."""
+    return await academy_service.get_unlock_quota_summary(user, db)
 
 
 @router.get("", response_model=list[AcademyResponse])

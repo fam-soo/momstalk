@@ -32,6 +32,9 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   bool _isAdmin = false;
   int _userReviewCount = 0;
   String _memberGrade = '';
+  int _unlockedAcademyCount = 0;
+  int? _unlockedAcademyLimit;   // null = 무제한
+  int _nextUnlockAt = 1;
 
   List<Map<String, dynamic>> _results = [];
   bool _loading = true;
@@ -97,6 +100,17 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
               _isAdmin = adminFlag;
               _userReviewCount = reviewCount;
               _memberGrade = memberGrade;
+            });
+          }
+        } catch (_) {}
+        try {
+          final quotaResp = await dio.get('/academies/review-quota');
+          final q = quotaResp.data as Map<String, dynamic>;
+          if (mounted) {
+            setState(() {
+              _unlockedAcademyCount = q['unlocked_academy_count'] as int? ?? 0;
+              _unlockedAcademyLimit = q['unlocked_academy_limit'] as int?;
+              _nextUnlockAt = q['next_unlock_at'] as int? ?? 1;
             });
           }
         } catch (_) {}
@@ -550,6 +564,9 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                                     if (!_isAdmin && _memberGrade != 'lurker')
                                       _ListQuotaBanner(
                                         userReviewCount: _userReviewCount,
+                                        unlockedCount: _unlockedAcademyCount,
+                                        unlockedLimit: _unlockedAcademyLimit,
+                                        nextUnlockAt: _nextUnlockAt,
                                         onWriteTap: () => context.push('/academy/write'),
                                       ),
                                     Expanded(
@@ -748,27 +765,31 @@ class _AcademyTile extends StatelessWidget {
 }
 
 // ── 리스트 상단 후기 열람 권한 배너 ──────────────────────────────────
+// 후기를 작성할수록 "가림 처리 없이 전체 열람 가능한 학원 개수"가 늘어난다.
 class _ListQuotaBanner extends StatelessWidget {
   final int userReviewCount;
+  final int unlockedCount;
+  final int? unlockedLimit;   // null = 무제한
+  final int nextUnlockAt;
   final VoidCallback? onWriteTap;
-  const _ListQuotaBanner({required this.userReviewCount, this.onWriteTap});
+  const _ListQuotaBanner({
+    required this.userReviewCount,
+    required this.unlockedCount,
+    required this.unlockedLimit,
+    required this.nextUnlockAt,
+    this.onWriteTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final int readable;
-    final String msg;
-    final bool unlimited = userReviewCount >= 5;
+    final unlimited = unlockedLimit == null;
 
     if (unlimited) return const SizedBox.shrink();
 
-    if (userReviewCount == 0) {
-      readable = 1;
-      msg = '후기 1건 작성 시 학원당 5개 열람 가능';
-    } else {
-      readable = userReviewCount * 5;
-      msg = '후기 ${5 - userReviewCount}건 더 작성하면 전체 열람';
-    }
+    final msg = nextUnlockAt > 0
+        ? '후기 $nextUnlockAt건 더 작성하면 열람 가능한 학원 수가 늘어납니다'
+        : '';
 
     return GestureDetector(
       onTap: () => showDialog(
@@ -779,17 +800,16 @@ class _ListQuotaBanner extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('후기를 작성할수록 더 많은 후기를 볼 수 있습니다.', style: TextStyle(fontWeight: FontWeight.w600)),
+              Text('후기를 작성할수록 가림 처리 없이 열람 가능한 학원 수가 늘어납니다.',
+                  style: TextStyle(fontWeight: FontWeight.w600)),
               SizedBox(height: 12),
-              Text('• 후기 0건: 학원당 1개 열람'),
-              Text('• 후기 1건: 학원당 5개 열람'),
-              Text('• 후기 2건: 학원당 10개 열람'),
-              Text('• 후기 3건: 학원당 15개 열람'),
-              Text('• 후기 4건: 학원당 20개 열람'),
-              Text('• 후기 5건 이상: 전체 열람'),
+              Text('• 후기 0건: 1개 학원 열람'),
+              Text('• 후기 1건 이상: 5개 학원 열람'),
+              Text('• 후기 5건 이상: 전체 학원 열람'),
               SizedBox(height: 12),
-              Text('AI 요약(학원 소개)은 권한과 무관하게 항상 열람 가능합니다.',
-                style: TextStyle(fontSize: 12, color: Colors.grey)),
+              Text('한 번 열람한 학원은 계속 가림 처리 없이 볼 수 있습니다.\n'
+                  '아직 열람하지 않은 학원의 후기는 상단 한 줄만 미리보기로 표시됩니다.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
             ],
           ),
           actions: [
@@ -810,9 +830,10 @@ class _ListQuotaBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('내 작성 후기 $userReviewCount건 · 학원당 $readable개 열람 가능',
+              Text('열람 가능 학원 $unlockedCount/$unlockedLimit곳 · 내 작성 후기 $userReviewCount건',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: theme.colorScheme.secondary)),
-              Text(msg, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              if (msg.isNotEmpty)
+                Text(msg, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
             ]),
           ),
           Icon(Icons.info_outline, size: 15, color: Colors.grey.shade500),

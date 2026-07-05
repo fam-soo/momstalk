@@ -83,13 +83,22 @@ class AcademyReviewResponse(BaseModel):
 
 
 class QuotaInfo(BaseModel):
-    readable: int       # 현재 읽을 수 있는 후기 수
-    total: int          # 전체 후기 수 (잠금 포함)
-    is_limited: bool    # 제한 중 여부
-    next_unlock_at: int # 다음 해금까지 필요한 후기 작성 수 (0이면 이미 전체 해제)
-    user_review_count: int  # 유저가 작성한 후기 수
+    total: int                      # 이 학원의 전체 후기 수 (사용자 후기, seed 제외)
+    academy_locked: bool            # True면 이 학원의 후기 전체(기본 소개 + 사용자 후기)가 가림 처리됨
+    unlocked_academy_count: int     # 현재까지 가림 처리 없이 열람 가능하도록 해금한 학원 수
+    unlocked_academy_limit: Optional[int] = None  # 해금 가능한 학원 총 개수 (None=무제한)
+    next_unlock_at: int             # 다음 해금까지 필요한 후기 작성 수 (0이면 이미 무제한)
+    user_review_count: int          # 유저가 작성한 후기 수
 
 
 class AcademyReviewListResponse(BaseModel):
     reviews: list[AcademyReviewResponse]
     quota_info: QuotaInfo
+
+
+class AcademyUnlockQuota(BaseModel):
+    """후기 게시판 상단 배너용 — 특정 학원과 무관한 전역 해금 현황."""
+    unlocked_academy_count: int
+    unlocked_academy_limit: Optional[int] = None
+    next_unlock_at: int
+    user_review_count: int
