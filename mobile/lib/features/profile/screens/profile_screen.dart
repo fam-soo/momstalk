@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +8,7 @@ import 'package:kakao_flutter_sdk_share/kakao_flutter_sdk_share.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api_client.dart';
 import '../../../core/router.dart';
+import '../../../core/web_open_helper.dart';
 import '../../board/screens/board_screen.dart';
 
 // ──────────────────────────────────────────────────────────────────
@@ -1447,11 +1449,32 @@ class _InviteShareDialog extends StatelessWidget {
       ],
     );
 
+    if (kIsWeb) {
+      // 모바일 브라우저(특히 iOS Safari)는 await 이후에 새 창을 열면 사용자
+      // 제스처가 끊긴 것으로 보고 팝업을 차단해 "반응 없음"처럼 보인다.
+      // 클릭 즉시(await 이전) 빈 창을 먼저 열어두고, URL이 준비되면 그
+      // 창의 location만 옮기는 방식으로 우회한다. PC 브라우저에서도 동일하게
+      // 동작하므로 별도 분기 없이 항상 이 경로를 사용한다.
+      final handle = openBlankWindow();
+      try {
+        final url = await WebSharerClient.instance.makeDefaultUrl(template: template);
+        redirectWindow(handle, url.toString());
+      } catch (_) {
+        await Clipboard.setData(ClipboardData(text: deeplink));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('링크를 복사했습니다. 카카오톡에 직접 붙여넣기 해주세요.')),
+          );
+        }
+      }
+      return;
+    }
+
     try {
       if (await ShareClient.instance.isKakaoTalkSharingAvailable()) {
         await ShareClient.instance.shareDefault(template: template);
       } else {
-        // 웹 / KakaoTalk 미설치 → 카카오 공유 웹 페이지 열기
+        // KakaoTalk 미설치 → 카카오 공유 웹 페이지 열기
         final url = await WebSharerClient.instance.makeDefaultUrl(template: template);
         await launchUrl(url, mode: LaunchMode.externalApplication);
       }
