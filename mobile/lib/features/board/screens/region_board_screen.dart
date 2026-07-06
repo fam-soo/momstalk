@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
+import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart';
 
 class RegionBoardScreen extends ConsumerStatefulWidget {
@@ -142,6 +143,11 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 지역 변경 등으로 프로필이 바뀐 뒤 이 화면으로 돌아오거나, 이미 선택된
+    // 탭을 다시 탭했을 때 다시 불러온다.
+    ref.listen<int>(boardRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _init();
+    });
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     if (_isMember) {

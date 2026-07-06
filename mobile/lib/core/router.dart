@@ -22,6 +22,7 @@ import '../features/academy/screens/academy_detail_screen.dart';
 import '../features/academy/screens/academy_review_write_screen.dart';
 import 'api_client.dart' show tokenStorageProvider;
 import 'constants.dart';
+import 'refresh_bus.dart';
 import '../features/admin/screens/admin_login_screen.dart';
 import '../features/admin/screens/admin_home_screen.dart';
 
@@ -138,17 +139,21 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-class _MainShell extends StatelessWidget {
+class _MainShell extends ConsumerWidget {
   final StatefulNavigationShell shell;
   const _MainShell({required this.shell});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       body: shell,
       bottomNavigationBar: NavigationBar(
         selectedIndex: shell.currentIndex,
-        onDestinationSelected: (i) => shell.goBranch(i, initialLocation: i == shell.currentIndex),
+        onDestinationSelected: (i) {
+          // 이미 선택된 탭을 다시 탭하면 해당 탭 내부 화면을 새로고침한다.
+          if (i == shell.currentIndex) bumpBoardRefresh(ref);
+          shell.goBranch(i, initialLocation: i == shell.currentIndex);
+        },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.location_on_outlined), selectedIcon: Icon(Icons.location_on), label: '지역'),
           NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: '학교'),

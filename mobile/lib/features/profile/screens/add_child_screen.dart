@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/refresh_bus.dart';
 import '../../auth/screens/capture_upload_screen.dart';
+import '../../board/screens/board_screen.dart' show userProfileProvider;
 
 // 자녀 추가 전용 화면 — go_router 라우트로 등록되어야 autofocus/텍스트 입력이 정상 동작
 class AddChildScreen extends ConsumerStatefulWidget {
@@ -98,6 +100,8 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
       try {
         final dio = ref.read(dioProvider);
         await dio.post('/auth/me/children', data: schoolInfo);
+        ref.invalidate(userProfileProvider);
+        bumpBoardRefresh(ref);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('자녀가 추가되었습니다.')),

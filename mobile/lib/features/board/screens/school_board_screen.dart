@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
+import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart';
 
 class SchoolBoardScreen extends ConsumerStatefulWidget {
@@ -138,6 +139,11 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
 
   @override
   Widget build(BuildContext context) {
+    // 자녀 추가/학교 변경 후 이 화면으로 돌아오거나, 이미 선택된 탭을 다시
+    // 탭했을 때 학교/학년/자녀 목록을 다시 불러온다.
+    ref.listen<int>(boardRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _init();
+    });
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     // 인증 사진 심사 대기 중

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:kakao_flutter_sdk_share/kakao_flutter_sdk_share.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api_client.dart';
+import '../../../core/refresh_bus.dart';
 import '../../../core/router.dart';
 import '../../../core/web_open_helper.dart';
 import '../../board/screens/board_screen.dart';
@@ -1072,8 +1073,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         'school_type': _selected!['school_type'],
       });
 
+      ref.invalidate(userProfileProvider);
+      bumpBoardRefresh(ref);
       if (mounted) {
-        ref.invalidate(userProfileProvider);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('정보가 변경되었습니다.')));
         Navigator.pop(context);
       }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/refresh_bus.dart';
 
 class PostWriteScreen extends ConsumerStatefulWidget {
   final String boardType;
@@ -74,6 +75,7 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
       };
       final resp = await dio.post('/posts', data: body);
       final postId = resp.data['id'];
+      bumpBoardRefresh(ref); // 목록으로 돌아왔을 때 방금 쓴 글이 바로 보이도록
       if (mounted) context.pushReplacement('/board/$postId');
     } on DioException catch (e) {
       if (mounted) {

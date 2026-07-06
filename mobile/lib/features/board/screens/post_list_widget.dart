@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/refresh_bus.dart';
 import 'post_detail_screen.dart' show showReportDialog;
 
 class PostListWidget extends ConsumerStatefulWidget {
@@ -98,6 +99,11 @@ class _PostListWidgetState extends ConsumerState<PostListWidget> with AutomaticK
   @override
   Widget build(BuildContext context) {
     super.build(context); // AutomaticKeepAliveClientMixin 필수 호출
+    // 게시글 작성/자녀 추가/학교 변경 후 이 화면으로 돌아오거나, 이미 선택된
+    // 탭을 다시 탭했을 때 목록을 새로 불러온다 (bumpBoardRefresh 참고).
+    ref.listen<int>(boardRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _load(reset: true);
+    });
     final theme = Theme.of(context);
     return Column(
       children: [
