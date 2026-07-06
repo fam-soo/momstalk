@@ -70,6 +70,12 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
             .toList();
         final canAccess = (isMember || isAdmin) && !authPending;
         final tabs = canAccess ? TabController(length: 2, vsync: this) : null;
+        // 내정보(활성 자녀)를 기준으로 초기 선택 자녀를 맞춘다 — 항상 0번째로
+        // 고정하면 학교 게시판이 내정보에서 고른 자녀와 무관하게 보였다.
+        final activeChildId = profile['active_child_id'] as int?;
+        final activeIdx = activeChildId == null
+            ? 0
+            : children.indexWhere((c) => c['id'] == activeChildId);
         setState(() {
           _isMember = canAccess;
           // auth_pending 중이면 lurker도 아닌 '인증 대기' 상태로 처리
@@ -78,13 +84,32 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
           _schoolName = profile['school_name'] as String? ?? '';
           _grade = profile['grade'] as int? ?? 1;
           _children = children;
-          _selectedChildIdx = 0;
+          _selectedChildIdx = activeIdx >= 0 ? activeIdx : 0;
           _tabController = tabs;
           _loading = false;
         });
       }
     } catch (_) {
       await _loadPreview();
+    }
+  }
+
+  /// 학교 게시판에서 자녀를 바꾸면 내정보(active_child)에도 반영하고,
+  /// 지역/학원 탭 등 다른 화면도 함께 새로고침되도록 신호를 보낸다.
+  Future<void> _onSelectChild(int idx, TabController tc) async {
+    if (idx == _selectedChildIdx) return;
+    final childId = _children[idx]['id'] as int?;
+    setState(() {
+      _selectedChildIdx = idx;
+      if (tc.index != 0) tc.animateTo(0);
+    });
+    if (childId == null) return;
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.post('/auth/me/active-child/$childId');
+      bumpBoardRefresh(ref);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('자녀 전환 실패: $e')));
     }
   }
 
@@ -195,10 +220,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
               ? _SchoolDropdownTitle(
                   children: _children,
                   selectedIdx: _selectedChildIdx,
-                  onChanged: (idx) => setState(() {
-                    _selectedChildIdx = idx;
-                    if (tc.index != 0) tc.animateTo(0);
-                  }),
+                  onChanged: (idx) => _onSelectChild(idx, tc),
                 )
               : Text(displaySchool.isNotEmpty ? displaySchool : '학교 게시판',
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),

@@ -181,6 +181,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 학교 게시판 등 다른 탭에서 활성 자녀를 바꾸면 여기도 최신 상태로 갱신한다.
+    ref.listen<int>(boardRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _load();
+    });
     return Scaffold(
       appBar: AppBar(
         title: const Text('내 정보'),
@@ -584,6 +588,7 @@ class _ChildrenSectionState extends ConsumerState<_ChildrenSection> {
     try {
       final dio = ref.read(dioProvider);
       await dio.post('/auth/me/active-child/$childId');
+      bumpBoardRefresh(ref); // 지역/학교/학원 탭도 바뀐 활성 자녀 기준으로 다시 불러오도록
       widget.onChanged();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('전환 실패: $e')));

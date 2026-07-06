@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
+import '../../../core/refresh_bus.dart';
 
 class AcademyScreen extends ConsumerStatefulWidget {
   const AcademyScreen({super.key});
@@ -454,6 +455,11 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 내정보/학교 게시판 등에서 활성 자녀를 바꾸면 기본 지역 필터도 그 자녀
+    // 기준으로 다시 불러온다.
+    ref.listen<int>(boardRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _initLoad();
+    });
     final theme = Theme.of(context);
 
     return Scaffold(

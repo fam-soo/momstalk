@@ -178,6 +178,25 @@ async def refresh_token(req: RefreshRequest, db: AsyncSession = Depends(get_db))
     return TokenResponse(access_token=new_access, refresh_token=req.refresh_token)
 
 
+def _user_profile_with_active_child(user: User) -> UserProfile:
+    """지역/학교/학년은 activeChild가 있으면 그 자녀 기준으로 덮어써서 반환한다.
+
+    users.region/school_name/grade/school_type은 다자녀 지원 이전의 레거시
+    필드로, 지금은 "첫 자녀 등록 시"에만 동기화된다. active_child_id로 다른
+    자녀를 선택한 경우에도 이 필드들을 그대로 내려주면 지역/학교/학원 탭이
+    내정보에서 선택한 자녀와 무관하게 예전 자녀 기준으로 보이는 문제가
+    생기므로, 모든 프로필 응답에서 activeChild 기준으로 통일한다.
+    """
+    profile = UserProfile.model_validate(user)
+    active = user.active_child
+    if active:
+        profile.region = active.region or profile.region
+        profile.school_name = active.school_name or profile.school_name
+        profile.grade = active.grade or profile.grade
+        profile.school_type = active.school_type or profile.school_type
+    return profile
+
+
 @router.get("/me", response_model=UserProfile)
 async def get_me(
     user: User = Depends(get_current_user),
@@ -200,7 +219,7 @@ async def get_me(
             reject_reason = latest.reject_reason
 
     from app.services.temperature_service import to_celsius
-    profile = UserProfile.model_validate(user)
+    profile = _user_profile_with_active_child(user)
     profile.reject_reason = reject_reason
     profile.temperature = to_celsius(user.manner_score)
     return profile
@@ -235,7 +254,7 @@ async def update_nickname(
     user.nickname = req.nickname
     await db.commit()
     await db.refresh(user)
-    return user
+    return _user_profile_with_active_child(user)
 
 
 @router.post("/me/fcm-token", status_code=status.HTTP_204_NO_CONTENT)
@@ -394,9 +413,20 @@ async def update_profile(
     user.grade = req.grade
     user.school_type = req.school_type
     user.profile_updated_at = datetime.utcnow()
+    # 현재 활성 자녀가 있으면 그 자녀 기록도 함께 갱신한다. active_child가
+    # 있을 때 응답은 activeChild 기준으로 내려가므로(_user_profile_with_active_child),
+    # 여기서 deprecated 필드만 바꾸면 화면상 변경이 반영되지 않는 것처럼 보인다.
+    if user.active_child_id:
+        active = user.active_child
+        if active:
+            active.region = req.region
+            active.school_code = req.school_code
+            active.school_name = req.school_name
+            active.grade = req.grade
+            active.school_type = req.school_type
     await db.commit()
     await db.refresh(user)
-    return user
+    return _user_profile_with_active_child(user)
 
 
 @router.post("/admin/login", response_model=TokenResponse)
@@ -541,4 +571,4 @@ async def set_active_child(
     user.active_child_id = child_id
     await db.commit()
     await db.refresh(user)
-    return user
+    return _user_profile_with_active_child(user)
