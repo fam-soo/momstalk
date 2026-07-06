@@ -17,7 +17,7 @@ class PostListWidget extends ConsumerStatefulWidget {
   ConsumerState<PostListWidget> createState() => _PostListWidgetState();
 }
 
-class _PostListWidgetState extends ConsumerState<PostListWidget> {
+class _PostListWidgetState extends ConsumerState<PostListWidget> with AutomaticKeepAliveClientMixin {
   List<Map<String, dynamic>> _posts = [];
   bool _loading = true;
   bool _loadingMore = false;
@@ -25,6 +25,13 @@ class _PostListWidgetState extends ConsumerState<PostListWidget> {
   int? _nextCursor;
   String _sort = 'recent';
   final _scrollCtrl = ScrollController();
+
+  // TabBarView 안에서 탭을 전환해도 상태(및 진행 중이던 로드)를 유지한다.
+  // 이게 없으면 오프스크린으로 밀린 탭의 State가 임의로 폐기/재생성되면서
+  // 첫 진입 시 이미 도착한 응답이 폐기된 위젯에 반영되어 "글이 있는데 안 보이다가
+  // 필터를 누르면 보이는" 증상이 재현되었다.
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -90,6 +97,7 @@ class _PostListWidgetState extends ConsumerState<PostListWidget> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // AutomaticKeepAliveClientMixin 필수 호출
     final theme = Theme.of(context);
     return Column(
       children: [

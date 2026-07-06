@@ -180,14 +180,24 @@ class _BoardScreenState extends ConsumerState<BoardScreen> with SingleTickerProv
           ),
           body: TabBarView(
             controller: _tabController,
+            // 지역/학교/학년 변경 시 프로필의 식별값이 바뀌므로 key도 함께 바뀌어
+            // Flutter가 새 위젯으로 인식하고 다시 마운트해 최신 데이터를 가져온다.
+            // key 없이는 같은 위치의 같은 위젯 타입으로 취급되어 학교를 바꾼 뒤에도
+            // 이전 학교의 목록(또는 빈 상태)이 그대로 남아있는 문제가 있었다.
             children: tabs.map((t) {
               if (t.$3) {
                 return _LockedBoardPlaceholder(
+                  key: ValueKey('locked-${t.$2}'),
                   isPending: isPending,
                   onCertify: () => _showAuthBottomSheet(isPending: isPending),
                 );
               }
-              return PostListWidget(boardType: t.$2, isAdmin: isAdmin);
+              final identity = '${profile['school_code']}-${profile['region']}-${profile['grade']}';
+              return PostListWidget(
+                key: ValueKey('${t.$2}-$identity'),
+                boardType: t.$2,
+                isAdmin: isAdmin,
+              );
             }).toList(),
           ),
           floatingActionButton: FloatingActionButton.extended(
@@ -289,7 +299,7 @@ class _BenefitRow extends StatelessWidget {
 class _LockedBoardPlaceholder extends StatelessWidget {
   final VoidCallback onCertify;
   final bool isPending;
-  const _LockedBoardPlaceholder({required this.onCertify, required this.isPending});
+  const _LockedBoardPlaceholder({super.key, required this.onCertify, required this.isPending});
 
   @override
   Widget build(BuildContext context) {

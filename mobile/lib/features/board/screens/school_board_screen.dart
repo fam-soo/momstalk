@@ -212,9 +212,18 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
         ),
         body: TabBarView(
           controller: tc,
+          // 학교/자녀 변경 시 새로 마운트되도록 식별값을 key에 반영 (board_screen.dart와 동일한 이유)
           children: [
-            PostListWidget(boardType: 'school', childId: selectedChildId),
-            PostListWidget(boardType: 'grade', childId: selectedChildId),
+            PostListWidget(
+              key: ValueKey('school-$displaySchool-$displayGrade-$selectedChildId'),
+              boardType: 'school',
+              childId: selectedChildId,
+            ),
+            PostListWidget(
+              key: ValueKey('grade-$displaySchool-$displayGrade-$selectedChildId'),
+              boardType: 'grade',
+              childId: selectedChildId,
+            ),
           ],
         ),
         floatingActionButton: FloatingActionButton.extended(

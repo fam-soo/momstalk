@@ -67,7 +67,10 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
         'title': _titleCtrl.text.trim(),
         'content': _contentCtrl.text.trim(),
         'is_anonymous': _nicknameType == 'anon',
-        'nickname_type': _nicknameType,
+        // 서버는 nickname_type을 "anon"/"certified"(인증 닉네임 표시 여부)로만 받는다.
+        // 화면의 "익명"/"닉네임" 선택은 별개 축인 is_anonymous로 이미 전달되므로
+        // nickname_type은 항상 유효값인 "anon"으로 고정 전송한다.
+        'nickname_type': 'anon',
       };
       final resp = await dio.post('/posts', data: body);
       final postId = resp.data['id'];
