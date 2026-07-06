@@ -130,8 +130,23 @@ async def list_users(
     db: AsyncSession = Depends(get_service_db),
 ):
     from sqlalchemy import or_, cast, String
+
+    post_count_subq = (
+        select(func.count(Post.id))
+        .where(Post.author_id == User.id, Post.is_deleted == False)
+        .correlate(User)
+        .scalar_subquery()
+    )
+    like_count_subq = (
+        select(func.coalesce(func.sum(Post.like_count), 0))
+        .where(Post.author_id == User.id, Post.is_deleted == False)
+        .correlate(User)
+        .scalar_subquery()
+    )
+
+    base = select(User, post_count_subq.label("post_count"), like_count_subq.label("like_count"))
     if q:
-        query = select(User).where(
+        query = base.where(
             or_(
                 User.nickname.ilike(f"%{q}%"),
                 cast(User.id, String) == q,
@@ -139,8 +154,8 @@ async def list_users(
             )
         ).order_by(User.created_at.desc()).limit(50)
     else:
-        query = select(User).where(User.is_admin == False).order_by(User.created_at.desc()).limit(100)
-    users = (await db.execute(query)).scalars().all()
+        query = base.where(User.is_admin == False).order_by(User.created_at.desc()).limit(100)
+    rows = (await db.execute(query)).all()
     return [
         {
             "id": u.id,
@@ -153,9 +168,13 @@ async def list_users(
             "kakao_id": u.kakao_id,
             "suspended_until": u.suspended_until.isoformat() if u.suspended_until else None,
             "warning_count": u.warning_count,
+            "post_count": post_count,
+            "like_count": like_count,
+            "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+            "login_count": u.login_count or 0,
             "created_at": u.created_at.isoformat() if u.created_at else None,
         }
-        for u in users
+        for u, post_count, like_count in rows
     ]
 
 
@@ -174,6 +193,9 @@ async def get_user_detail(
     post_count = (await db.execute(
         select(func.count()).where(Post.author_id == user_id, Post.is_deleted == False)
     )).scalar()
+    like_count = (await db.execute(
+        select(func.coalesce(func.sum(Post.like_count), 0)).where(Post.author_id == user_id, Post.is_deleted == False)
+    )).scalar()
     return {
         "id": user.id,
         "nickname": user.nickname,
@@ -181,9 +203,14 @@ async def get_user_detail(
         "grade": user.grade,
         "member_grade": user.member_grade,
         "is_banned": user.is_banned,
+        "is_trusted": user.is_trusted,
+        "kakao_id": user.kakao_id,
         "suspended_until": user.suspended_until.isoformat() if user.suspended_until else None,
         "warning_count": user.warning_count,
         "post_count": post_count,
+        "like_count": like_count,
+        "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+        "login_count": user.login_count or 0,
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "warnings": [
             {

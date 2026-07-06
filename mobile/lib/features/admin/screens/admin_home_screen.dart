@@ -23,6 +23,16 @@ Widget _statusChip(String label, Color color) => Container(
       child: Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
     );
 
+Widget _statText(String label, String value) => RichText(
+      text: TextSpan(
+        style: const TextStyle(fontSize: 11, color: Colors.grey),
+        children: [
+          TextSpan(text: '$label '),
+          TextSpan(text: value, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87)),
+        ],
+      ),
+    );
+
 // ── 메인 화면 ────────────────────────────────────────
 
 class AdminHomeScreen extends ConsumerStatefulWidget {
@@ -501,8 +511,14 @@ class _UserTile extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('경고: ${user['warning_count'] ?? 0}회',
-                style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            Wrap(spacing: 12, runSpacing: 4, children: [
+              _statText('가입일', _timeAgo(user['created_at'] as String?)),
+              _statText('최근 접속', user['last_login_at'] != null ? _timeAgo(user['last_login_at'] as String?) : '기록 없음'),
+              _statText('접속 횟수', '${user['login_count'] ?? 0}회'),
+              _statText('게시글', '${user['post_count'] ?? 0}개'),
+              _statText('받은 좋아요', '${user['like_count'] ?? 0}개'),
+              _statText('경고', '${user['warning_count'] ?? 0}회'),
+            ]),
             const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 4, children: [
               if (grade == 'lurker')

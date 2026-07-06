@@ -5,6 +5,8 @@ anon_id(HMAC)로 변환 후 서비스 DB에 User를 생성/조회한다.
 
 전화번호는 이 함수 내에서만 사용되고 서비스 DB에 저장되지 않는다.
 """
+from datetime import datetime
+
 import httpx
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -66,16 +68,16 @@ async def kakao_login(
         await service_db.refresh(user)
     else:
         # 기존 유저 — 소셜 프로바이더·kakao_id 업데이트
-        changed = False
         if not user.social_provider:
             user.social_provider = "kakao"
-            changed = True
         if not user.kakao_id:
             user.kakao_id = raw_kakao_id
-            changed = True
-        if changed:
-            await service_db.commit()
-            await service_db.refresh(user)
+
+    # 관리자 화면 접속 통계 (신규/기존 유저 공통 — 카카오 로그인 성공 시마다 갱신)
+    user.last_login_at = datetime.utcnow()
+    user.login_count = (user.login_count or 0) + 1
+    await service_db.commit()
+    await service_db.refresh(user)
 
     access_token = create_access_token(str(user.id))
     refresh_token = create_refresh_token(str(user.id))

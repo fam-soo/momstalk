@@ -97,6 +97,9 @@ class User(Base):
     # 다자녀 지원
     active_child_id = Column(Integer, ForeignKey("user_children.id", ondelete="SET NULL"), nullable=True)
     academy_review_count = Column(Integer, default=0, server_default="0")
+    # 관리자 화면용 접속 통계 (카카오 로그인 성공 시마다 갱신)
+    last_login_at = Column(DateTime, nullable=True)
+    login_count = Column(Integer, default=0, server_default="0")
     created_at = Column(DateTime, default=datetime.utcnow)
 
     posts = relationship("Post", back_populates="author")
