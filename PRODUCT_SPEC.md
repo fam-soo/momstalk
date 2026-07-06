@@ -1,10 +1,11 @@
 # MomsTalk (맘스톡크) — 제품 사양서 및 개발 현황 문서
 
-> 작성 기준일: 2026-06-27  
-> 현재 버전: v0.4.2  
-> 플랫폼: Flutter Web PWA (출시 우선) → iOS (MAU 5,000 달성 시) → Android (12개월~)  
-> 백엔드: FastAPI + PostgreSQL × 2 + Redis  
-> 사업계획서 기준: v1.0 (2026년 7월)
+> 작성 기준일: 2026-07-06  
+> 현재 버전: v0.6.1  
+> 플랫폼: Flutter Web PWA (출시, Android/iOS는 홈 화면 추가 설치 방식으로 병행 가능) → 네이티브 앱 스토어는 MAU 안정화 후  
+> 백엔드: FastAPI + PostgreSQL (Supabase 단일 DB)  
+> 배포: Vercel (Flutter Web) + Render (FastAPI) + Supabase (PostgreSQL)  
+> 실사용자 온보딩 시작 — 23장에 활성화·개선 방안 정리
 
 ---
 
@@ -27,36 +28,37 @@
 15. [푸시 알림 (FCM)](#15-푸시-알림-fcm)
 16. [실시간 DM (SSE)](#16-실시간-dm-sse)
 17. [보안 설계](#17-보안-설계)
-18. [관리자 시스템 — Streamlit 대시보드](#18-관리자-시스템--streamlit-대시보드)
+18. [관리자 시스템 — Flutter 인앱 + Streamlit](#18-관리자-시스템--flutter-인앱--streamlit)
 19. [수익화 모델](#19-수익화-모델)
 20. [로드맵 및 KPI](#20-로드맵-및-kpi)
 21. [미구현 / 보완 필요 항목](#21-미구현--보완-필요-항목)
 22. [인프라 및 배포](#22-인프라-및-배포)
+23. [활성화 및 시스템 개선 방안](#23-활성화-및-시스템-개선-방안)
 
 ---
 
 ## 1. 서비스 개요
 
-**MomsTalk(맘스톡크)**는 NEIS 학교 인증 기반의 학부모 전용 교육 정보 커뮤니티 플랫폼이다.  
-기존 맘카페의 폐쇄성·허위 후기 문제를 해결하고, 지역×학교급×과목으로 구조화된 학원 후기 DB와 선택적 실명제를 결합하여 신뢰할 수 있는 **하이퍼로컬 교육 정보 허브**를 구축한다.
+**MomsTalk(맘스톡크)**는 카카오 계정 + 알림장 캡처 인증 기반의 학부모 전용 교육 정보 커뮤니티 플랫폼이다.  
+초대 링크(QR 코드) 기반 가입, 학원 정보 구조화, 선택적 실명제를 결합하여 신뢰할 수 있는 **하이퍼로컬 교육 정보 허브**를 구축한다.
 
 ### 핵심 원칙
 
 | 원칙 | 설명 |
 |------|------|
-| **선택적 실명제** | 학원 후기·입시 정보는 인증 닉네임으로, 민감 고민은 완전 익명으로 분리 운영 |
-| **NEIS 학교 인증** | 교육부 나이스 API 기반 실제 학교 인증 → 학부모 신뢰도 보장 |
-| **이중 DB 분리** | 전화번호(신원) DB ↔ 활동 DB 물리적 분리 → 역추적 원천 차단 |
+| **초대 기반 가입** | 학교 담당자(관리자)가 발급한 QR 코드 초대 링크로만 가입 → 재학 학부모 신뢰도 보장 |
+| **알림장 캡처 인증** | 가입 후 학교 알림장/가정통신문 사진 업로드 → 관리자 심사 → 정회원 승급 |
+| **선택적 실명제** | 학원 후기·입시 정보는 인증 닉네임, 민감 고민은 완전 익명 분리 운영 |
+| **다자녀 지원** | 한 계정에 여러 자녀/학교 등록, 활성 자녀 전환 기능 |
 | **구조화 학원 DB** | NEIS 학원 목록 선구축 + 5항목 정형 리뷰 템플릿 → Cold Start 방어 |
-| **자동 중재** | 신고 5건 누적 자동 블라인드, Streamlit 관리자 대시보드로 1인 운영 최적화 |
+| **자동 중재** | 신고 5건 누적 자동 블라인드, Flutter 인앱 + Streamlit 관리자 도구로 1인 운영 최적화 |
 | **스레드 익명화** | 같은 게시글 내 댓글 "글쓴이/익명1/익명2…" 레이블로 익명성 유지 |
-| **실시간 알림** | FCM 푸시 + SSE DM 실시간 수신 |
 
 ### 포지셔닝
 
 | 플랫폼 | 한계 | MomsTalk 차별점 |
 |--------|------|----------------|
-| 네이버 맘카페 | 텃세·여론통제·광고 후기 난무 | NEIS 인증 + 선택적 실명제로 신뢰 확보 |
+| 네이버 맘카페 | 텃세·여론통제·광고 후기 난무 | 인증 기반 + 선택적 실명제로 신뢰 확보 |
 | 밴드(카카오) | 폐쇄 그룹, 공개 학원 DB 없음 | 지역×학교급×과목 구조화 리뷰 |
 | 클래스팅 | B2B 중심, 학부모 커뮤니티 기능 없음 | 양방향 커뮤니티 + 학원 후기 |
 
@@ -66,58 +68,38 @@
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Flutter App (Web PWA 우선 → iOS → Android)              │
-│  ┌──────────────┐ ┌──────────┐ ┌─────────────────────┐  │
-│  │ 게시판 탭    │ │ 학원 탭  │ │ 대화(DM) 탭         │  │
-│  └──────────────┘ └──────────┘ └─────────────────────┘  │
-│  Dio + JWT Bearer + flutter_secure_storage               │
-│  SSE: http 패키지 (EventSource 방식)                     │
+│  Flutter Web PWA (Vercel 배포)                            │
+│  ┌──────────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐  │
+│  │ 게시판 탭    │ │ 학원 탭  │ │ 검색 탭  │ │대화 탭 │  │
+│  └──────────────┘ └──────────┘ └──────────┘ └────────┘  │
+│  Dio + JWT Bearer + SharedPreferences (Web)               │
 └─────────────────────┬────────────────────────────────────┘
                       │ HTTPS / REST / SSE
 ┌─────────────────────▼────────────────────────────────────┐
-│  FastAPI (Python 3.12, Uvicorn)                          │
-│  Port 8000 — Docker Container: momstalk_backend          │
+│  FastAPI (Python 3.12, Uvicorn) — Render 배포            │
+│  Port 8000                                               │
 │                                                          │
-│  /api/v1/auth/*         인증 + FCM 토큰 등록             │
+│  /api/v1/auth/*         인증 + 캡처 업로드 + 초대 링크   │
 │  /api/v1/schools/*      NEIS 학교·학원 검색              │
 │  /api/v1/posts/*        게시글/댓글/신고                 │
 │  /api/v1/academies/*    학원 프로필 + 후기               │
 │  /api/v1/users/*        차단 (Block)                     │
 │  /api/v1/conversations/* 1:1 DM                         │
+│  /api/v1/admin/*        관리자 API (Flutter 인앱 전용)   │
 │  /api/v1/stream         SSE 실시간 이벤트 스트림         │
 │                                                          │
-│  core/profanity.py      금칙어 서버 필터                 │
-│  core/fcm.py            Firebase Admin SDK 발송          │
-│  core/sse_manager.py    인메모리 asyncio Queue 매니저    │
-└──────┬───────────────────────────────┬───────────────────┘
-       │                               │
-┌──────▼──────┐               ┌────────▼───────┐
-│ Auth DB     │               │ Service DB     │
-│ PostgreSQL  │               │ PostgreSQL     │
-│ :5433       │               │ :5432          │
-│ 전화번호    │               │ 활동 데이터    │
-│ SMS 인증코드│  anon_id      │ (신원 정보 無) │
-│ 학부모 인증 │ ──────────▶   │ 게시글/댓글   │
-│             │  (단방향)     │ 학원 후기      │
-└─────────────┘               │ 좋아요/스크랩  │
-                              │ DM/차단/신고   │
-                              │ 경고 이력      │
-                              └────────────────┘
-                                     │
-                              ┌──────▼─────┐
-                              │   Redis    │
-                              │  :6379     │
-                              │ Rate Limit │
-                              │ 토큰 블랙  │
-                              │ 리스트     │
-                              └────────────┘
-                                     │
-                              ┌──────▼─────────┐
-                              │  Streamlit     │
-                              │  Admin 대시보드 │
-                              │  (내부 전용)   │
-                              └────────────────┘
+│  start.sh: alembic upgrade head → uvicorn 시작           │
+└──────────────────────┬───────────────────────────────────┘
+                       │
+┌──────────────────────▼───────────────────────────────────┐
+│  Supabase PostgreSQL (단일 통합 DB)                      │
+│  - 인증 / 사용자 / 게시글 / 댓글 / 학원 후기             │
+│  - 신고 / 차단 / DM / 관리자 로그                        │
+│  - 알림장 캡처 이미지 원본(BYTEA) — 심사 후 즉시 삭제    │
+└──────────────────────────────────────────────────────────┘
 ```
+
+> 알림장 캡처 이미지는 별도 오브젝트 스토리지(Supabase Storage) 없이 `auth_captures.image_data`(BYTEA)에 직접 저장한다. 이미지가 작고(리사이즈된 사진) 심사 직후 삭제되는 단명 데이터라는 특성상 스토리지 왕복을 없애는 쪽이 더 단순하고 안정적이다 (과거 Supabase Storage 왕복이 반복 업로드 오류의 원인 중 하나였음).
 
 ### 기술 스택
 
@@ -125,372 +107,272 @@
 |------|------|
 | 백엔드 프레임워크 | FastAPI 0.x + Python 3.12 |
 | ORM | SQLAlchemy 2.x (async) |
-| DB 마이그레이션 | Alembic |
+| DB 마이그레이션 | Alembic (Render 배포 시 start.sh에서 자동 실행) |
 | 인증 | JWT (HS256) — Access 60분 / Refresh 30일 |
-| 푸시 알림 | Firebase Admin SDK (firebase-admin) |
+| 소셜 로그인 | 카카오 OAuth (카카오 액세스 토큰 → 서버 JWT 교환) |
+| 파일 저장 | Postgres BYTEA (알림장 캡처 이미지, 심사 후 즉시 삭제) |
 | 실시간 통신 | SSE (Server-Sent Events) — asyncio Queue 기반 |
 | 모바일 프레임워크 | Flutter 3.x |
 | 상태 관리 | Riverpod 2.x |
-| 라우팅 | go_router 14.x (StatefulShellRoute) |
-| HTTP 클라이언트 | Dio 5.x (자동 토큰 갱신 인터셉터) + http 1.x (SSE 스트림) |
-| 관리자 도구 | Streamlit (신고처리·경고·금칙어 관리) |
-| 컨테이너 | Docker Compose → AWS ECS (Phase 3) |
+| 라우팅 | go_router 14.x (StatefulShellRoute — 지역/학교/학원/대화/내정보 5탭) |
+| HTTP 클라이언트 | Dio 5.x (자동 토큰 갱신 인터셉터, 일반 API) + package:http (캡처 업로드 전용 — 웹 멀티파트 안정성) |
+| 이미지 업로드 검증 | 서버가 클라이언트 Content-Type을 신뢰하지 않고 매직바이트로 직접 판별 (`core/image_sniff.py`) |
+| 화면 간 상태 동기화 | Riverpod `boardRefreshSignal` 신호 버스 (`core/refresh_bus.dart`) — IndexedStack 탭 간 새로고침/활성 자녀 연동 |
+| 관리자 도구 | Flutter 인앱 관리자 화면 + Streamlit (보조) |
 
 ---
 
 ## 3. 인증 및 계정 설계
 
-### 3-1. 인증 플로우
+### 3-1. 카카오 OAuth 인증 플로우
 
 ```
-사용자 전화번호 입력
+초대 링크(QR 코드) 스캔 → invite_join_screen
         ↓
-SMS 인증 코드 발송 (6자리, 5분 TTL)
+카카오 로그인 (kakao_flutter_sdk_user)
         ↓
-코드 입력 확인
+POST /auth/kakao { kakao_access_token }
+  └─ 카카오 프로필 조회 → 닉네임 / kakao_id 저장
+  └─ 신규: users 레코드 생성 (member_grade: 'lurker')
+  └─ 기존: users 레코드 반환
         ↓
-학교 선택 (NEIS API 검색)
+JWT Access Token + Refresh Token 발급
         ↓
-지역/학년 입력
+POST /auth/invite/use { token, grade, class_num }
+  └─ user_children에 자녀 등록
+  └─ 기존 비회원 → member_grade: 'auth_pending'
+  └─ 기존 정회원 → 자녀 학교 추가만
         ↓
-서버: HMAC-SHA256(전화번호, ANON_HASH_SECRET) = anon_id 생성
+알림장 캡처 업로드 화면 (capture_upload_screen)
+  └─ POST /auth/capture/upload (package:http 멀티파트) → 이미지를 auth_captures.image_data(BYTEA)에 직접 저장
         ↓
-├── Auth DB: ParentVerification upsert (anon_id + 학교정보)
-└── Service DB: User upsert (anon_id만 참조, 전화번호 無)
+관리자 심사 (Flutter 인앱 관리자 화면, DB에서 바로 조회)
+  └─ is_trusted 사용자: 즉시 자동 승인 (image_data 즉시 삭제)
+  └─ 일반: 수동 승인/거부
         ↓
-닉네임 자동 생성:
-  인증 닉네임: "{학교약칭}_{형용사}{명사}" (예: 행복초_지혜맘)
-  익명 닉네임: "{형용사}{명사}{4자리숫자}" (예: 지혜로운학부모4712)
-        ↓
-JWT Access Token + Refresh Token 발급 → 앱 저장
-        ↓
-앱 시작 시: POST /auth/me/fcm-token (FCM 디바이스 토큰 서버 등록)
+승인 → member_grade: 'member' → 정회원 기능 전체 해금
+
+※ 자녀 추가(child_add) 플로우는 is_trusted 사용자에 한해 사진 업로드 화면 자체를
+   건너뛰고 POST /auth/me/children으로 즉시 등록한다 (일반 사용자는 캡처 인증 필요).
 ```
 
-### 3-2. 익명화 구조
+### 3-2. 계정 상태 (member_grade)
 
-| 항목 | 설명 |
-|------|------|
-| `anon_id` | `HMAC-SHA256(전화번호, ANON_HASH_SECRET)` — 복호화 불가 |
-| 1인 1계정 | 동일 전화번호 → 항상 동일 `anon_id` → 중복 가입 방지 |
-| Auth DB | 전화번호 + anon_id 보관. 서비스 DB와 물리적 별도 PostgreSQL |
-| Service DB | anon_id만 참조. 전화번호 역추적 수학적 불가 |
-| 인증 닉네임 | `certified_nickname` — 학교 인증 기반 고정 닉네임. 학원 후기·입시 게시판에서 사용 |
-| 익명 닉네임 | `anon_nickname` — 민감 고민 게시판에서 사용. 게시글마다 표시 여부 선택 |
+| 상태 | 설명 | 접근 가능 기능 |
+|------|------|--------------|
+| `lurker` | 카카오 로그인만 완료 | school/grade 게시판 읽기 |
+| `auth_pending` | 인증 심사 중 | school/grade 읽기 (학교 게시판 접근 제한) |
+| `member` | 정회원 | 전체 기능 |
+| `admin` | 관리자 | 전체 기능 + 관리자 도구 |
 
-### 3-3. 계정 필드 (Service DB — `users` 테이블)
+### 3-3. 계정 필드 (users 테이블 현재 상태)
 
 | 컬럼 | 타입 | 설명 |
 |------|------|------|
-| `id` | Integer PK | 서비스 내부 식별자 |
-| `anon_id` | String(64) UNIQUE | HMAC 해시값 |
-| `anon_nickname` | String(30) | 완전 익명용 자동 생성 닉네임 (예: 지혜로운학부모4712) |
-| `certified_nickname` | String(50) | 인증 닉네임 (예: 행복초_지혜맘) — 학원/입시 게시판 노출 |
-| `region` | String(30) | 지역 (예: 기장군) |
-| `school_code` | String(20) | NEIS 학교 코드 |
-| `school_name` | String(100) | 학교명 |
-| `school_short_name` | String(20) | 학교 약칭 (인증 닉네임 생성용) |
-| `grade` | Integer | 학년 |
-| `class_num` | Integer | 반 |
+| `id` | Integer PK | |
+| `anon_id` | String(64) UNIQUE | 고유 식별자 (카카오 기반) |
+| `kakao_id` | String(30) | 카카오 계정 ID (관리자 식별용) |
+| `anon_nickname` | String(30) | 익명 닉네임 (카카오 닉네임 기반 자동 생성) |
+| `certified_nickname` | String(50) | 인증 닉네임 |
+| `region` | String(30) | 지역 |
+| `school_code` | String(20) | 대표 학교 코드 (deprecated, active_child 사용 권장) |
+| `school_name` | String(100) | 대표 학교명 |
+| `grade` | Integer | 대표 학년 |
+| `class_num` | Integer | 반 (nullable) |
 | `school_type` | String(10) | elementary / middle / high |
-| `manner_score` | Integer | 매너온도 (초기값 36) |
+| `member_grade` | String(20) | lurker / auth_pending / member / admin |
+| `manner_score` | Integer | 매너온도 (초기값 100) |
 | `fcm_token` | String(256) | Firebase 푸시 토큰 |
 | `is_banned` | Boolean | 영구 정지 여부 |
 | `suspended_until` | DateTime | 기간 정지 해제 시각 |
 | `warning_count` | Integer | 누적 경고 횟수 |
-| `profile_updated_at` | DateTime | 프로필 최종 수정일 (월 1회 제한용) |
+| `active_child_id` | Integer FK | 현재 활성 자녀 ID (user_children 참조) |
+| `is_trusted` | Boolean | true 시 캡처 인증 자동 승인 |
+| `admin_username` | String | 관리자 계정용 |
+| `admin_password_hash` | String | 관리자 비밀번호 해시 |
+| `profile_updated_at` | DateTime | 프로필 최종 수정일 |
+| `created_at` | DateTime | |
 
-### 3-4. 닉네임 자동 생성 규칙
+### 3-4. 다자녀 지원 (user_children 테이블)
 
-| 유형 | 형식 | 예시 |
+한 계정에 여러 자녀/학교를 등록할 수 있다. `users.active_child_id`로 현재 활성 자녀를 지정하며, 게시판 필터링은 active child 기준으로 동작한다.
+
+`users.region/school_name/grade/school_type`은 다자녀 지원 이전의 레거시 필드로 "첫 자녀 등록 시"에만 동기화된다. 이 값을 그대로 노출하면 활성 자녀를 바꿔도 지역/학원 탭 등이 예전 자녀 기준으로 보이는 문제가 있어, `/auth/me`를 비롯해 프로필을 반환하는 모든 엔드포인트(닉네임 변경, 학교 변경, 활성 자녀 전환)는 `active_child_id`가 있으면 그 자녀 기준 값으로 덮어써서 응답한다 (`_user_profile_with_active_child`). 학교 변경(`PATCH /auth/me/profile`)도 활성 자녀가 있으면 해당 `UserChild` 레코드를 함께 갱신한다.
+
+| 컬럼 | 타입 | 설명 |
 |------|------|------|
-| 인증 닉네임 | `{학교약칭}_{형용사}{명사}` | `행복초_지혜맘`, `중앙중_용감한아빠` |
-| 익명 닉네임 | `{형용사}{명사}{4자리숫자}` | `지혜로운학부모4712`, `용감한아빠0031` |
+| `id` | Integer PK | |
+| `user_id` | FK → users | |
+| `school_code` | String(20) | |
+| `school_name` | String(100) | |
+| `grade` | Integer | |
+| `class_num` | Integer | nullable |
+| `school_type` | String(10) | |
+| `region` | String(50) | |
+| `created_at` | DateTime | |
 
 ---
 
 ## 4. DB 스키마 상세
 
-### Service DB 테이블 목록
-
-#### `users` — 유저
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `id` | Integer PK | |
-| `anon_id` | String(64) UNIQUE | HMAC 해시, 신원 역추적 불가 |
-| `anon_nickname` | String(30) | 완전 익명용 자동 생성 |
-| `certified_nickname` | String(50) | 인증 닉네임 (학원/입시 게시판) |
-| `region` | String(30) | 지역 |
-| `school_code` | String(20) | NEIS 학교 코드 |
-| `school_name` | String(100) | |
-| `school_short_name` | String(20) | 학교 약칭 |
-| `grade` | Integer | 학년 |
-| `class_num` | Integer | 반 (nullable) |
-| `school_type` | String(10) | elementary / middle / high |
-| `manner_score` | Integer | 기본값 36 |
-| `fcm_token` | String(256) | Firebase 푸시 토큰 (nullable) |
-| `is_banned` | Boolean | 영구 정지 |
-| `suspended_until` | DateTime | 기간 정지 해제 시각 (nullable) |
-| `warning_count` | Integer | 누적 경고 수 (기본값 0) |
-| `profile_updated_at` | DateTime | 프로필 최종 수정일 |
-| `created_at` | DateTime | |
-
-#### `posts` — 게시글
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `id` | Integer PK | |
-| `author_id` | FK → users | |
-| `board_type` | String(20) | region / school / grade / free / academy_review / entrance |
-| `nickname_type` | String(10) | **certified** (인증 닉네임) / **anon** (익명) — 게시글별 선택 |
-| `school_code` | String(20) | 게시글 작성 시 소속 학교 |
-| `grade` | Integer | grade 게시판에서만 사용 |
-| `title` | String(200) | 2~200자 |
-| `content` | Text | 5자 이상 |
-| `is_anonymous` | Boolean | 익명 여부 (nickname_type=anon일 때 true) |
-| `mention_tags` | JSON | @태그 배열 (free 게시판) |
-| `view_count` | Integer | |
-| `like_count` | Integer | |
-| `scrap_count` | Integer | |
-| `report_count` | Integer | |
-| `is_hidden` | Boolean | 신고 누적 자동 블라인드 |
-| `is_deleted` | Boolean | 소프트 삭제 |
-| `created_at` | DateTime | |
-| `updated_at` | DateTime | |
-
-#### `comments` — 댓글
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `id` | Integer PK | |
-| `post_id` | FK → posts | |
-| `author_id` | FK → users | |
-| `parent_id` | FK → comments | NULL이면 루트 댓글, 있으면 대댓글 |
-| `content` | Text | |
-| `nickname_type` | String(10) | certified / anon |
-| `is_anonymous` | Boolean | |
-| `like_count` | Integer | |
-| `report_count` | Integer | |
-| `is_hidden` | Boolean | |
-| `is_deleted` | Boolean | |
-| `created_at` | DateTime | |
-
-#### `academies` — 학원 프로필 (신규)
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `id` | Integer PK | |
-| `neis_academy_code` | String(20) UNIQUE | NEIS 학원 코드 |
-| `name` | String(100) | 학원명 |
-| `region` | String(30) | 지역 |
-| `address` | String(200) | 주소 |
-| `subjects` | JSON | 과목 목록 (예: ["수학", "영어"]) |
-| `school_type` | String(10) | elementary / middle / high / all |
-| `phone` | String(20) | 전화번호 (nullable) |
-| `is_b2b` | Boolean | B2B 유료 프로필 여부 (기본값 false) |
-| `b2b_expires_at` | DateTime | B2B 구독 만료일 (nullable) |
-| `review_count` | Integer | 후기 수 |
-| `avg_rating` | Float | 평균 평점 |
-| `created_at` | DateTime | |
-
-#### `academy_reviews` — 학원 후기 (신규)
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `id` | Integer PK | |
-| `academy_id` | FK → academies | |
-| `author_id` | FK → users | |
-| `subject` | String(30) | 수강 과목 |
-| `teacher_style` | String(10) | strict / free / careful (엄격형/자유형/꼼꼼형) |
-| `homework_level` | Integer | 1~3 (★ 개수) |
-| `score_improvement` | String(20) | much_up / up / same / down |
-| `review_text` | String(200) | 100자 이내 총평 |
-| `rating` | Integer | 1~5 별점 |
-| `is_anonymous` | Boolean | 익명 여부 (인증 닉네임/완전 익명 선택) |
-| `report_count` | Integer | |
-| `is_hidden` | Boolean | |
-| `created_at` | DateTime | |
-| UNIQUE | (author_id, academy_id, subject) | 동일 학원·과목 중복 후기 방지 |
-
-#### `likes` — 좋아요
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `user_id` | FK → users | |
-| `target_type` | String(10) | post / comment / academy_review |
-| `target_id` | Integer | |
-| UNIQUE | (user_id, target_type, target_id) | 중복 방지 |
-
-#### `scraps` — 스크랩
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `user_id` | FK → users | |
-| `post_id` | FK → posts | |
-| UNIQUE | (user_id, post_id) | |
-
-#### `reports` — 신고
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `reporter_id` | FK → users | |
-| `target_type` | String(10) | post / comment / academy_review |
-| `target_id` | Integer | |
-| `category` | String(20) | 신고 카테고리 코드 (8가지) |
-| `reason` | String(200) | 기타 사유 (category=OTHER일 때) |
-| `status` | String(20) | pending / reviewed / dismissed / actioned |
-| `reviewed_by` | Integer | 관리자 user_id (nullable) |
-| `reviewed_at` | DateTime | |
-| `action_taken` | String(50) | warned / suspended_7d / suspended_30d / banned / cleared |
-| `created_at` | DateTime | |
-| UNIQUE | (reporter_id, target_type, target_id) | 중복 신고 방지 |
-
-#### `user_warnings` — 경고/정지 이력
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `id` | Integer PK | |
-| `user_id` | FK → users | 조치 대상 |
-| `reason` | Text | 위반 사유 |
-| `warning_type` | String(20) | warning / suspend_7d / suspend_30d / banned |
-| `issued_by` | Integer | 관리자 user_id (NULL이면 자동 처리) |
-| `expires_at` | DateTime | 정지 해제 시각 (NULL이면 영구) |
-| `created_at` | DateTime | |
-
-#### `blocks` — 차단
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `user_id` | FK → users | 차단한 사람 |
-| `blocked_user_id` | Integer | 차단당한 사람 |
-| UNIQUE | (user_id, blocked_user_id) | |
-
-#### `conversations` — 1:1 대화방
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `user_a_id` | FK → users | 항상 더 작은 ID |
-| `user_b_id` | FK → users | 항상 더 큰 ID |
-| `last_message_at` | DateTime | 목록 정렬용 |
-| UNIQUE | (user_a_id, user_b_id) | 동일 대화방 중복 방지 |
-
-#### `direct_messages` — DM 메시지
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `conversation_id` | FK → conversations | |
-| `sender_id` | FK → users | |
-| `content` | Text | |
-| `is_read` | Boolean | 읽음 여부 |
-| `created_at` | DateTime | |
-
-### Auth DB 테이블 목록
-
-#### `phone_verifications` — SMS 인증코드
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `phone_number` | String(20) | |
-| `code` | String(6) | 6자리 랜덤 |
-| `is_used` | Boolean | 사용 여부 |
-| `expires_at` | DateTime | 발송 후 5분 |
-
-#### `parent_verifications` — 학부모 인증 레코드
-
-| 컬럼 | 타입 | 설명 |
-|------|------|------|
-| `anon_id` | String(64) UNIQUE | HMAC 해시값 |
-| `school_code` | String(20) | |
-| `school_name` | String(100) | |
-| `grade` | Integer | |
-| `school_type` | String(10) | |
-| `is_active` | Boolean | 계정 활성 여부 |
-
 ### Alembic 마이그레이션 이력
 
 | 버전 | 설명 |
 |------|------|
-| 0001 | `posts.mention_tags` JSON 컬럼 추가 |
-| 0002 | `blocks`, `conversations`, `direct_messages` 테이블 추가 |
-| 0003 | `users.suspended_until`, `users.warning_count`, `reports` 카테고리 컬럼 추가, `user_warnings` 테이블 추가 |
-| 0004 | `users.fcm_token` 컬럼 추가 |
-| 0005 | `users.certified_nickname`, `users.school_short_name` 추가, `posts.nickname_type` 추가 (예정) |
-| 0006 | `academies`, `academy_reviews` 테이블 추가 (예정) |
+| 0001 | `posts.mention_tags` JSON 컬럼 |
+| 0002 | `blocks`, `conversations`, `direct_messages` |
+| 0003 | `suspended_until`, `warning_count`, `reports` 카테고리, `user_warnings` |
+| 0004 | `users.fcm_token` |
+| 0005 | `users.certified_nickname`, `users.school_short_name`, `posts.nickname_type` |
+| 0006 | `academies`, `academy_reviews` 테이블 |
+| 0007 | `profanity_words` 테이블 |
+| 0008 | `users.member_grade`, `parent_captures` 테이블 |
+| 0009 | `users.admin_username`, `users.admin_password_hash` |
+| 0010 | `invite_links` 테이블 |
+| 0011 | `admin_notices` 테이블 |
+| 0012 | `schools` 테이블 (NEIS 학교 목록) |
+| 0013 | `academy_reviews.subjects` JSON 컬럼 |
+| 0014 | `users.manner_score` 기본값 100으로 수정 |
+| 0015 | `users.admin_username` nullable 수정 |
+| 0016 | `academy_reviews` 복수 필드 지원 (teacher_styles, subjects) |
+| 0017 | `user_children` 테이블, `users.active_child_id` |
+| 0018 | `users.academy_review_count` |
+| 0019 | 다자녀 마이그레이션 (기존 school_code → user_children 복사) |
+| 0020 | `academy_reviews.is_seed` 컬럼 |
+| 0021 | `users.kakao_id`, `users.is_trusted` |
+| 0022 | `auth_captures.image_data`(BYTEA), `image_content_type` 추가, `s3_key` nullable 전환 (Supabase Storage → DB 직접 저장) |
+| 0023 | `auth_captures.input_school_type`, `input_region` 추가 (모델에는 있었으나 마이그레이션이 누락되어 있던 컬럼 — 프로덕션 캡처 업로드 500의 실제 원인) |
+
+### 주요 테이블 (추가/변경된 것 중심)
+
+#### `auth_captures` — 알림장 캡처 인증
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `id` | Integer PK | |
+| `user_id` | FK → users | |
+| `s3_key` | String, nullable | 레거시 Supabase Storage 경로 (하위호환용, 신규 행은 미사용) |
+| `image_data` | BYTEA, nullable | 캡처 이미지 원본. 심사(승인/반려) 시 같은 트랜잭션에서 비움 |
+| `image_content_type` | String(30), nullable | |
+| `school_code` | String(20) | |
+| `school_name` | String(100) | |
+| `grade` | Integer | |
+| `class_num` | Integer | nullable |
+| `school_type` | String(20) | |
+| `region` | String(50) | |
+| `capture_type` | String(20) | initial / child_add |
+| `status` | String(20) | pending / approved / rejected |
+| `reviewed_by` | Integer | 관리자 user_id |
+| `reviewed_at` | DateTime | |
+| `created_at` | DateTime | |
+
+#### `invite_links` — 초대 링크
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `id` | Integer PK | |
+| `token` | String UNIQUE | URL 토큰 (UUID) |
+| `school_code` | String(20) | |
+| `school_name` | String(100) | |
+| `school_type` | String(10) | |
+| `created_by` | FK → users | 발급자 |
+| `used_by` | FK → users | 사용자 (1회 제한) |
+| `expires_at` | DateTime | |
+| `created_at` | DateTime | |
+
+#### `admin_notices` — 관리자 공지
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `id` | Integer PK | |
+| `author_id` | FK → users | 관리자 계정 |
+| `title` | String(200) | |
+| `content` | Text | |
+| `target_region` | String(30) | 특정 지역 타겟 (nullable) |
+| `target_school_code` | String(20) | 특정 학교 타겟 (nullable) |
+| `board_type` | String(20) | |
+| `is_pinned` | Boolean | |
+| `created_at` | DateTime | |
 
 ---
 
 ## 5. API 엔드포인트 목록
 
-Base URL: `http://{host}/api/v1`  
-인증 방식: `Authorization: Bearer {access_token}` (모든 유저 전용 API 필수)
+Base URL: `https://momstalk-backend.onrender.com/api/v1` (프로덕션)  
+인증 방식: `Authorization: Bearer {access_token}`
 
 ### 인증 (auth)
 
 | Method | Path | 설명 |
 |--------|------|------|
-| POST | `/auth/sms/send` | SMS 인증 코드 발송 |
-| POST | `/auth/sms/verify` | SMS 코드 검증 → sms_token 반환 |
-| POST | `/auth/parent/verify` | 학교 정보 + sms_token → JWT 발급 |
+| POST | `/auth/kakao` | 카카오 액세스 토큰 → JWT 발급 |
 | POST | `/auth/refresh` | Refresh Token → 새 Access Token |
-| GET | `/auth/me` | 내 프로필 조회 |
+| GET | `/auth/me` | 내 프로필 조회 (children 포함) |
 | PATCH | `/auth/me/nickname` | 닉네임 수정 |
-| PATCH | `/auth/me/profile` | 프로필 수정 (지역/학교/학년, 월 1회 제한) |
-| POST | `/auth/me/fcm-token` | FCM 디바이스 토큰 등록/갱신 |
 | DELETE | `/auth/me` | 회원 탈퇴 |
+| GET | `/auth/invite/{token}` | 초대 링크 정보 조회 (만료/사용 여부 포함) |
+| POST | `/auth/invite/use` | 초대 링크 사용 (가입 또는 자녀 추가) |
+| POST | `/auth/capture/upload` | 알림장 캡처 이미지 업로드 (DB BYTEA 직접 저장) |
+| POST | `/auth/me/children` | 자녀 즉시 추가 — is_trusted/admin 전용(사진 인증 생략) |
+| POST | `/auth/me/active-child/{child_id}` | 활성 자녀 전환 |
+| DELETE | `/auth/me/children/{child_id}` | 자녀 삭제 |
+| PATCH | `/auth/me/profile` | 지역/학교/학년 변경 (월 1회 제한, is_trusted는 무제한) |
+
+### 관리자 (admin) — Flutter 인앱
+
+| Method | Path | 설명 |
+|--------|------|------|
+| GET | `/admin/captures` | 캡처 심사 목록 |
+| POST | `/admin/captures/{id}/approve` | 캡처 승인 |
+| POST | `/admin/captures/{id}/reject` | 캡처 거부 |
+| GET | `/admin/users` | 유저 목록 (닉네임/kakao_id 검색) |
+| POST | `/admin/users/{id}/grant-trust` | is_trusted 부여 |
+| POST | `/admin/users/{id}/revoke-trust` | is_trusted 해제 |
+| GET | `/admin/stats` | 통계 (가입자/게시글/학원 후기) |
+| GET | `/admin/invite-links` | 초대 링크 목록 |
+| POST | `/admin/invite-links` | 초대 링크 생성 |
 
 ### 학교·학원 검색 (schools)
 
 | Method | Path | 설명 |
 |--------|------|------|
-| GET | `/schools/search?q={query}&region={시도명}` | NEIS API 학교 검색 |
-| GET | `/schools/academies/search?q={query}&region={}&subject={}` | NEIS API 학원 검색 |
+| GET | `/schools/search?q={}` | NEIS API 학교 검색 |
+| GET | `/schools/academies/search?q={}&region={}&subject={}` | NEIS API 학원 검색 |
 
 ### 게시글 (posts)
 
 | Method | Path | 설명 |
 |--------|------|------|
-| GET | `/posts?board_type={}&page={}&size={}&q={}` | 게시글 목록 (검색 포함) |
-| POST | `/posts` | 게시글 작성 (금칙어 검사 + nickname_type 선택) |
-| GET | `/posts/{id}` | 게시글 상세 (조회수 +1) |
-| PATCH | `/posts/{id}` | 게시글 수정 (본인만, 금칙어 검사 포함) |
-| DELETE | `/posts/{id}` | 게시글 소프트 삭제 (본인만) |
-| POST | `/posts/{id}/like` | 좋아요 토글 |
+| GET | `/posts?board_type={}&page={}&size={}&q={}` | 게시글 목록 |
+| POST | `/posts` | 게시글 작성 |
+| GET | `/posts/{id}` | 게시글 상세 |
+| PATCH | `/posts/{id}` | 게시글 수정 |
+| DELETE | `/posts/{id}` | 게시글 소프트 삭제 |
+| POST | `/posts/{id}/like` | 좋아요 토글 (목록 화면에서도 탭 가능, 작성자 매너온도 반영) |
 | POST | `/posts/{id}/scrap` | 스크랩 토글 |
-| GET | `/posts/me/scraps` | 내 스크랩 목록 |
-| GET | `/posts/{id}/comments` | 댓글 목록 (스레드 익명화 레이블 포함) |
-| POST | `/posts/{id}/comments` | 댓글 작성 (금칙어 검사 + FCM 발송) |
-| DELETE | `/posts/{id}/comments/{cid}` | 댓글 소프트 삭제 (본인만) |
+| GET | `/posts/{id}/comments` | 댓글 목록 |
+| POST | `/posts/{id}/comments` | 댓글 작성 |
 | POST | `/posts/{id}/comments/{cid}/like` | 댓글 좋아요 토글 |
-| POST | `/posts/report` | 신고 (카테고리 선택 + 사유 입력) |
+| DELETE | `/posts/{id}/comments/{cid}` | 댓글 삭제 |
 
-### 학원 (academies) — 신규
-
-| Method | Path | 설명 |
-|--------|------|------|
-| GET | `/academies?region={}&subject={}&school_type={}` | 학원 목록 (필터링) |
-| GET | `/academies/{id}` | 학원 상세 (프로필 + 후기 요약) |
-| GET | `/academies/{id}/reviews` | 학원 후기 목록 |
-| POST | `/academies/{id}/reviews` | 학원 후기 작성 (인증 닉네임 또는 익명 선택) |
-| POST | `/academies/{id}/reviews/{rid}/like` | 후기 좋아요 토글 |
-| POST | `/academies/report` | 학원 후기 신고 |
-
-### 차단 (users)
+### 학원 (academies)
 
 | Method | Path | 설명 |
 |--------|------|------|
-| POST | `/users/{target_id}/block` | 차단 등록 |
-| DELETE | `/users/{target_id}/block` | 차단 해제 |
-| GET | `/users/blocks` | 내 차단 목록 조회 |
+| GET | `/academies?region={}&subject={}&school_type={}` | 학원 목록 |
+| GET | `/academies/{id}` | 학원 상세 |
+| GET | `/academies/review-quota` | 가림 처리 없이 열람 가능한 "학원 개수" 현황 (게시판 상단 배너용) |
+| GET | `/academies/{id}/reviews` | 학원 후기 목록 (해금 여부에 따라 전체/미리보기) |
+| POST | `/academies/{id}/reviews` | 학원 후기 작성 |
 
 ### DM / 실시간 (conversations, stream)
 
 | Method | Path | 설명 |
 |--------|------|------|
-| GET | `/conversations` | 내 대화 목록 (안 읽은 메시지 수 포함) |
+| GET | `/conversations` | 내 대화 목록 |
 | POST | `/conversations/{other_user_id}` | 대화방 생성 또는 기존 반환 |
-| GET | `/conversations/{id}/messages` | 메시지 목록 (읽음 처리 자동) |
-| POST | `/conversations/{id}/messages` | 메시지 전송 (SSE 이벤트 + FCM 발송) |
+| GET | `/conversations/{id}/messages` | 메시지 목록 |
+| POST | `/conversations/{id}/messages` | 메시지 전송 |
 | GET | `/stream` | SSE 실시간 이벤트 스트림 |
 
 ---
@@ -501,371 +383,156 @@ Base URL: `http://{host}/api/v1`
 
 ```
 앱 진입
-  ├── [미인증] → 전화번호 입력 → SMS 인증 → 학교 선택 → 게시판
-  └── [인증됨] → 게시판 (바텀 네비)
+  ├── [미로그인] → 카카오 로그인 화면
+  ├── [lurker/auth_pending] → 학교 게시판 제한 접근
+  └── [member] → 전체 기능 접근
 
-바텀 네비게이션 (4탭, StatefulShellRoute)
-  ├── [게시판] — 인증닉네임 / 익명 / 지역·학교·학년 TabBar
-  ├── [학원]   — 학원 검색 + 후기 DB
-  ├── [검색]   — 전체 게시판 텍스트 검색
-  └── [대화]   — 1:1 DM 목록 (SSE 실시간 연결)
+바텀 네비게이션 (5탭, StatefulShellRoute.indexedStack — 탭 이동해도 각 화면 State 유지)
+  ├── [지역]   — RegionBoardScreen (region 게시판 + 공지 상단바)
+  ├── [학교]   — SchoolBoardScreen (school/grade TabBar, 다자녀: 드롭다운으로 자녀 전환)
+  ├── [학원]   — AcademyScreen (학원 검색 + 후기 DB)
+  ├── [대화]   — DmListScreen
+  └── [내정보] — ProfileScreen (프로필 / 자녀 관리 / 학교 변경)
 
-전체 화면 (바텀 네비 위)
-  ├── 게시글 상세 (/board/:postId)
-  ├── 글쓰기 (/board/write)
-  ├── 학원 상세 (/academy/:academyId)
-  ├── 학원 후기 작성 (/academy/:academyId/review/write)
-  ├── DM 채팅 (/dm/:convId)
-  └── 프로필 (/profile)
+주요 화면 라우트:
+  /auth/login               카카오 로그인
+  /auth/school-select       학교 선택 (초대 링크 없이 접근 시)
+  /auth/capture             알림장 캡처 업로드
+  /auth/pending             인증 심사 중 대기 화면
+  /invite/{token}           초대 링크 가입/자녀 추가 화면
+  /region                   지역 게시판 (바텀탭)
+  /school                   학교 게시판 (바텀탭)
+  /board/:postId            게시글 상세
+  /board/write              글쓰기
+  /academy                  학원 탭
+  /academy/:academyId       학원 상세
+  /profile/add-child        자녀 추가
+  /my                       내정보 (바텀탭)
+  /admin                    관리자 화면 (admin only)
+
+※ IndexedStack 구조상 다른 화면(글쓰기, 자녀 추가, 학교 변경 등)에서 데이터를
+   바꾸고 돌아와도 목록 화면이 자동으로는 갱신되지 않는다. 이를 위해
+   `core/refresh_bus.dart`의 `boardRefreshSignal` 공용 신호로 "돌아왔을 때
+   최신 상태로 갱신"과 "이미 선택된 탭 재탭 = 새로고침"을 명시적으로 구현했다.
 ```
 
-### 6-2. 게시판 화면 (board_screen)
+### 6-2. 계정 상태별 접근 제어
 
-```
-AppBar: "MomsTalk"                          [프로필 아이콘]
-─────────────────────────────────────────────────────────
-TabBar: [인증닉네임] [익명고민] [기장군] [학교] [1학년] [전체]
-─────────────────────────────────────────────────────────
-게시글 카드:
-┌───────────────────────────────────────────────────┐
-│ [인증] 행복초_지혜맘  ·  2시간전          [···] │
-│                                                   │
-│ [추천] 부산과학고 수학 학원 추천 부탁드려요        │
-│ @기장군  @1학년  (mention 태그)                   │
-│                                                   │
-│ ♡ 12    💬 5    👁 128                           │
-└───────────────────────────────────────────────────┘
-┌───────────────────────────────────────────────────┐
-│ 🔵 익명  ·  30분전                          [···] │
-│                                                   │
-│ 담임 선생님 민원 어떻게 하셨나요                  │
-│                                                   │
-│ ♡ 3    💬 12    👁 88                            │
-└───────────────────────────────────────────────────┘
+| 상태 | region 게시판 | school 게시판 | grade 게시판 | 글쓰기 | 학원 후기 |
+|------|-------------|-------------|------------|--------|----------|
+| lurker | ❌ 잠금 UI | ✅ 읽기만 | ✅ 읽기만 | ❌ | ❌ |
+| auth_pending | ❌ 잠금 UI | ❌ 잠금 UI | ❌ 잠금 UI | ❌ | ❌ |
+| member | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-[글쓰기 FAB]
-```
+### 6-3. 다자녀 학교 탭 전환
 
-### 6-3. 학원 탭 화면 (academy_screen) — 신규
-
-```
-AppBar: "학원 정보"
-─────────────────────────────────────────────────────────
-[지역 필터] [과목 필터] [학교급 필터]
-─────────────────────────────────────────────────────────
-학원 카드:
-┌───────────────────────────────────────────────────┐
-│ 🏫 부산수학학원                  ★4.2 (후기 23건) │
-│ 기장군 · 수학 · 중등                              │
-│                                                   │
-│ 최신 후기: "꼼꼼하게 가르쳐주고 숙제량 적당해요" │
-│ 행복초_지혜맘 · 2일전                            │
-└───────────────────────────────────────────────────┘
-
-[내 학교 근처 학원 보기]
-```
-
-### 6-4. 학원 상세 화면 (academy_detail_screen) — 신규
-
-```
-AppBar: "학원 정보"
-─────────────────────────────────────────────────────────
-부산수학학원
-기장군 기장읍 · ☎ 051-000-0000
-과목: 수학 / 학교급: 중등
-
-[B2B 공식 프로필: 원장 소개 / 커리큘럼 / 사진]  ← B2B 유료
-─────────────────────────────────────────────────────────
-후기 요약
-  ★ 4.2 / 5.0 (23개)
-  선생님 스타일: 꼼꼼형 70% · 엄격형 20% · 자유형 10%
-  숙제량: ★★☆ 평균
-  성적 향상: 올랐어요 61%
-
-[후기 작성하기]
-─────────────────────────────────────────────────────────
-후기 목록
-  ★★★★☆  행복초_지혜맘  ·  2일전
-  꼼꼼형 / 숙제★★☆ / 성적 향상
-  "꼼꼼하게 가르쳐줘서 성적이 올랐어요"          [♡ 3]
-```
-
-### 6-5. 학원 후기 작성 화면 (academy_review_write_screen) — 신규
-
-```
-AppBar: "후기 작성"                              [등록]
-─────────────────────────────────────────────────────────
-학원명: 부산수학학원 (자동 입력)
-
-과목 선택:  [수학▼]
-
-선생님 스타일:
-  ◯ 꼼꼼형   ◯ 자유형   ◯ 엄격형
-
-숙제량:
-  ◯ ★☆☆ 적음   ◯ ★★☆ 보통   ◯ ★★★ 많음
-
-성적 향상도:
-  ◯ 많이 올랐어요  ◯ 조금 올랐어요  ◯ 그대로에요  ◯ 내렸어요
-
-별점: ★★★★☆
-
-한마디 (100자):
-┌────────────────────────────────────────────────┐
-│ 꼼꼼하게 가르쳐줘서 좋았어요                   │
-└────────────────────────────────────────────────┘
-
-공개 방식:
-  ◉ 인증 닉네임 (행복초_지혜맘) — 신뢰도 높음
-  ◯ 완전 익명
-```
-
-### 6-6. 글쓰기 화면 (post_write_screen)
-
-```
-AppBar: "글쓰기"                                [등록]
-─────────────────────────────────────────────────────────
-게시판 선택: [인증닉네임 ▼]  ← 학원/입시 게시판
-            [익명 고민 ▼]   ← 민감 내용
-
-제목 입력
-────────────────
-본문 입력 (Expanded)
-
-[전체 게시판일 때만]
-@태그: [@기장군] [@부산중앙고등학교] [@1학년]
-
-────────────────
-공개 방식:
-  ◉ 인증 닉네임 (행복초_지혜맘)   ← 인증닉네임 게시판 기본값
-  ◯ 완전 익명                      ← 익명 게시판 기본값
-```
-
-### 6-7. 신고 카테고리 다이얼로그 (공통 컴포넌트)
-
-```
-┌─────────────────────────────────────┐
-│ 신고하기                            │
-│ ◯  스팸/홍보                        │
-│ ◯  음란/선정적 내용                 │
-│ ◯  욕설/비방/혐오                   │
-│ ◯  개인정보 노출                    │
-│ ◯  허위 사실/명예훼손               │
-│ ◯  불법 정보 (마약/도박 등)         │
-│ ◯  주제와 무관한 게시물             │
-│ ◉  기타                             │
-│   ┌────────────────────────────┐    │
-│   │ 기타 사유를 입력하세요     │    │
-│   └────────────────────────────┘    │
-│              [취소]  [신고]          │
-└─────────────────────────────────────┘
-```
-
-> **학원 후기 신고 추가 항목**: `FAKE_REVIEW` (허위/광고성 후기), `COMPETITOR` (경쟁 학원 비방)
-
-### 6-8. 검색 화면 (search_screen)
-
-```
-AppBar: [🔍 게시글·학원 검색__________] [✕]
-─────────────────────────────────────────────────────────
-[게시글] [학원]  ← 탭 전환
-결과 목록
-```
-
-### 6-9. DM 화면 (dm_list_screen + dm_chat_screen)
-
-기존과 동일. SSE 실시간 연결 유지.
-
-### 6-10. 프로필 화면 (profile_screen)
-
-- 인증 닉네임 + 익명 닉네임 표시
-- 지역, 학교명, 학년
-- 매너온도
-- 내 게시글 / 내 학원 후기 / 스크랩 목록
-- 로그아웃 / 회원 탈퇴
+- 자녀가 2명 이상: 게시판 AppBar에 드롭다운으로 자녀별 학교 전환
+- 드롭다운 선택 시 `POST /auth/me/active-child/{child_id}`로 서버에 즉시 반영하고, `boardRefreshSignal`을 bump해 지역/학원/내정보 탭도 함께 갱신 (어느 화면에서 자녀를 바꾸든 모든 탭이 같은 활성 자녀 기준으로 동기화됨)
+- `/auth/me` 등 프로필 응답 자체가 activeChild 기준으로 정규화되어 내려오므로, 각 화면은 `profile['school_name']` 등을 그대로 신뢰하면 된다 (3-4절 참고)
 
 ---
 
 ## 7. 게시판 구조 — 선택적 실명제
 
-### 7-1. 게시판 유형 (board_type)
+### 게시판 유형 (board_type)
 
 | board_type | 탭 표시명 | 닉네임 정책 | 접근 범위 |
 |-----------|----------|------------|----------|
-| `certified` | 인증닉네임 | 인증 닉네임 고정 표시 | 학원 추천·입시 정보 중심 |
-| `anonymous` | 익명 고민 | 완전 익명 (선택 시) | 교사 민원·교우 관계 등 민감 주제 |
-| `region` | 지역명 (예: 기장군) | 닉네임 유형 선택 가능 | 동일 `region` 유저들의 글 |
+| `region` | 지역명 | 닉네임 유형 선택 가능 | 동일 `region` 유저들의 글 |
 | `school` | 학교명 | 닉네임 유형 선택 가능 | 동일 `school_code` 유저들의 글 |
 | `grade` | N학년 | 닉네임 유형 선택 가능 | 동일 학교 + 동일 학년 |
 | `free` | 전체 | 닉네임 유형 선택 가능 | 모든 글 |
 
-### 7-2. 선택적 실명제 운영 원칙
+### 관리자 공지 노출
 
-| 게시판 | 작동 방식 |
-|--------|----------|
-| **인증 닉네임 게시판** | `certified_nickname` 자동 표시. 익명 선택 불가. 학원 후기·입시 전략 등 신뢰도 필요 콘텐츠. 책임감 기반으로 허위 후기·비방 자연 억제. |
-| **완전 익명 게시판** | `is_anonymous=true` 시 닉네임 미표시. Auth DB ↔ Service DB 물리 분리로 역추적 불가. 교사 민원·가정사 등 껄끄러운 주제 전용. |
-| **일반 게시판** | 작성 시 '인증 닉네임 / 완전 익명' 중 선택. |
-
-### 7-3. 학원 후기 신뢰도 레이블
-
-| 조건 | 표시 |
-|------|------|
-| 인증 닉네임으로 작성 | [인증] 배지 + 학교 약칭 노출 |
-| 익명으로 작성 | 🔵 익명 표시 |
-
-### 7-4. @태그 (mention_tags) 시스템
-
-- `free` 게시판 글 작성 시 `@기장군`, `@부산중앙고등학교`, `@1학년` 등 태그 선택
-- 저장 형식: `["region:기장군", "school:B100000011", "grade:1"]`
-- 조회 시 현재 유저의 프로필과 매칭되는 태그가 있는 글을 **상단** 정렬
-- 앱에서 매칭된 게시글에 **[추천]** 배지 표시
+- 관리자가 작성한 공지는 해당 region/school 게시판 상단 고정
+- 게시글 목록에서 작성자 표시: `is_admin = true` → "관리자" 배지
 
 ---
 
 ## 8. 학원 후기 시스템
 
-### 8-1. 핵심 전략 — Cold Start 방어
-
-NEIS 학원 API로 전국 학원 목록을 **선구축**하여 빈 플랫폼 인상 차단.  
-유저는 5항목 정형 템플릿으로 후기만 작성 → 진입 허들 최소화.
-
-### 8-2. 후기 작성 템플릿
+### 후기 작성 템플릿
 
 | 항목 | 입력 방식 | 옵션 |
 |------|----------|------|
-| 학원명 | NEIS 연동 자동완성 선택 | |
-| 과목 | 드롭다운 선택 | 수학 / 영어 / 과학 / 국어 / 기타 |
-| 선생님 스타일 | 3단 라디오 선택 | 꼼꼼형 / 자유형 / 엄격형 |
+| 과목 | 다중 선택 | 수학 / 영어 / 과학 / 국어 / 기타 |
+| 선생님 스타일 | 다중 선택 | 꼼꼼형 / 자유형 / 엄격형 |
 | 숙제량 | 별점 선택 | ★☆☆ / ★★☆ / ★★★ |
 | 성적 향상도 | 4단 선택 | 많이 올랐어요 / 조금 올랐어요 / 그대로에요 / 내렸어요 |
-| 총평 | 100자 이내 자유 입력 | |
+| 총평 | 200자 이내 자유 입력 | |
 | 공개 방식 | 라디오 선택 | 인증 닉네임 / 완전 익명 |
 
-### 8-3. 학원 랭킹 지표
+### 학원 후기 필터
 
-| 지표 | 계산 방식 |
-|------|----------|
-| 평균 별점 | 후기 별점 단순 평균 |
-| 성적 향상률 | "많이+조금 올랐어요" 비율 |
-| 인기도 | 조회수 + 좋아요 + 후기 수 가중합 |
-| 지역 랭킹 | 지역×과목 기준 필터링 후 인기도 순 |
+- 지역 / 과목 / 학교급 필터
+- 학년 필터: 초등(1~6학년) / 중등·고등(1~3학년) — 학교급에 따라 동적 표시
 
-> **Phase 3 (Month 13~) 유료 기능**: 최근 3개월 랭킹 조회, 타 지역 학원 정보 열람 → B2C 프리미엄 구독
+### 후기 열람 제한 (기여 기반 언락) — "학원 개수" 단위
 
-### 8-4. 학원 이의 신청 (명예훼손 대응)
+과거에는 "한 학원 안에서 몇 개의 후기를 볼 수 있는지"를 제한했으나(학원당 열람 개수), 현재는 **가림 처리 없이 전체 열람 가능한 "학원의 개수"**를 사용자가 작성한 후기 수에 따라 늘려주는 방식으로 바뀌었다.
 
-- 학원 상세 화면에 "이 후기에 이의 제기" 버튼 제공
-- 후기 작성 시 자동 면책 문구 삽입: "이 후기는 작성자 개인 경험을 바탕으로 한 의견입니다."
-- 이의 신청 접수 → 관리자 24시간 내 검토 → 삭제 또는 유지 처리
-- 운영 정책 페이지에 학원 후기 작성 가이드라인 공지
+| 내 작성 후기 수 | 열람 가능 학원 수 |
+|----------------|------------------|
+| 0건 | 1곳 |
+| 1건 이상 | 5곳 |
+| 5건 이상 | 무제한 |
+
+- `AcademyReviewUnlock` 테이블에 사용자가 한 번 열람 해금한 학원을 기록 — 이후에도 계속 가림 처리 없이 볼 수 있음 (슬롯을 영구 소비)
+- 잠긴 학원은 **기본 소개(seed 후기) + 사용자 후기 모두** 상단 한 줄 미리보기만 노출 (전체 내용은 후기 작성 시 해금)
+- `GET /academies/review-quota`가 게시판 상단 배너에 표시할 전역 해금 현황(해금한 학원 수/한도, 다음 해금까지 필요한 후기 수)을 제공
 
 ---
 
 ## 9. 신고 시스템
 
-### 9-1. 현재 구현 상태
-
-- 신고 대상: 게시글(post) / 댓글(comment) / 학원후기(academy_review)
-- 동일 유저의 동일 대상 중복 신고 차단 (DB UNIQUE 제약)
-- 8가지 카테고리 선택 + 기타 사유 직접 입력
+- 신고 대상: 게시글 / 댓글 / 학원 후기
+- 동일 유저 중복 신고 차단 (DB UNIQUE 제약)
 - 누적 5건 → `is_hidden = True` 자동 블라인드
-- Streamlit 관리자 대시보드에서 검토·처리
-
-### 9-2. 신고 카테고리
-
-| 코드 | 표시명 |
-|------|--------|
-| `SPAM` | 스팸/홍보 |
-| `OBSCENE` | 음란/선정적 내용 |
-| `ABUSE` | 욕설/비방/혐오 |
-| `PERSONAL_INFO` | 개인정보 노출 |
-| `MISINFORMATION` | 허위 사실/명예훼손 |
-| `ILLEGAL` | 불법 정보 |
-| `OFF_TOPIC` | 주제와 무관한 게시물 |
-| `FAKE_REVIEW` | 허위/광고성 후기 (학원 후기 전용) |
-| `OTHER` | 기타 (직접 입력 필수) |
-
-### 9-3. 신고 처리 절차
-
-```
-신고 접수 → report_count 증가
-    │
-    ├─ 1~4건: 기록만
-    ├─ 5건:   is_hidden = True (자동 블라인드) + 작성자 FCM 알림
-    └─ 10건:  긴급 플래그 → Streamlit 대시보드 상단 노출
-
-관리자 검토 (Streamlit 대시보드)
-    │
-    ├─ [정상 판단] → is_hidden = False 복원
-    │               허위 신고자 경고 1회
-    └─ [위반 판단] → 게시글/댓글 영구 삭제
-                     작성자 조치 (user_warnings 기록)
-                     경고 1회 → 경고 2회: 7일 정지 → 3회: 30일 정지
-                     5회 or 중대 위반: 영구 정지
-```
+- Flutter 인앱 관리자 화면에서 검토·처리
 
 ---
 
 ## 10. 차단 및 숨기기
 
-### 현재 구현
-
 - `POST /users/{target_id}/block` — 차단 등록
 - `DELETE /users/{target_id}/block` — 차단 해제
-- `GET /users/blocks` — 차단 목록 조회 (신규 구현 예정)
+- `GET /users/blocks` — 차단 목록 조회
 - 게시글 목록 조회 시 차단된 유저의 게시글 자동 필터링
 
 ### 보완 필요
 
 | 항목 | 설명 |
 |------|------|
-| 댓글 차단 필터링 | 현재 게시글만 필터, 댓글은 미적용 |
-| DM 차단 연동 | 차단된 유저에게 DM 발신 불가 처리 |
+| 댓글 차단 필터링 | 현재 게시글만 필터, 댓글 미적용 |
+| DM 차단 연동 | 차단된 유저에게 DM 발신 가능 (미적용) |
 
 ---
 
 ## 11. 1:1 대화 (DM)
 
-### 현재 구현
-
-- 게시글/댓글 더보기 → "대화하기" → 대화방 자동 생성(또는 기존 반환)
+- 게시글/댓글 더보기 → "대화하기" → 대화방 자동 생성
 - 메시지 목록 조회 시 자동 읽음 처리
-- 대화 목록: 마지막 메시지 미리보기 + 안 읽은 메시지 수 배지
 - SSE 실시간 수신, FCM 푸시
-
-### 보완 필요
-
-| 항목 | 설명 |
-|------|------|
-| 차단 연동 | 차단된 유저에게 DM 발신 차단 |
-| 채팅방 내 SSE | 목록만 실시간, 채팅방 내부는 전송 후 자동 갱신 방식 |
+- **보완 필요**: 차단 유저 DM 발신 차단, 채팅방 내 SSE 실시간화
 
 ---
 
 ## 12. 계정 정지 시스템
 
-**계정 상태 판단 순서 (`get_current_user` 의존성 주입 단계에서 순차 검증):**
+**계정 상태 판단 순서 (`get_current_user` 의존성 주입):**
 
 ```
 1. JWT 유효성 검사 → 실패 시 401
 2. 유저 존재 여부 → 없으면 401
 3. is_banned == True → 403 "영구 정지된 계정입니다."
-4. suspended_until > now → 403 "계정이 정지되었습니다. 해제 시각: {datetime}"
-   (응답 헤더 X-Suspend-Until: ISO 8601 시각 포함)
+4. suspended_until > now → 403 + X-Suspend-Until 헤더
 5. 정상 → 유저 객체 반환
 ```
-
-| 유형 | 컬럼 | 해제 방법 |
-|------|------|----------|
-| 기간 정지 | `suspended_until` (DateTime) | 해제 시각 경과 시 자동 해제 |
-| 영구 정지 | `is_banned` (Boolean) | 관리자 수동 해제만 가능 |
 
 ---
 
 ## 13. 스레드 익명화
-
-### 레이블 규칙
 
 | 조건 | 표시 레이블 |
 |------|------------|
@@ -873,237 +540,128 @@ NEIS 학원 API로 전국 학원 목록을 **선구축**하여 빈 플랫폼 인
 | 익명 댓글 + 최초 등장 타인 | "익명1" |
 | 익명 댓글 + 두 번째 등장 타인 | "익명2" |
 | 인증 닉네임 댓글 | `certified_nickname` 표시 |
-| 비익명 댓글 (일반) | `anon_nickname` 표시 |
-| 본인이 작성한 댓글 | `is_mine: true` → "나" 뱃지 추가 |
+| 본인이 작성한 댓글 | `is_mine: true` → "나" 뱃지 |
 
-서버 런타임 계산 — DB에 저장하지 않음 (상태 변화에 강건).
+서버 런타임 계산 — DB에 저장하지 않음.
 
 ---
 
 ## 14. 금칙어 필터링
 
-### 구현 위치
-
-`backend/app/core/profanity.py`
-
-### 동작 방식
-
-게시글/댓글 **작성 및 수정** 시 서버에서 금칙어 검사 → 포함 시 400 Bad Request
-
-### 적용 범위
-
-| 위치 | 검사 대상 | 상태 |
-|------|----------|------|
-| `post_service.create_post` | 제목 + 본문 | ✅ 구현 |
-| `comment_service.create_comment` | 댓글 내용 | ✅ 구현 |
-| `post_service.update_post` | 제목 + 본문 | ⬜ 구현 필요 |
-| `academy_review_service.create_review` | 총평 | ⬜ 구현 필요 |
-
-### 금칙어 관리
-
-| 방법 | 설명 |
-|------|------|
-| 기본 목록 | 코드 내 하드코딩 |
-| 운영자 추가 | `PROFANITY_WORDS` 환경변수 |
-| Streamlit UI | 관리자 대시보드에서 실시간 추가/삭제 (구현 예정) |
+- `backend/app/core/profanity.py`
+- 게시글/댓글 **작성 시** 서버 검사 → 포함 시 400
+- **보완 필요**: 게시글 수정 시 미적용
 
 ---
 
 ## 15. 푸시 알림 (FCM)
 
-### 알림 발송 시점
-
 | 이벤트 | 수신자 | 알림 내용 |
 |--------|--------|----------|
-| 내 게시글에 댓글 | 게시글 작성자 | "새 댓글이 달렸어요: {댓글 내용 50자}" |
-| DM 수신 | DM 수신자 | "{닉네임}님의 메시지: {내용 80자}" |
-
-**알림 payload:**
-```json
-{"type": "comment", "post_id": "123"}
-{"type": "dm", "conversation_id": "456"}
-```
-
-### 활성화 방법
-
-1. Firebase Console → 서비스 계정 → "새 비공개 키 생성"
-2. 다운로드 JSON을 `.env`에: `FCM_SERVICE_ACCOUNT_JSON={...}`
-3. `pubspec.yaml`에 `firebase_messaging` 패키지 추가 (현재 미추가)
+| 내 게시글에 댓글 | 게시글 작성자 | "새 댓글이 달렸어요" |
+| DM 수신 | DM 수신자 | "{닉네임}님의 메시지" |
+| 캡처 승인 | 사용자 | "정회원으로 승인되었습니다" |
 
 ---
 
 ## 16. 실시간 DM (SSE)
 
-**서버 (`backend/app/core/sse_manager.py`):**
-- `user_id → set[asyncio.Queue]` 인메모리 딕셔너리
+- `backend/app/core/sse_manager.py`: `user_id → asyncio.Queue` 인메모리
 - 25초 heartbeat
-- **주의**: 단일 인스턴스 전용. 멀티 인스턴스 배포 시 Redis Pub/Sub으로 교체 필요
-
-**DM 발송 플로우:**
-```
-POST /conversations/{id}/messages
-    ↓
-DirectMessage DB 저장
-    ↓
-sse_manager.publish(recipient_id, "new_message", {...})  ← SSE (포그라운드)
-    ↓
-send_push(recipient.fcm_token, ...)                       ← FCM (백그라운드/종료)
-```
+- **주의**: 단일 인스턴스 전용. Render 무료 플랜에서 정상 동작.
 
 ---
 
 ## 17. 보안 설계
 
-### 17-1. 현재 구현된 보안 항목
+### 구현된 보안 항목
 
 | 항목 | 상태 |
 |------|------|
-| 전화번호 비저장 | ✅ |
-| HMAC 익명화 | ✅ |
+| 카카오 OAuth (비밀번호 비저장) | ✅ |
 | JWT Bearer 인증 | ✅ |
 | Access Token 60분 만료 | ✅ |
 | Refresh Token 30일 만료 | ✅ |
 | 자동 토큰 갱신 (Dio 인터셉터) | ✅ |
-| CORS 화이트리스트 | ✅ |
+| CORS: `allow_origins=["*"]`, `allow_credentials=False` | ✅ |
 | 본인 게시글만 수정/삭제 검증 | ✅ |
 | 중복 신고/좋아요 차단 (DB UNIQUE) | ✅ |
-| SMS 인증코드 5분 TTL | ✅ |
 | Soft Delete | ✅ |
 | 영구/기간 정지 차단 (403) | ✅ |
-| 서버 금칙어 필터 (작성 시) | ✅ |
-| Rate Limiting (Redis) | ✅ |
-| 약관·개인정보처리방침 페이지 | ✅ |
+| 서버 금칙어 필터 | ✅ |
+| is_trusted 인증 면제 권한 (관리자 부여) | ✅ |
 
-### 17-2. 보완 필요 보안 항목
+### CORS 설계 결정
 
-| 항목 | 우선순위 | 설명 |
-|------|----------|------|
-| HTTPS 강제 | 🔴 높음 | Nginx + Let's Encrypt |
-| 토큰 블랙리스트 | 🟡 중간 | 로그아웃 시 Refresh Token 무효화 (Redis 필요) |
-| 학교 인증 재검증 | 🟡 중간 | 졸업/전학 시 연 1회 NEIS 재인증 강제 |
-| 게시글 수정 금칙어 | 🟡 중간 | 수정 시 미적용 |
-| 학원 후기 허위 광고 탐지 | 🟡 중간 | IP 기반 동일 학원 집중 후기 패턴 탐지 |
+Bearer 토큰 인증 방식(쿠키 미사용)이므로 `allow_credentials=False` + `allow_origins=["*"]`가 올바른 설정이다. 특정 도메인 화이트리스트는 불필요하며 Vercel 도메인 변경에도 대응된다.
 
-### 17-3. 프로덕션 체크리스트
+### 보완 필요 항목
 
-```
-□ SECRET_KEY: 64자 이상 랜덤 문자열
-□ ANON_HASH_SECRET: SECRET_KEY와 완전히 다른 값
-□ DEBUG=false
-□ ALLOWED_ORIGINS: 실제 도메인만
-□ FCM_SERVICE_ACCOUNT_JSON 설정
-□ PostgreSQL 비밀번호 강화
-□ Redis AUTH 설정
-□ DB 백업 (RDS 자동 스냅샷 일 1회)
-□ HTTPS 인증서 (Nginx + Let's Encrypt)
-□ SSE 멀티 인스턴스 배포 시 Redis Pub/Sub 전환
-```
+| 항목 | 우선순위 |
+|------|----------|
+| 토큰 블랙리스트 (로그아웃 시 Refresh Token 무효화) | 🟡 중간 |
+| 게시글 수정 금칙어 검사 | 🟡 중간 |
+| 학원 후기 허위 광고 탐지 | 🟡 중간 |
 
 ---
 
-## 18. 관리자 시스템 — Streamlit 대시보드
+## 18. 관리자 시스템 — Flutter 인앱 + Streamlit
 
-**방향**: FastAPI 별도 관리자 API 대신 **Streamlit 기반 내부 도구**로 구축.  
-1인 운영 최적화, 개발 속도 우선.
+### Flutter 인앱 관리자 (기본 운영 도구)
 
-### 18-1. 대시보드 기능 목록
+`/admin` 라우트 진입 시 관리자 로그인 필요 (`member_grade = 'admin'`).
 
 | 메뉴 | 기능 |
 |------|------|
-| 홈 | 오늘/주간 신고 건수, 가입자 추이, MAU 현황 |
-| 신고 처리 | pending 신고 목록 → 원문 확인 → 기각/경고/정지/삭제 처리 |
-| 유저 관리 | 유저 검색, 경고 이력, 기간 정지, 영구 정지, 정지 해제 |
-| 게시글 관리 | 블라인드 처리, 블라인드 해제, 강제 삭제 |
-| 학원 후기 관리 | 허위 후기 신고 처리, 이의 신청 검토 |
-| 금칙어 관리 | 금칙어 목록 조회·추가·삭제 (DB 반영) |
-| 지역 매니저 | 매니저별 월간 활동 현황, 리워드 정산 |
-| B2B 학원 | B2B 신청 목록, 구독 활성화/만료 관리 |
+| 홈 | 통계 (가입자/게시글/학원 후기 수) |
+| 캡처 심사 | 대기 중 캡처 목록 → 승인/거부 |
+| 유저 관리 | 유저 검색 (닉네임/kakao_id), is_trusted 부여/해제, 정지 |
+| 초대 링크 | 링크 생성/목록 |
+| 학원 후기 | 시드 데이터 관리 |
+| 로그/통계 | 활동 로그 |
 
-### 18-2. 기술 스택
+### is_trusted (인증 면제 권한)
 
-| 항목 | 내용 |
-|------|------|
-| 프레임워크 | Streamlit (Python) |
-| DB 접근 | Service DB 직접 접근 (내부 네트워크 전용) |
-| 인증 | Streamlit secrets + IP 화이트리스트 (내부망 전용) |
-| 배포 | Docker Compose 별도 서비스 (외부 미노출) |
+- 관리자가 특정 유저에게 부여
+- 캡처 업로드 시 관리자 심사 없이 즉시 `approved` 처리
+- 자녀 추가 인증도 동일하게 즉시 승인
 
-### 18-3. 관리자 처리 로그 (감사 추적)
+### Streamlit 관리자 (보조 도구)
 
-```sql
-admin_actions:
-  id            INT PK
-  admin_email   VARCHAR(100)
-  action_type   VARCHAR(30)   -- hide_post / delete_post / warn_user / suspend / ban / unban / dismiss_report / approve_b2b
-  target_type   VARCHAR(20)
-  target_id     INT
-  note          TEXT
-  created_at    DATETIME
-```
+- `admin/` 디렉터리
+- 금칙어 관리, 신고 처리 보조, B2B 학원 관리
+- Docker Compose 별도 서비스 (로컬 개발 전용)
 
 ---
 
 ## 19. 수익화 모델
 
-### 19-1. 3트랙 수익 모델
-
 | 트랙 | 개시 시점 | 내용 | 목표 매출 (Year 2) |
 |------|----------|------|-------------------|
-| **BM1 학원 B2B 프로필** | Month 12 | 동네 학원·교습소 원장에게 공식 프로필 개설 권한. 월 3~10만원 (규모별 차등) | 등록 학원 100곳 × 월 5만원 = 월 500만원 |
-| **BM2 타겟 네이티브 광고** | Month 18 | 지역+자녀 학년 100% 검증된 초고관여 타겟. 게시글 형태 스폰서드 콘텐츠 | MAU 1만 × CPM 5,000원 = 월 100~200만원 |
-| **BM3 B2C 프리미엄 구독** | Month 24 | 최근 3개월 학원 랭킹, 타 지역 열람, 입시 Q&A. 월 3,900원 | MAU 5만 × 5% = 2,500명 × 3,900원 = 월 975만원 |
+| **BM1 학원 B2B 프로필** | Month 12 | 월 3~10만원 (규모별 차등) | 100곳 × 월 5만원 = 월 500만원 |
+| **BM2 타겟 네이티브 광고** | Month 18 | 지역+학년 검증 타겟 | MAU 1만 × CPM 5,000원 |
+| **BM3 B2C 프리미엄 구독** | Month 24 | 최근 3개월 학원 랭킹, 타 지역 열람 | MAU 5만 × 5% × 3,900원 |
 
-### 19-2. B2B 프로필 상세
+### 운영 비용 (현재 무료 구간)
 
-| 기능 | 무료 | B2B 유료 |
-|------|------|---------|
-| 기본 학원 정보 (NEIS 연동) | ✅ | ✅ |
-| 후기 노출 | ✅ | ✅ |
-| 원장 소개 등록 | ❌ | ✅ |
-| 커리큘럼·사진 등록 | ❌ | ✅ |
-| 지역 검색 상단 노출 | ❌ | ✅ |
-| 이의 신청 우선 처리 | ❌ | ✅ |
-
-### 19-3. 운영 비용 (출시 초기 월 기준)
-
-| 항목 | 금액 |
+| 항목 | 비용 |
 |------|------|
-| AWS 서버 (t3.medium × 2) | 25~40만원 |
-| SMS 인증 (NHN/카카오) | 5~10만원 |
-| 지역 매니저 리워드 (20명) | 30~50만원 |
-| 도메인 + SSL | 2,500원 |
-| Firebase FCM | 무료 |
+| Vercel (Flutter Web) | 무료 |
+| Render (FastAPI) | 무료 (콜드스타트 있음) / $7/월 (Starter) |
+| Supabase (PostgreSQL) | 무료 500MB |
+| 카카오 로그인 | 무료 |
 | NEIS API | 무료 |
-| **합계** | **약 60~100만원/월** |
 
 ---
 
 ## 20. 로드맵 및 KPI
 
-### 20-1. Phase별 마일스톤
-
 | Phase | 기간 | 핵심 목표 | KPI |
 |-------|------|----------|-----|
-| **Phase 1** | Month 1~6 | PWA 출시 + 부산 집중 시드 콘텐츠 | 가입자 1,000명 / MAU 500명 / 학원 후기 1,000건 / D30 리텐션 20% |
-| **Phase 2** | Month 7~12 | 전국 오픈 + MAU 성장 | MAU 3,000명 / 학원 후기 5,000건 / iOS 앱 출시 / B2B 파이프라인 20곳 |
-| **Phase 3** | Month 13~18 | iOS 앱 출시 + 수익화 시작 | MAU 5,000명 / B2B 유료 50곳 / 월 매출 200만원 / DAU/MAU 25% |
-| **Phase 4** | Month 19~36 | Android 출시 + 스케일업 | MAU 5만명 (Month 36) / 월 매출 1,500만원 / 흑자 전환 |
-
-### 20-2. Cold Start 전략
-
-- **런칭 전**: 부산 교육 특구(해운대·동래·연제구) 학부모 지역 매니저 20~30명 선발
-- **활동 조건**: 첫 달 학원 후기 20건 + 주 3회 게시판 활동 (리워드 월 1.5~2.5만원)
-- **D-Day 목표**: 학원 후기 500건, 게시글 200건 확보 후 공개
-- **채널**: 카카오톡 오픈채팅 학부모 그룹 베타 테스터 모집
-
-### 20-3. 핵심 KPI
-
-| KPI | 목표 | 근거 |
-|-----|------|------|
-| D30 리텐션 | 20% 이상 | 학원 정보는 분기별 필요 발생 → 월 1회 이상 방문 유도 |
-| 세션 길이 | 평균 5분 이상 | 학원 후기 3~4개 읽기 = 약 4~6분 |
-| B2B 전환율 | 무료 등록 학원의 10~15% | 유사 로컬 B2B SaaS 벤치마크 |
-| 구독 전환율 | MAU 대비 5% | 교육 관여도 높은 타겟 특성 |
+| **Phase 1** | Month 1~6 | PWA 출시 + 부산 집중 시드 콘텐츠 | 가입자 1,000명 / MAU 500명 / 학원 후기 1,000건 |
+| **Phase 2** | Month 7~12 | 전국 오픈 + MAU 성장 | MAU 3,000명 / iOS 앱 출시 |
+| **Phase 3** | Month 13~18 | iOS 앱 + 수익화 시작 | MAU 5,000명 / B2B 유료 50곳 |
+| **Phase 4** | Month 19~36 | Android + 스케일업 | MAU 5만명 / 흑자 전환 |
 
 ---
 
@@ -1113,27 +671,23 @@ admin_actions:
 
 | 항목 | 설명 |
 |------|------|
-| Streamlit 관리자 대시보드 | 신고처리·경고·금칙어 관리 최소 기능 구현 |
+| 댓글 차단 필터링 | 현재 게시글만 필터, 댓글 미적용 |
+| DM 차단 연동 | 차단된 유저에게 DM 발신 가능 (미차단) |
 | 게시글 수정 금칙어 검사 | 수정 시 미적용 |
-| 댓글 차단 필터링 | 게시글만 필터, 댓글 미적용 |
-| 차단 목록 조회 API | `GET /users/blocks` 미구현 |
-| 차단 DM 연동 | 차단된 유저에게 DM 발신 가능 (미차단) |
-| 개인정보처리방침 · 이용약관 페이지 | 출시 전 법률 자문 후 게시 필수 |
-| 학원 이의 신청 UI | 허위 후기 대응 — 명예훼손 리스크 관리 |
-| 인증 닉네임 시스템 | `certified_nickname` 컬럼 추가 및 게시판 분리 구현 |
+| 개인정보처리방침 · 이용약관 | 법률 자문 후 게시 필수 |
 
 ### 핵심 기능 (P1) 🟡
 
 | 항목 | 설명 |
 |------|------|
-| 학원 후기 시스템 | `academies`, `academy_reviews` 테이블 + API + UI 전체 |
-| NEIS 학원 API 연동 | 학원 목록 선구축 (시드 콘텐츠 전략 핵심) |
-| Firebase 앱 설정 | `firebase_messaging` 패키지 추가, 실제 FCM 활성화 |
-| 채팅방 내 SSE | 채팅방 내부도 실시간으로 전환 |
-| 알림 탭 | 댓글/신고/정지 인앱 알림 목록 |
-| 토큰 블랙리스트 | 로그아웃 시 Refresh Token 무효화 (Redis 필요) |
-| 게시판 정렬 옵션 | 최신순만 있음 → 인기순 추가 |
-| 무한 스크롤 | 현재 고정 20개 반환 |
+| 채팅방 내 SSE 실시간화 | 현재 채팅방 내부는 전송 후 수동 갱신 |
+| 알림 탭 | 댓글/승인/정지 인앱 알림 목록 |
+| 토큰 블랙리스트 | 로그아웃 시 Refresh Token 무효화 |
+| 학원 후기 이의 신청 UI | 명예훼손 리스크 관리 |
+| 이미지 첨부 (게시글) | 아직 미지원. 캡처 업로드처럼 DB BYTEA 직접 저장 방식이 이 규모에서는 더 간단할 수 있음(22-2절) |
+| 관측성(Observability) | Sentry 등 에러 트래킹 부재 — 이번 세션의 여러 버그(스키마 드리프트, CORS 순서, nickname_type 검증)가 모두 사용자 신고로만 발견됨 (23장 참고) |
+
+> ✅ 완료: 게시판 인기순/최신순 정렬, 무한 스크롤(커서 기반), 게시글 좋아요(목록에서 바로 탭 가능), 학원 후기 열람 제한(기여 기반 언락, 8절 참고)
 
 ### 스케일업 (P2) 🔵
 
@@ -1142,97 +696,120 @@ admin_actions:
 | iOS 네이티브 앱 | MAU 5,000 달성 후 개발 |
 | Android 앱 | Phase 4 |
 | B2B 학원 프로필 구독 | Month 12 수익화 |
-| 프리미엄 구독 (B2C) | Month 24 수익화 |
 | SSE → Redis Pub/Sub | 멀티 인스턴스 배포 시 전환 |
-| 매너온도 변동 로직 | 컬럼만 존재, 로직 없음 |
-| 이미지 첨부 | S3 presigned URL 방식 |
 | 다크 모드 | 미지원 |
 
 ---
 
 ## 22. 인프라 및 배포
 
-### 22-1. 현재 Docker Compose 구성 (로컬 개발)
+### 현재 프로덕션 구성
 
-| 서비스 | 이미지 | 포트 | 역할 |
-|--------|--------|------|------|
-| `momstalk_backend` | Python 3.12 | 8000 | FastAPI 앱 |
-| `momstalk_db` | PostgreSQL | 5432 | **통합 단일 DB** (인증+서비스 전체) |
-| `momstalk_redis` | Redis | 6379 | Rate Limit + 향후 토큰 블랙리스트 |
-| `momstalk_admin` | Streamlit | 8501 | 관리자 대시보드 |
+| 역할 | 서비스 | URL |
+|------|--------|-----|
+| **Flutter Web PWA** | Vercel | `https://momstalk.vercel.app` (또는 커스텀 도메인) |
+| **FastAPI 백엔드** | Render Web Service | `https://momstalk-backend.onrender.com` |
+| **PostgreSQL** | Supabase | `postgresql+asyncpg://...@db.supabase.co:5432/postgres` |
+| **캡처 이미지 저장** | Postgres BYTEA (`auth_captures.image_data`) | Supabase Storage 미사용 |
 
-### 22-2. 배포 조합 (웹앱 MVP)
+### Render 자동 배포
 
-| 역할 | 서비스 | 비용 |
-|------|--------|------|
-| **프론트엔드 (Flutter Web)** | GitHub Pages | 무료 |
-| **백엔드 (FastAPI)** | Render Web Service | 무료~$7/월 |
-| **DB (PostgreSQL)** | Supabase (프로젝트 1개) | 무료 500MB |
-| **Redis** | Upstash | 무료 (1만 req/일) |
-| **관리자 (Streamlit)** | Render Web Service | 무료 |
+- `main` 브랜치 push → Render 자동 빌드/배포
+- `start.sh` 실행 순서:
+  1. Alembic 버전 사전 동기화 (복수 헤드 정리)
+  2. `alembic upgrade head`
+  3. `uvicorn app.main:app --host 0.0.0.0 --port 8000`
 
-### 22-3. 환경변수 (.env)
+### 로컬 개발 구성 (Docker Compose)
+
+| 서비스 | 포트 | 역할 |
+|--------|------|------|
+| `momstalk_backend` | 8000 | FastAPI |
+| `momstalk_db` | 5432 | PostgreSQL (단일 통합 DB) |
+| `momstalk_redis` | 6379 | Rate Limit |
+| `momstalk_admin` | 8501 | Streamlit (보조 관리자) |
+
+### 환경변수
 
 ```ini
-# DB (Supabase 배포 시 Supabase connection string으로 교체)
-DATABASE_URL=postgresql+asyncpg://...@db:5432/momstalk_db
-REDIS_URL=redis://localhost:6379/0
+# DB
+DATABASE_URL=postgresql+asyncpg://...
 
 # 보안
 SECRET_KEY={64자 이상 랜덤}
-ANON_HASH_SECRET={SECRET_KEY와 다른 값}
+
+# 카카오
+KAKAO_CLIENT_ID={REST API 키}
+KAKAO_CLIENT_SECRET={시크릿 키}
 
 # NEIS
 NEIS_API_KEY={교육부 나이스 오픈API 키}
 
-# SMS
-SMS_API_KEY=
-SMS_API_SECRET=
-SMS_SENDER=
+# Supabase (DB 연결에만 사용 — 캡처 이미지는 더 이상 Supabase Storage를 쓰지 않음)
+SUPABASE_URL=https://{project-id}.supabase.co
+SUPABASE_KEY={service_role 키}
 
 # FCM
 FCM_SERVICE_ACCOUNT_JSON={Firebase 서비스 계정 JSON 한 줄}
 
 # 앱
-DEBUG=true   # 프로덕션: false
-ALLOWED_ORIGINS=http://localhost:3000,https://momstalk.kr
+DEBUG=false
+# CORS: allow_origins=["*"], allow_credentials=False (Bearer 토큰 방식)
+# 주의: CORSMiddleware는 다른 커스텀 미들웨어(글로벌 rate limit 등)보다
+# 반드시 나중에 add_middleware()해야 최외곽(outermost)에서 모든 응답을 감싼다.
 ```
-
-### 22-4. 향후 프로덕션 인프라 (스케일업 시)
-
-```
-사용자 PWA (GitHub Pages / CDN)
-    │ HTTPS
-FastAPI (Render / 자체 서버)
-    │
-Supabase PostgreSQL (단일 DB)
-Upstash Redis
-```
-
-> **SSE + Render**: `/api/v1/stream` 엔드포인트는 Render에서 SSE 지원됨. 단, 무료 티어는 30초 타임아웃이 있으므로 유료($7) 플랜 필요.
 
 ---
 
-*이 문서는 2026-06-27 기준 구현 상태와 사업계획서 v1.0 (2026년 7월)을 통합 반영합니다.*
+## 23. 활성화 및 시스템 개선 방안
 
+> 실사용자 온보딩이 시작된 시점(2026-07-06)에 정리. 이번 세션에서 캡처 업로드가
+> 프로덕션에서 사실상 **계속 실패하고 있었다**는 것을 발견했다 — 원인은 마이그레이션
+> 누락으로 인한 500 에러였는데, 클라이언트에는 일관되게 "네트워크 오류"로만 보여
+> 몇 주간 원인 파악이 어려웠을 가능성이 높다. 이런 사각지대를 줄이는 것이 활성화의
+> 전제조건이라는 문제의식으로 아래 방안들을 정리했다.
 
+### 23-1. 즉시 점검 — 이번 세션에서 고친 항목들이 실제로 반영됐는지
 
-GET /users/blocks API 추가 + Streamlit 금칙어 관리 페이지
+신규 유저 유입이 시작된 지금, 아래 항목이 **배포 후 실제로 동작하는지** 최우선으로 확인해야 한다. 문서만 고치고 배포가 안 되면 활성화 방안은 의미가 없다.
 
-DB Migration 0007: profanity_words + certified_nickname + nickname_type 콼럼 추가
+| 확인 항목 | 확인 방법 |
+|-----------|-----------|
+| Alembic 0022/0023이 프로덕션에 적용됐는지 | Render 배포 로그에서 `alembic upgrade head` 결과 확인, 또는 `alembic current` |
+| 캡처 업로드가 실제로 성공하는지 | 테스트 계정으로 자녀 학교 인증 1회 실제 수행 |
+| CORS 미들웨어 순서 수정이 반영됐는지 | 배포된 서버에 curl로 OPTIONS 프리플라이트 확인 |
+| 가입→인증→첫 게시글 작성까지 전체 퍼널이 끊기지 않는지 | 신규 계정으로 처음부터 끝까지 1회 실행 |
 
-백엔드: certified_nickname 자동 생성 + nickname_type 지원 (모델/서비스/스키마)
+### 23-2. 관측성(Observability) 부재 — 가장 시급한 시스템 개선
 
-프론트: 글쓰기 화면 닉네임 유형 선택 UI + 게시판 탭 인증닉네임/익명 구분
+이번 세션에서 발견한 버그들(스키마 드리프트로 인한 500, CORS 순서 오류로 인한 조기 반환 차단, `nickname_type` 검증 실패, TabBarView 상태 유실)은 **전부 사용자가 스크린샷을 보내줘서** 알게 된 것이다. 서버 쪽에서 자동으로 감지된 것은 하나도 없다. 실사용자가 늘어나면 이 방식은 확장되지 않는다.
 
-법률 페이지 확인 및 라우터 등록 (약관/개인정보처리방침)
+**우선순위 순 제안:**
+1. **에러 트래킹 도입 (Sentry 무료 티어 등)** — FastAPI 미들웨어로 unhandled exception을 자동 수집. 이번 `UndefinedColumn` 500 같은 사고를 사용자 신고 없이 몇 분 안에 감지할 수 있었을 것.
+2. **구조화 로깅 + 헬스체크 모니터링** — `/health`를 외부 uptime 모니터(UptimeRobot 무료 등)로 주기 핑 → Render 콜드스타트/다운타임을 사전 인지.
+3. **CI에서 모델↔마이그레이션 드리프트 자동 검출** — `alembic check` 또는 `alembic revision --autogenerate --check`를 CI에 추가해, 모델 필드 추가 시 마이그레이션 누락을 배포 전에 막는다 (이번 0023 사고의 재발 방지).
+4. **핵심 플로우 스모크 테스트** — 캡처 업로드, 게시글 작성, 로그인 흐름 등 "이번에 깨졌던 것들" 위주로 최소한의 E2E 테스트를 CI에 추가.
 
-DB Migration 0008: academies, academy_reviews 테이블 추가
+### 23-3. 온보딩 퍼널 개선 — 초대 → 인증 → 첫 활동
 
-백엔드: 학원 후기 시스템 + NEIS 학원 API 연동 (acaInsTiInfo)
+가입 퍼널이 (초대 링크 클릭 → 카카오 로그인 → 학교 인증 → 관리자 승인 → 첫 게시글)로 길고, 그중 "학교 인증"(사진 업로드) 단계가 최근까지 실질적으로 깨져 있었을 가능성을 고려하면, **이 구간의 이탈률을 먼저 계측**해야 한다.
 
-프론트: 학원 탭 + 학원 상세 + 후기 작성 화면 + 바텀 네비 4탭
+- **퍼널 계측**: `invite_links.used_by` 채워짐 → `auth_captures` 생성 → `status=approved` → 첫 `posts` 작성까지 각 단계 전환율을 관리자 통계(`/admin/stats`)에 추가. 지금은 가입자/게시글 총량만 보이고 어느 단계에서 이탈하는지 알 수 없다.
+- **인증 대기 체감 시간 단축**: 관리자 심사가 1인 운영 체제라 즉시 처리가 어렵다. 심사 대기 중에도 school/grade 게시판 읽기는 이미 허용되어 있으니(lurker 권한), 대기 화면에서 "심사 중에도 둘러볼 수 있어요" 식으로 school 게시판 미리보기를 더 적극적으로 유도.
+- **초대 기반 신뢰 전파 확대**: 정회원의 초대로 가입한 유저는 `is_trusted`에 준하는 완화된 심사(예: 사진 인증 없이 학교 정보만으로 임시 열람 허용 후 사후 검증)를 검토할 만하다. 지금은 초대와 `is_trusted`가 별개 축인데, "신뢰할 만한 사람이 초대한 사람"이라는 신호를 심사 우선순위나 자동 승인 조건에 반영하면 병목(관리자 수동 심사)을 줄일 수 있다.
+- **카카오 공유 도달률**: 모바일 브라우저에서 카카오톡 공유가 조용히 실패하던 버그를 이번에 고쳤다(웹 open helper). 초대 링크가 앱의 주요 성장 루프이므로, 배포 후 공유 성공률을 실제로 확인할 것.
 
-게시판 인기순 정렬 + 무한 스크롤 (cursor 기반 페이지네이션)
+### 23-4. 콘텐츠 콜드스타트 — 학원 후기 플라이휠
 
-FCM 실제 활성화 (pubspec.yaml firebase_messaging 추가)
+- 학원 후기 언락 시스템(8절)은 "후기를 쓰면 더 많이 볼 수 있다"는 유인 구조가 이미 있다. 다만 **첫 방문자 입장에서 왜 후기를 써야 하는지**가 화면 진입 즉시 보이지 않으면 이 유인이 작동하지 않는다 — 학원 상세 화면 진입 시 잠긴 학원 비율(예: "이 지역 학원 중 82%가 아직 잠겨있어요")처럼 구체적 숫자로 동기를 부여하는 문구를 상단 배너에 추가하는 것을 고려.
+- Seed 후기(AI 요약)로 콜드스타트를 방어하고 있지만, seed 후기 커버리지가 낮은 지역/학원은 후기 자체가 없어 언락 유인도 약하다 — 시드 확장 우선순위를 "신규 유저 유입 지역"에 맞춰 재조정.
+
+### 23-5. 1인 운영 관점의 리스크
+
+- **is_trusted 오남용 방지**: 사진 인증을 완전히 건너뛰는 권한이므로, 부여 대상/사유를 `AdminAction` 로그로 남기고 있는지 확인하고(이미 남김), 주기적으로 `is_trusted=true` 목록을 재검토하는 루틴을 관리자 체크리스트에 추가.
+- **Render 무료 티어 콜드스타트**: MAU가 늘면 콜드스타트로 인한 첫 요청 실패가 신규 유저의 첫인상을 해칠 수 있다. 유료 플랜(Starter, $7/월) 전환 시점을 "일 평균 활성 유저 수" 같은 구체적 트리거로 미리 정해두는 것을 권장.
+- **단일 인스턴스 SSE**: 현재 구조는 인스턴스 1개 전제. MAU가 늘어 오토스케일이 필요해지는 시점에 DM 실시간성이 먼저 깨질 것 — Redis Pub/Sub 전환은 로드맵 P2에 있지만, 트리거 조건(동시 접속자 수 등)을 미리 정의해두면 대응이 늦지 않는다.
+
+---
+
+*이 문서는 2026-07-06 기준 구현 상태를 반영합니다. (Alembic 0023, Vercel+Render+Supabase 배포)*
