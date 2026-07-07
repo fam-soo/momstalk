@@ -97,7 +97,7 @@ async def get_post_response(post: Post, user: User, db: AsyncSession) -> PostRes
         select(Scrap).where(Scrap.user_id == user.id, Scrap.post_id == post.id)
     )
     comment_count = (await db.execute(
-        select(func.count()).where(Comment.post_id == post.id, Comment.is_hidden == False)
+        select(func.count()).where(Comment.post_id == post.id, Comment.is_hidden == False, Comment.is_deleted == False)
     )).scalar() or 0
     author = (await db.execute(select(User).where(User.id == post.author_id))).scalar_one_or_none()
     display_name = _author_display_name(post, author) if author else None
@@ -243,7 +243,7 @@ async def list_posts(
     hot_scores: dict[int, float] = {}
     for post in posts:
         cnt = (await db.execute(
-            select(func.count()).where(Comment.post_id == post.id, Comment.is_hidden == False)
+            select(func.count()).where(Comment.post_id == post.id, Comment.is_hidden == False, Comment.is_deleted == False)
         )).scalar() or 0
         comment_counts[post.id] = cnt
         score = _hot_score(post, cnt)

@@ -40,7 +40,7 @@ async def create_comment(
     # 방금 작성한 댓글의 anon_label을 계산하기 위해 기존 댓글 목록 확인
     existing_result = await db.execute(
         select(Comment)
-        .where(Comment.post_id == post_id, Comment.is_hidden == False)
+        .where(Comment.post_id == post_id, Comment.is_hidden == False, Comment.is_deleted == False)
         .order_by(Comment.created_at.asc())
     )
     all_comments = existing_result.scalars().all()
@@ -105,7 +105,7 @@ async def list_comments(post_id: int, user: User, db: AsyncSession) -> list[Comm
     blocked_result = await db.execute(select(Block.blocked_user_id).where(Block.user_id == user.id))
     blocked_ids = {r for r in blocked_result.scalars()}
 
-    base_filter = [Comment.post_id == post_id, Comment.is_hidden == False]
+    base_filter = [Comment.post_id == post_id, Comment.is_hidden == False, Comment.is_deleted == False]
     if blocked_ids:
         base_filter.append(Comment.author_id.notin_(blocked_ids))
 
