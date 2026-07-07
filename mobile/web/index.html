@@ -41,6 +41,19 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <script>
+    // 백그라운드 알림 클릭 시 firebase-messaging-sw.js가 이미 열려있는 탭을
+    // 포커스하면서 postMessage로 이동할 경로를 알려준다. 여기서 그 경로를
+    // 해시(#)에 반영하면 go_router(해시 라우팅)가 전체 새로고침 없이
+    // 해당 화면으로 이동시킨다.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data && event.data.type === 'notification-click' && event.data.path) {
+          window.location.hash = event.data.path.replace(/^\/#/, '');
+        }
+      });
+    }
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

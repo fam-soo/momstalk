@@ -34,15 +34,40 @@ messaging.onBackgroundMessage((payload) => {
   self.registration.showNotification(title, options);
 });
 
-// 알림 클릭 시 앱(또는 새 탭)으로 포커스 이동
+// 알림 데이터(type, post_id 등)로 실제 목적지 경로를 계산한다.
+// Flutter Web은 URL 전략을 별도로 설정하지 않아 기본값인 해시(#) 라우팅을
+// 쓰므로 반드시 '/#/...' 형태여야 go_router가 올바른 화면으로 진입한다.
+function _targetPath(data) {
+  data = data || {};
+  switch (data.type) {
+    case 'comment':
+      return data.post_id ? `/#/board/${data.post_id}` : '/#/region';
+    case 'dm':
+      return data.conversation_id ? `/#/dm/${data.conversation_id}` : '/#/dm';
+    case 'auth_approved':
+    case 'auth_rejected':
+      return '/#/my';
+    default:
+      return '/#/region';
+  }
+}
+
+// 알림 클릭 시 해당 게시글/대화로 이동한다. 이미 열려있는 탭이 있으면 그
+// 탭을 포커스하면서 경로를 이동시키고(postMessage), 없으면 그 경로로 새 탭을 연다.
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const targetPath = _targetPath(event.notification.data);
+  const targetUrl = self.location.origin + targetPath;
+
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
-        if ('focus' in client) return client.focus();
+        if ('focus' in client) {
+          client.postMessage({ type: 'notification-click', path: targetPath });
+          return client.focus();
+        }
       }
-      if (clients.openWindow) return clients.openWindow('/');
+      if (clients.openWindow) return clients.openWindow(targetUrl);
     })
   );
 });

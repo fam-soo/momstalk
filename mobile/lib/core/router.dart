@@ -140,6 +140,24 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
+/// FCM 메시지의 data payload(type, post_id 등)로 이동할 라우트 경로를 계산.
+/// web/firebase-messaging-sw.js의 _targetPath()와 대응되는 로직(포그라운드용).
+String? _pushTargetLocation(Map<String, dynamic> data) {
+  switch (data['type']) {
+    case 'comment':
+      final postId = data['post_id'];
+      return postId == null ? null : '/board/$postId';
+    case 'dm':
+      final convId = data['conversation_id'];
+      return convId == null ? null : '/dm/$convId';
+    case 'auth_approved':
+    case 'auth_rejected':
+      return '/my';
+    default:
+      return null;
+  }
+}
+
 class _MainShell extends ConsumerStatefulWidget {
   final StatefulNavigationShell shell;
   const _MainShell({required this.shell});
@@ -167,8 +185,15 @@ class _MainShellState extends ConsumerState<_MainShell> {
       if (!mounted) return;
       final title = msg.notification?.title ?? 'MomsTalk';
       final body = msg.notification?.body ?? '';
+      final location = _pushTargetLocation(msg.data);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(body.isEmpty ? title : '$title — $body'), duration: const Duration(seconds: 4)),
+        SnackBar(
+          content: Text(body.isEmpty ? title : '$title — $body'),
+          duration: const Duration(seconds: 4),
+          action: location == null
+              ? null
+              : SnackBarAction(label: '보기', onPressed: () => context.push(location)),
+        ),
       );
     });
   }
