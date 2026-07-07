@@ -12,7 +12,7 @@ from app.core.permissions import require_member
 from app.core.rate_limit import RateLimit
 from app.core.security import create_access_token, decode_token
 from app.db import get_db
-from app.models.service_models import User, UserChild
+from app.models.service_models import User, UserChild, UserFcmToken
 from app.schemas.auth import (
     AdminLoginRequest,
     CaptureSubmitRequest,
@@ -242,6 +242,7 @@ async def delete_account(
     user.nickname = "탈퇴한 사용자"
     user.fcm_token = None
     user.is_banned = True  # 재활용 방지
+    await db.execute(sa_delete(UserFcmToken).where(UserFcmToken.user_id == user.id))
     await db.commit()
 
 
@@ -263,21 +264,42 @@ async def register_fcm_token(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """FCM 디바이스 토큰 등록/갱신. 앱 시작 시마다 호출."""
+    """FCM 디바이스 토큰 등록/갱신. 앱(기기)마다 호출 — 기기별로 별도 행에 저장되므로
+    같은 계정을 여러 기기에서 동시에 켜둬도 모두 알림을 받을 수 있다."""
+    from sqlalchemy import select as sa_select
+
     token = body.get("token", "").strip()
     if not token:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="token 필드가 필요합니다.")
-    user.fcm_token = token
+
+    existing = (await db.execute(
+        sa_select(UserFcmToken).where(UserFcmToken.token == token)
+    )).scalar_one_or_none()
+    if existing:
+        # 같은 토큰이 다른 계정으로 재등록되는 경우(기기 로그아웃 후 재로그인 등) 소유자를 갱신
+        existing.user_id = user.id
+    else:
+        db.add(UserFcmToken(user_id=user.id, token=token))
     await db.commit()
 
 
 @router.delete("/me/fcm-token", status_code=status.HTTP_204_NO_CONTENT)
 async def clear_fcm_token(
+    body: dict | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """알림 끄기 — 이 기기로의 푸시 발송을 중단한다 (브라우저 알림 권한 자체는 그대로 유지됨)."""
-    user.fcm_token = None
+    """알림 끄기 — 요청에 token이 있으면 그 기기 하나만, 없으면 이 계정의
+    모든 기기 토큰을 삭제한다 (브라우저 알림 권한 자체는 그대로 유지됨)."""
+    from sqlalchemy import delete as sa_delete
+
+    token = (body or {}).get("token", "").strip()
+    if token:
+        await db.execute(
+            sa_delete(UserFcmToken).where(UserFcmToken.user_id == user.id, UserFcmToken.token == token)
+        )
+    else:
+        await db.execute(sa_delete(UserFcmToken).where(UserFcmToken.user_id == user.id))
     await db.commit()
 
 

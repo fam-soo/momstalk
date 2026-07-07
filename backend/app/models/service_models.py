@@ -60,6 +60,18 @@ class UserChild(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class UserFcmToken(Base):
+    """기기별 FCM 푸시 토큰. 한 계정이 여러 기기(모바일/PC 웹 등)에서 동시에
+    알림을 받을 수 있도록 users.fcm_token(단일 컬럼, deprecated) 대신 사용."""
+    __tablename__ = "user_fcm_tokens"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token = Column(String(300), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class User(Base):
     """익명 유저. anon_id만 알며 전화번호 등 신원 정보는 없음."""
     __tablename__ = "users"
@@ -74,7 +86,7 @@ class User(Base):
     class_num = Column(Integer, nullable=True)           # deprecated
     school_type = Column(String(10), nullable=True)      # deprecated
     manner_score = Column(Integer, default=365, server_default="365")
-    fcm_token = Column(String(256), nullable=True)
+    fcm_token = Column(String(256), nullable=True)  # deprecated — user_fcm_tokens 테이블 사용 (기기별 다중 토큰)
     is_banned = Column(Boolean, default=False)
     is_admin = Column(Boolean, default=False)
     suspended_until = Column(DateTime, nullable=True)

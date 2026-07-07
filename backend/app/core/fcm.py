@@ -45,13 +45,16 @@ async def send_push(
     title: str,
     body: str,
     data: Optional[dict] = None,
-) -> None:
-    """FCM 단일 기기 푸시. 실패해도 예외 전파하지 않음."""
+) -> bool:
+    """FCM 단일 기기(토큰 1개) 푸시. 실패해도 예외 전파하지 않음.
+    반환값: 발급 취소/만료 등으로 토큰이 더 이상 유효하지 않으면 False
+    (호출자가 해당 토큰을 DB에서 정리할 수 있도록)."""
     if not token:
         logger.info("FCM 발송 스킵: 수신자 fcm_token 없음 (title=%r)", title)
-        return
+        return True
     if not _init():
-        return  # _init()이 이미 원인을 로그로 남김
+        return True  # _init()이 이미 원인을 로그로 남김 — 설정 문제이므로 토큰을 지우면 안 됨
+
     try:
         from firebase_admin import messaging
 
@@ -62,5 +65,40 @@ async def send_push(
         )
         message_id = messaging.send(msg, app=_app)
         logger.info("FCM 발송 성공: id=%s title=%r token=%s...", message_id, title, token[:12])
+        return True
     except Exception as exc:
-        logger.warning("FCM 발송 실패 (token=%s...): %s", token[:12], exc)
+        # UnregisteredError 등 "이 토큰은 더 이상 유효하지 않음" 부류만 무효 처리.
+        # 그 외(네트워크 오류 등 일시적 실패)는 토큰을 지우지 않는다.
+        invalid = type(exc).__name__ in ("UnregisteredError", "InvalidArgumentError", "SenderIdMismatchError")
+        logger.warning("FCM 발송 실패 (token=%s..., invalid=%s): %s", token[:12], invalid, exc)
+        return not invalid
+
+
+async def send_push_to_user(
+    db,
+    user_id: int,
+    title: str,
+    body: str,
+    data: Optional[dict] = None,
+) -> None:
+    """해당 유저가 등록한 모든 기기(user_fcm_tokens)로 발송. 무효 토큰은 정리한다."""
+    from sqlalchemy import select
+    from app.models.service_models import UserFcmToken
+
+    rows = (await db.execute(
+        select(UserFcmToken).where(UserFcmToken.user_id == user_id)
+    )).scalars().all()
+
+    if not rows:
+        logger.info("FCM 발송 스킵: user_id=%s 등록된 기기 없음 (title=%r)", user_id, title)
+        return
+
+    stale_ids = []
+    for row in rows:
+        still_valid = await send_push(row.token, title, body, data)
+        if not still_valid:
+            stale_ids.append(row.id)
+
+    if stale_ids:
+        await db.execute(UserFcmToken.__table__.delete().where(UserFcmToken.id.in_(stale_ids)))
+        await db.commit()

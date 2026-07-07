@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.core.fcm import send_push
+from app.core.fcm import send_push_to_user
 from app.core.profanity import check_profanity
 from app.models.service_models import Block, Comment, Like, Post, User
 from app.schemas.comment import CommentCreate, CommentResponse
@@ -64,15 +64,13 @@ async def create_comment(
 
     # 게시글 작성자에게 푸시 알림 (자기 글에 단 댓글은 제외)
     if post_obj and post_obj.author_id != user.id:
-        post_author = (await db.execute(select(User).where(User.id == post_obj.author_id))).scalar_one_or_none()
-        if post_author and post_author.fcm_token:
-            label = anon_labels.get(user.id, "익명") if comment.is_anonymous else (user.nickname or "누군가")
-            await send_push(
-                post_author.fcm_token,
-                title="새 댓글이 달렸어요",
-                body=f"{label}: {comment.content[:50]}",
-                data={"type": "comment", "post_id": str(post_id)},
-            )
+        label = anon_labels.get(user.id, "익명") if comment.is_anonymous else (user.nickname or "누군가")
+        await send_push_to_user(
+            db, post_obj.author_id,
+            title="새 댓글이 달렸어요",
+            body=f"{label}: {comment.content[:50]}",
+            data={"type": "comment", "post_id": str(post_id)},
+        )
 
     return response
 

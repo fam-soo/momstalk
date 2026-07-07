@@ -101,23 +101,30 @@ class PushNotifications {
     }
   }
 
-  /// 내정보 토글의 "끄기"에서 호출 — 이 기기의 토큰을 폐기하고 서버에서도
-  /// 지운다. 브라우저 알림 권한 자체는 앱이 되돌릴 수 없어 그대로 남지만,
-  /// 더 이상 이 기기로는 푸시가 오지 않는다.
+  /// 내정보 토글의 "끄기"에서 호출 — 이 기기의 토큰만 서버에서 지우고
+  /// 로컬에서도 폐기한다 (다른 기기에 등록된 토큰은 그대로 유지되어 계속
+  /// 알림을 받는다). 브라우저 알림 권한 자체는 앱이 되돌릴 수 없어 그대로
+  /// 남지만, 더 이상 이 기기로는 푸시가 오지 않는다.
   static Future<bool> disable(WidgetRef ref) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefDisabledByUserKey, true);
     final messaging = _tryInstance();
+    String? token;
     try {
-      if (messaging != null) await messaging.deleteToken();
+      if (messaging != null) {
+        token = kIsWeb ? await messaging.getToken(vapidKey: webVapidKey) : await messaging.getToken();
+      }
     } catch (_) {}
     try {
       final dio = ref.read(dioProvider);
-      await dio.delete('/auth/me/fcm-token');
-      return true;
+      await dio.delete('/auth/me/fcm-token', data: token != null ? {'token': token} : null);
     } catch (_) {
       return false;
     }
+    try {
+      if (messaging != null) await messaging.deleteToken();
+    } catch (_) {}
+    return true;
   }
 
   /// 이미 예전에 허용했고 사용자가 끈 적 없는 재방문 유저 — 조용히 토큰만 (재)등록.

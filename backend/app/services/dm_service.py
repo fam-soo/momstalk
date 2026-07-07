@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 
-from app.core.fcm import send_push
+from app.core.fcm import send_push_to_user
 from app.core.sse_manager import publish as sse_publish
 from app.models.service_models import Block, Conversation, DirectMessage, User
 from app.schemas.dm import ConversationResponse, MessageResponse
@@ -177,14 +177,12 @@ async def send_message(conv_id: int, user: User, content: str, db: AsyncSession)
     })
 
     # 수신자 FCM 푸시 (SSE 미연결 상태 또는 백그라운드 앱)
-    recipient = (await db.execute(select(User).where(User.id == recipient_id))).scalar_one_or_none()
-    if recipient and recipient.fcm_token:
-        sender_name = user.nickname or "익명"
-        await send_push(
-            recipient.fcm_token,
-            title=f"{sender_name}님의 메시지",
-            body=content[:80],
-            data={"type": "dm", "conversation_id": str(conv_id)},
-        )
+    sender_name = user.nickname or "익명"
+    await send_push_to_user(
+        db, recipient_id,
+        title=f"{sender_name}님의 메시지",
+        body=content[:80],
+        data={"type": "dm", "conversation_id": str(conv_id)},
+    )
 
     return response

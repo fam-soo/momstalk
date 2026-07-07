@@ -85,6 +85,29 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
             ? 0
             : children.indexWhere((c) => c['id'] == activeChildId);
         final resolvedIdx = activeIdx >= 0 ? activeIdx : 0;
+
+        // 언락 여부를 먼저 확정한 뒤에 _loading을 내려야 한다. 순서를 바꾸면
+        // "정회원 접근 가능" 화면이 잠금 여부를 모르는 채로 먼저 그려지고,
+        // 그 사이에 PostListWidget이 곧바로 /posts를 호출해 서버의 잠금
+        // 가드(403)를 그대로(가공되지 않은 에러 문구로) 노출하는 문제가 있었다.
+        var schoolLocked = false;
+        var memberCount = 0;
+        var threshold = _schoolThreshold;
+        var remaining = _schoolThreshold;
+        if (canAccess && !isAdmin) {
+          final schoolCode = children.isNotEmpty && resolvedIdx < children.length
+              ? children[resolvedIdx]['school_code'] as String?
+              : null;
+          final unlock = await _fetchUnlockStatus(schoolCode);
+          if (unlock != null) {
+            schoolLocked = !(unlock['unlocked'] as bool? ?? true);
+            memberCount = unlock['member_count'] as int? ?? 0;
+            threshold = unlock['threshold'] as int? ?? threshold;
+            remaining = unlock['remaining'] as int? ?? 0;
+          }
+        }
+
+        if (!mounted) return;
         setState(() {
           _isMember = canAccess;
           // auth_pending 중이면 lurker도 아닌 '인증 대기' 상태로 처리
@@ -96,14 +119,12 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
           _children = children;
           _selectedChildIdx = resolvedIdx;
           _tabController = tabs;
+          _schoolLocked = schoolLocked;
+          _schoolMemberCount = memberCount;
+          _schoolThreshold = threshold;
+          _schoolRemaining = remaining;
           _loading = false;
         });
-        if (canAccess && !isAdmin) {
-          final schoolCode = children.isNotEmpty && resolvedIdx < children.length
-              ? children[resolvedIdx]['school_code'] as String?
-              : null;
-          await _loadUnlockStatus(schoolCode);
-        }
       }
     } catch (_) {
       await _loadPreview();
@@ -111,28 +132,28 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   }
 
   /// 학교 게시판 언락 현황 조회 — 지역/학원과 달리 학교 게시판만 같은 학교
-  /// 정회원이 일정 인원 모여야 열린다.
-  Future<void> _loadUnlockStatus(String? schoolCode) async {
-    if (schoolCode == null || schoolCode.isEmpty) {
-      if (mounted) setState(() => _schoolLocked = false);
-      return;
-    }
+  /// 정회원이 일정 인원 모여야 열린다. 조회 실패 시 null(잠그지 않음 — 서버
+  /// 오류로 접근을 막지 않기 위함).
+  Future<Map<String, dynamic>?> _fetchUnlockStatus(String? schoolCode) async {
+    if (schoolCode == null || schoolCode.isEmpty) return null;
     try {
       final dio = ref.read(dioProvider);
       final resp = await dio.get('/schools/$schoolCode/unlock-status');
-      final data = Map<String, dynamic>.from(resp.data as Map);
-      if (mounted) {
-        setState(() {
-          _schoolLocked = !(data['unlocked'] as bool? ?? true);
-          _schoolMemberCount = data['member_count'] as int? ?? 0;
-          _schoolThreshold = data['threshold'] as int? ?? _schoolThreshold;
-          _schoolRemaining = data['remaining'] as int? ?? 0;
-        });
-      }
+      return Map<String, dynamic>.from(resp.data as Map);
     } catch (_) {
-      // 조회 실패 시 잠그지 않음 (서버 오류로 접근을 막지 않기 위함)
-      if (mounted) setState(() => _schoolLocked = false);
+      return null;
     }
+  }
+
+  Future<void> _loadUnlockStatus(String? schoolCode) async {
+    final data = await _fetchUnlockStatus(schoolCode);
+    if (!mounted) return;
+    setState(() {
+      _schoolLocked = data == null ? false : !(data['unlocked'] as bool? ?? true);
+      _schoolMemberCount = data?['member_count'] as int? ?? 0;
+      _schoolThreshold = data?['threshold'] as int? ?? _schoolThreshold;
+      _schoolRemaining = data?['remaining'] as int? ?? 0;
+    });
   }
 
   /// 학교 게시판에서 자녀를 바꾸면 내정보(active_child)에도 반영하고,

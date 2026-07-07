@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -85,7 +86,19 @@ class _PostListWidgetState extends ConsumerState<PostListWidget> with AutomaticK
         });
       }
     } catch (e) {
-      if (reset && mounted) setState(() => _error = e.toString());
+      if (reset && mounted) {
+        // 403은 대개 "아직 잠긴 게시판"(예: 학교 게시판 언락 전) 같은 정상적인
+        // 접근 제한 상태다. 서버 detail 메시지를 그대로 보여주고, 그 외
+        // 예외는 원시 스택트레이스 대신 일반적인 안내 문구로 대체한다.
+        final String friendlyError;
+        if (e is DioException && e.response?.statusCode == 403) {
+          final detail = e.response?.data is Map ? (e.response!.data['detail'] as String?) : null;
+          friendlyError = detail ?? '이 게시판은 아직 이용할 수 없어요.';
+        } else {
+          friendlyError = '게시글을 불러오지 못했어요. 잠시 후 다시 시도해주세요.';
+        }
+        setState(() => _error = friendlyError);
+      }
     } finally {
       if (mounted) setState(() { _loading = false; _loadingMore = false; });
     }
@@ -122,7 +135,16 @@ class _PostListWidgetState extends ConsumerState<PostListWidget> with AutomaticK
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _error != null
-                  ? Center(child: Text('오류: $_error', style: const TextStyle(color: Colors.red)))
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.lock_outline, size: 40, color: Colors.grey.shade400),
+                          const SizedBox(height: 12),
+                          Text(_error!, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
+                        ]),
+                      ),
+                    )
                   : _posts.isEmpty
                       ? Center(
                           child: Column(mainAxisSize: MainAxisSize.min, children: [
