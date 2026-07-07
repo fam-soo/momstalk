@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
+import '../../../core/kst_time.dart';
 import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart';
 
@@ -321,14 +322,14 @@ class _SchoolPreviewBoard extends StatelessWidget {
   });
 
   String _relativeTime(String? iso) {
-    if (iso == null) return '';
-    final dt = DateTime.tryParse(iso)?.toLocal();
-    if (dt == null) return '';
-    final diff = DateTime.now().difference(dt);
+    final kst = parseServerTimeToKst(iso);
+    if (kst == null) return '';
+    final nowKst = DateTime.now().toUtc().add(kstOffset);
+    final diff = nowKst.difference(kst);
     if (diff.inMinutes < 1) return '방금';
     if (diff.inMinutes < 60) return '${diff.inMinutes}분';
     if (diff.inHours < 24) return '${diff.inHours}시간';
-    return DateFormat('MM.dd').format(dt);
+    return DateFormat('MM.dd').format(kst);
   }
 
   @override

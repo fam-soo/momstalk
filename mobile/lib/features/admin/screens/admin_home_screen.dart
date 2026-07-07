@@ -3,34 +3,17 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/kst_time.dart';
 import '../admin_api.dart';
 
 // ── 공통 유틸 ────────────────────────────────────────
 
-String _timeAgo(String? iso) {
-  if (iso == null) return '';
-  final dt = DateTime.tryParse(iso)?.toLocal();
-  if (dt == null) return '';
-  final diff = DateTime.now().difference(dt);
-  if (diff.inMinutes < 60) return '${diff.inMinutes}분 전';
-  if (diff.inHours < 24) return '${diff.inHours}시간 전';
-  return '${diff.inDays}일 전';
-}
+String _timeAgo(String? iso) => kstTimeAgo(iso);
 
 Widget _statusChip(String label, Color color) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
       child: Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
-    );
-
-Widget _statText(String label, String value) => RichText(
-      text: TextSpan(
-        style: const TextStyle(fontSize: 11, color: Colors.grey),
-        children: [
-          TextSpan(text: '$label '),
-          TextSpan(text: value, style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87)),
-        ],
-      ),
     );
 
 // ── 메인 화면 ────────────────────────────────────────
@@ -382,10 +365,13 @@ class _UserListPane extends ConsumerStatefulWidget {
   ConsumerState<_UserListPane> createState() => _UserListPaneState();
 }
 
-class _UserListPaneState extends ConsumerState<_UserListPane> {
+class _UserListPaneState extends ConsumerState<_UserListPane> with AutomaticKeepAliveClientMixin {
   final _ctrl = TextEditingController();
   List<Map<String, dynamic>> _users = [];
   bool _loading = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -432,6 +418,7 @@ class _UserListPaneState extends ConsumerState<_UserListPane> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
@@ -481,7 +468,6 @@ class _UserTile extends StatelessWidget {
     final isSuspended = user['suspended_until'] != null;
     final isTrusted = user['is_trusted'] as bool? ?? false;
     final grade = user['member_grade'] as String? ?? '';
-    final kakaoId = user['kakao_id'] as String?;
 
     return ExpansionTile(
       dense: true,
@@ -502,24 +488,32 @@ class _UserTile extends StatelessWidget {
         if (isBanned) ...[const SizedBox(width: 4), _statusChip('차단', Colors.red)],
         if (isSuspended && !isBanned) ...[const SizedBox(width: 4), _statusChip('정지', Colors.orange)],
       ]),
-      subtitle: Text(
-        '${user['school_name'] ?? '-'} · ${_timeAgo(user['created_at'] as String?)}'
-        '${kakaoId != null ? ' · 카카오 ID: $kakaoId' : ' · 카카오 ID 없음'}',
-        style: const TextStyle(fontSize: 11),
+      // 펼치지 않아도 핵심 통계가 2줄 안에 다 보이도록 구성 (카카오 ID는 비노출 — 필요하면 검색으로 조회)
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 2),
+          Text(
+            '${user['school_name'] ?? '-'} · 가입 ${_timeAgo(user['created_at'] as String?)}'
+            ' · 최근 접속 ${user['last_login_at'] != null ? _timeAgo(user['last_login_at'] as String?) : '기록 없음'}',
+            style: const TextStyle(fontSize: 11),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '접속 ${user['login_count'] ?? 0}회 · 게시글 ${user['post_count'] ?? 0}개'
+            ' · 좋아요 ${user['like_count'] ?? 0}개 · 경고 ${user['warning_count'] ?? 0}회',
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Wrap(spacing: 12, runSpacing: 4, children: [
-              _statText('가입일', _timeAgo(user['created_at'] as String?)),
-              _statText('최근 접속', user['last_login_at'] != null ? _timeAgo(user['last_login_at'] as String?) : '기록 없음'),
-              _statText('접속 횟수', '${user['login_count'] ?? 0}회'),
-              _statText('게시글', '${user['post_count'] ?? 0}개'),
-              _statText('받은 좋아요', '${user['like_count'] ?? 0}개'),
-              _statText('경고', '${user['warning_count'] ?? 0}회'),
-            ]),
-            const SizedBox(height: 8),
             Wrap(spacing: 6, runSpacing: 4, children: [
               if (grade == 'lurker')
                 _ActionBtn('승인', Colors.green, () => onAction(user['id'] as int, 'approve')),
@@ -591,10 +585,13 @@ class _CapturesPane extends ConsumerStatefulWidget {
   ConsumerState<_CapturesPane> createState() => _CapturesPaneState();
 }
 
-class _CapturesPaneState extends ConsumerState<_CapturesPane> {
+class _CapturesPaneState extends ConsumerState<_CapturesPane> with AutomaticKeepAliveClientMixin {
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
   final Map<int, Uint8List> _imageCache = {};
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -675,6 +672,7 @@ class _CapturesPaneState extends ConsumerState<_CapturesPane> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_items.isEmpty) return const Center(child: Text('대기 중인 캡처가 없습니다.', style: TextStyle(color: Colors.grey)));
 
@@ -991,13 +989,16 @@ class _PostListPane extends ConsumerStatefulWidget {
   ConsumerState<_PostListPane> createState() => _PostListPaneState();
 }
 
-class _PostListPaneState extends ConsumerState<_PostListPane> {
+class _PostListPaneState extends ConsumerState<_PostListPane> with AutomaticKeepAliveClientMixin {
   final _ctrl = TextEditingController();
   String _filter = 'all';
   List<Map<String, dynamic>> _items = [];
   int _total = 0;
   int _page = 1;
   bool _loading = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -1062,6 +1063,7 @@ class _PostListPaneState extends ConsumerState<_PostListPane> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Column(children: [
       _ContentFilter(
         ctrl: _ctrl,
@@ -1113,13 +1115,16 @@ class _CommentListPane extends ConsumerStatefulWidget {
   ConsumerState<_CommentListPane> createState() => _CommentListPaneState();
 }
 
-class _CommentListPaneState extends ConsumerState<_CommentListPane> {
+class _CommentListPaneState extends ConsumerState<_CommentListPane> with AutomaticKeepAliveClientMixin {
   final _ctrl = TextEditingController();
   String _filter = 'all';
   List<Map<String, dynamic>> _items = [];
   int _total = 0;
   int _page = 1;
   bool _loading = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -1184,6 +1189,7 @@ class _CommentListPaneState extends ConsumerState<_CommentListPane> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Column(children: [
       _ContentFilter(
         ctrl: _ctrl,
@@ -1235,13 +1241,16 @@ class _ReviewListPane extends ConsumerStatefulWidget {
   ConsumerState<_ReviewListPane> createState() => _ReviewListPaneState();
 }
 
-class _ReviewListPaneState extends ConsumerState<_ReviewListPane> {
+class _ReviewListPaneState extends ConsumerState<_ReviewListPane> with AutomaticKeepAliveClientMixin {
   final _ctrl = TextEditingController();
   String _filter = 'user';
   List<Map<String, dynamic>> _items = [];
   int _total = 0;
   int _page = 1;
   bool _loading = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -1306,6 +1315,7 @@ class _ReviewListPaneState extends ConsumerState<_ReviewListPane> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Column(children: [
       _ContentFilter(
         ctrl: _ctrl,
@@ -1750,10 +1760,13 @@ class _ProfanityPane extends ConsumerStatefulWidget {
   ConsumerState<_ProfanityPane> createState() => _ProfanityPaneState();
 }
 
-class _ProfanityPaneState extends ConsumerState<_ProfanityPane> {
+class _ProfanityPaneState extends ConsumerState<_ProfanityPane> with AutomaticKeepAliveClientMixin {
   final _ctrl = TextEditingController();
   List<Map<String, dynamic>> _words = [];
   bool _loading = true;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -1796,6 +1809,7 @@ class _ProfanityPaneState extends ConsumerState<_ProfanityPane> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Column(children: [
       Padding(
         padding: const EdgeInsets.all(12),
@@ -1846,11 +1860,14 @@ class _LogPane extends ConsumerStatefulWidget {
   ConsumerState<_LogPane> createState() => _LogPaneState();
 }
 
-class _LogPaneState extends ConsumerState<_LogPane> {
+class _LogPaneState extends ConsumerState<_LogPane> with AutomaticKeepAliveClientMixin {
   List<Map<String, dynamic>> _logs = [];
   int _total = 0;
   int _page = 1;
   bool _loading = true;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -1893,6 +1910,7 @@ class _LogPaneState extends ConsumerState<_LogPane> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Column(children: [
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

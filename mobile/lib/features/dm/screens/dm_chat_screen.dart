@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/kst_time.dart';
 
 class DmChatScreen extends ConsumerStatefulWidget {
   final int convId;
@@ -81,7 +82,8 @@ class _DmChatScreenState extends ConsumerState<DmChatScreen> {
                   itemBuilder: (ctx, i) {
                     final m = _msgs[i];
                     final isMine = m['sender_id'] == _myId;
-                    final time = DateFormat('HH:mm').format(DateTime.parse(m['created_at']).toLocal());
+                    final msgKst = parseServerTimeToKst(m['created_at'] as String?);
+                    final time = msgKst != null ? DateFormat('HH:mm').format(msgKst) : '';
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(

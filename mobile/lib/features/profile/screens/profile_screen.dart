@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:kakao_flutter_sdk_share/kakao_flutter_sdk_share.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api_client.dart';
+import '../../../core/kst_time.dart';
 import '../../../core/refresh_bus.dart';
 import '../../../core/router.dart';
 import '../../../core/web_open_helper.dart';
@@ -1311,9 +1312,9 @@ class _ScrapListScreenState extends ConsumerState<ScrapListScreen> {
   }
 
   String _formatDate(String iso) {
-    final dt = DateTime.tryParse(iso);
-    if (dt == null) return '';
-    return '${dt.year}.${dt.month.toString().padLeft(2, '0')}.${dt.day.toString().padLeft(2, '0')}';
+    final kst = parseServerTimeToKst(iso);
+    if (kst == null) return '';
+    return '${kst.year}.${kst.month.toString().padLeft(2, '0')}.${kst.day.toString().padLeft(2, '0')}';
   }
 
   @override

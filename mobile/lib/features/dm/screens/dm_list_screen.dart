@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 import '../../../core/api_client.dart' show dioProvider, tokenStorageProvider;
+import '../../../core/kst_time.dart';
 import '../../../core/constants.dart' show AppConstants;
 
 class DmListScreen extends ConsumerStatefulWidget {
@@ -116,9 +117,8 @@ class _DmListScreenState extends ConsumerState<DmListScreen> {
                     itemBuilder: (ctx, i) {
                       final c = _convs[i];
                       final unread = (c['unread_count'] ?? 0) as int;
-                      final lastAt = c['last_message_at'] != null
-                          ? DateFormat('MM.dd HH:mm').format(DateTime.parse(c['last_message_at']).toLocal())
-                          : '';
+                      final lastAtKst = parseServerTimeToKst(c['last_message_at'] as String?);
+                      final lastAt = lastAtKst != null ? DateFormat('MM.dd HH:mm').format(lastAtKst) : '';
                       return ListTile(
                         leading: CircleAvatar(
                           backgroundColor: Theme.of(context).colorScheme.primaryContainer,
