@@ -12,6 +12,19 @@ import 'api_client.dart';
 const webVapidKey = 'BLieISX2Fz-M4KRH0UJVJqWIMJ2d9k6EOGHSYgt77_a0QUHSl1G8XMDRL6ByUQ7P-bn2kCq9lDEjPPAo_vxWMLY';
 
 const _prefDismissedKey = 'push_banner_dismissed';
+// 사용자가 "내정보 > 알림 받기"에서 명시적으로 끈 적이 있는지 기록.
+// 브라우저 알림 권한은 앱이 프로그램적으로 되돌릴 수 없으므로(허용된 채로
+// 남아있음), 이 로컬 플래그가 없으면 재방문 시 silentlyRegisterIfAlreadyAllowed가
+// 권한만 보고 매번 토큰을 다시 등록해버려 "끄기"가 무의미해진다.
+const _prefDisabledByUserKey = 'push_disabled_by_user';
+
+/// 내정보 화면 등에서 보여줄 알림 상태.
+enum PushStatus {
+  on, // 권한 허용 + 사용자가 켬
+  off, // 권한 허용(또는 미결정)이지만 사용자가 끔/아직 안 켬
+  blocked, // 브라우저에서 권한 자체가 차단됨 — 앱에서 재요청 불가
+  unavailable, // FCM 초기화 실패(설정 누락 등)
+}
 
 /// 웹 푸시(FCM) 권한 요청 / 토큰 등록 / 포그라운드 수신 처리.
 ///
@@ -53,7 +66,24 @@ class PushNotifications {
     await prefs.setBool(_prefDismissedKey, true);
   }
 
-  /// 배너의 "알림 켜기" 버튼에서 호출 — 브라우저 권한 팝업을 띄우고,
+  static Future<bool> _isDisabledByUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_prefDisabledByUserKey) ?? false;
+  }
+
+  /// 내정보 화면에서 현재 알림 상태를 판단할 때 사용.
+  static Future<PushStatus> status() async {
+    final settings = await currentSettings();
+    if (settings == null) return PushStatus.unavailable;
+    if (settings.authorizationStatus == AuthorizationStatus.denied) return PushStatus.blocked;
+    final permitted = settings.authorizationStatus == AuthorizationStatus.authorized ||
+        settings.authorizationStatus == AuthorizationStatus.provisional;
+    if (!permitted) return PushStatus.off;
+    final disabledByUser = await _isDisabledByUser();
+    return disabledByUser ? PushStatus.off : PushStatus.on;
+  }
+
+  /// 배너/내정보 토글의 "켜기"에서 호출 — 브라우저 권한 팝업을 띄우고,
   /// 허용되면 토큰을 발급받아 서버에 저장한다.
   static Future<bool> requestAndRegister(WidgetRef ref) async {
     final messaging = _tryInstance();
@@ -63,17 +93,39 @@ class PushNotifications {
       final ok = settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
       if (!ok) return false;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_prefDisabledByUserKey, false);
       return await _registerToken(ref, messaging);
     } catch (_) {
       return false;
     }
   }
 
-  /// 이미 예전에 허용한 재방문 유저 — 조용히 토큰만 (재)등록.
+  /// 내정보 토글의 "끄기"에서 호출 — 이 기기의 토큰을 폐기하고 서버에서도
+  /// 지운다. 브라우저 알림 권한 자체는 앱이 되돌릴 수 없어 그대로 남지만,
+  /// 더 이상 이 기기로는 푸시가 오지 않는다.
+  static Future<bool> disable(WidgetRef ref) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefDisabledByUserKey, true);
+    final messaging = _tryInstance();
+    try {
+      if (messaging != null) await messaging.deleteToken();
+    } catch (_) {}
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.delete('/auth/me/fcm-token');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 이미 예전에 허용했고 사용자가 끈 적 없는 재방문 유저 — 조용히 토큰만 (재)등록.
   static Future<void> silentlyRegisterIfAlreadyAllowed(WidgetRef ref) async {
     final messaging = _tryInstance();
     if (messaging == null) return;
     try {
+      if (await _isDisabledByUser()) return;
       final settings = await messaging.getNotificationSettings();
       final ok = settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;

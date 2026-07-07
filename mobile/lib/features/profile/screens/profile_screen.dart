@@ -8,6 +8,7 @@ import 'package:kakao_flutter_sdk_share/kakao_flutter_sdk_share.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api_client.dart';
 import '../../../core/kst_time.dart';
+import '../../../core/push_notifications.dart';
 import '../../../core/refresh_bus.dart';
 import '../../../core/router.dart';
 import '../../../core/web_open_helper.dart';
@@ -371,6 +372,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(height: 8),
 
+        // ── 알림 설정 ──────────────────────────────────
+        const _PushSettingsCard(),
+        const SizedBox(height: 8),
+
         // ── 서비스 정보 + 로그아웃/탈퇴 통합 (컴팩트) ──
         Card(
           clipBehavior: Clip.antiAlias,
@@ -486,6 +491,126 @@ class _QuickAction extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// 알림(웹 푸시) 설정 카드 — 켜기/끄기를 한눈에 알 수 있도록 상태별로
+// 아이콘·색상·설명 문구를 뚜렷하게 구분한다.
+// ──────────────────────────────────────────────────────────────────
+
+class _PushSettingsCard extends ConsumerStatefulWidget {
+  const _PushSettingsCard();
+
+  @override
+  ConsumerState<_PushSettingsCard> createState() => _PushSettingsCardState();
+}
+
+class _PushSettingsCardState extends ConsumerState<_PushSettingsCard> with WidgetsBindingObserver {
+  PushStatus? _status;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 브라우저 알림 권한 설정을 바꾸고 탭으로 돌아왔을 때 최신 상태 반영
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final s = await PushNotifications.status();
+    if (mounted) setState(() => _status = s);
+  }
+
+  Future<void> _toggle(bool turnOn) async {
+    setState(() => _busy = true);
+    if (turnOn) {
+      final ok = await PushNotifications.requestAndRegister(ref);
+      if (mounted && !ok) {
+        final blocked = await PushNotifications.status() == PushStatus.blocked;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          blocked
+              ? '브라우저에서 알림이 차단되어 있어요. 주소창 옆 자물쇠 아이콘에서 알림을 허용해주세요.'
+              : '알림 권한이 허용되지 않았어요.',
+        )));
+      }
+    } else {
+      await PushNotifications.disable(ref);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('알림을 껐어요. 이 기기로는 더 이상 알림이 오지 않아요.')),
+        );
+      }
+    }
+    await _refresh();
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _status;
+    final theme = Theme.of(context);
+
+    final (icon, color, title, subtitle, switchValue, switchEnabled) = switch (status) {
+      PushStatus.on => (
+          Icons.notifications_active,
+          Colors.green.shade600,
+          '알림 켜짐',
+          '새 댓글·좋아요 알림을 받고 있어요',
+          true,
+          true,
+        ),
+      PushStatus.off => (
+          Icons.notifications_off_outlined,
+          Colors.grey.shade500,
+          '알림 꺼짐',
+          '탭해서 알림을 받아보세요',
+          false,
+          true,
+        ),
+      PushStatus.blocked => (
+          Icons.notifications_off,
+          Colors.red.shade400,
+          '알림 차단됨',
+          '브라우저 설정에서 이 사이트의 알림을 허용해주세요',
+          false,
+          false,
+        ),
+      PushStatus.unavailable || null => (
+          Icons.notifications_none,
+          Colors.grey.shade400,
+          '알림 사용 불가',
+          '이 브라우저/환경에서는 알림을 지원하지 않아요',
+          false,
+          false,
+        ),
+    };
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: SwitchListTile(
+        secondary: _busy
+            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+            : Icon(icon, color: color),
+        title: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: color)),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+        value: switchValue,
+        activeColor: theme.colorScheme.primary,
+        onChanged: (!switchEnabled || _busy || status == null) ? null : _toggle,
       ),
     );
   }

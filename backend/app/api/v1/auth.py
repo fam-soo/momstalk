@@ -271,6 +271,16 @@ async def register_fcm_token(
     await db.commit()
 
 
+@router.delete("/me/fcm-token", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_fcm_token(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """알림 끄기 — 이 기기로의 푸시 발송을 중단한다 (브라우저 알림 권한 자체는 그대로 유지됨)."""
+    user.fcm_token = None
+    await db.commit()
+
+
 @router.post("/kakao", response_model=TokenResponse)
 async def kakao_login(
     req: KakaoLoginRequest,
