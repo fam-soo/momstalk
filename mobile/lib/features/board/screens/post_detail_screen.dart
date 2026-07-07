@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/refresh_bus.dart';
 
 // ── 신고 카테고리 ─────────────────────────────────────
 
@@ -236,6 +237,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       });
       _commentCtrl.clear();
       await _load();
+      bumpBoardRefresh(ref); // 게시판 목록의 댓글 수도 즉시 갱신되도록
     } on DioException catch (e) {
       if (mounted) {
         final data = e.response?.data;
@@ -263,6 +265,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
       final dio = ref.read(dioProvider);
       await dio.post('/posts/${widget.postId}/like');
       await _load();
+      bumpBoardRefresh(ref); // 게시판 목록의 좋아요 수도 즉시 갱신되도록
     } catch (_) {}
   }
 
@@ -294,6 +297,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
     try {
       final dio = ref.read(dioProvider);
       await dio.delete('/posts/${widget.postId}');
+      bumpBoardRefresh(ref); // 게시판 목록에서도 즉시 사라지도록
       if (mounted) context.pop();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
@@ -620,6 +624,7 @@ class _CommentTileState extends ConsumerState<_CommentTile> {
       final dio = ref.read(dioProvider);
       await dio.delete('/posts/${widget.postId}/comments/${widget.comment['id']}');
       widget.onChanged();
+      bumpBoardRefresh(ref); // 게시판 목록의 댓글 수도 즉시 갱신되도록
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
     }
