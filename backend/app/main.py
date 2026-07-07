@@ -11,6 +11,13 @@ from app.core.config import settings
 from app.db import engine
 from app.models.service_models import Base
 
+
+# 앱 어디서든 logging.getLogger(__name__)로 로그를 남기면 Render 로그(stdout)에
+# 보이도록 루트 로거를 설정한다. 이게 없으면 루트 로거 기본 레벨(WARNING)에
+# 걸려 logger.info(...) 호출이 전부 조용히 사라진다 — FCM 발송 성공/스킵
+# 로그가 전혀 안 보이던 원인이었음.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
+
 logger = logging.getLogger(__name__)
 
 _scheduler = AsyncIOScheduler(timezone="Asia/Seoul")
