@@ -536,7 +536,11 @@ class _CommentTile extends ConsumerStatefulWidget {
 class _CommentTileState extends ConsumerState<_CommentTile> {
   void _showCommentActions() {
     final c = widget.comment;
-    final isMyComment = c['author_id'] == widget.myId;
+    // 서버는 댓글 익명성 보호를 위해 author_id를 내려주지 않는다 — 소유 여부는
+    // 서버가 이미 계산해서 내려주는 is_mine으로 판단해야 한다 (author_id와
+    // 비교하면 항상 false가 되어, 익명 댓글이든 닉네임 댓글이든 본인 댓글에도
+    // 삭제 버튼이 보이지 않는 문제가 있었다).
+    final isMyComment = c['is_mine'] == true;
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
