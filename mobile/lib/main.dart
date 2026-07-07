@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:app_links/app_links.dart';
@@ -8,6 +9,7 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 import 'core/api_client.dart';
 import 'core/constants.dart';
+import 'core/firebase_web_options.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
 
@@ -18,9 +20,16 @@ void main() async {
     javaScriptAppKey: AppConstants.kakaoJavaScriptKey,
   );
 
-  // Firebase 초기화 (google-services.json 없는 개발 환경에서는 무시)
+  // Firebase 초기화. 웹은 firebase_options이 없으면 초기화가 실패하므로
+  // webFirebaseOptions(core/firebase_web_options.dart)를 명시 전달한다.
+  // 네이티브(Android/iOS)는 google-services.json/GoogleService-Info.plist가
+  // 아직 없는 개발 환경에서도 앱이 죽지 않도록 실패를 무시한다.
   try {
-    await Firebase.initializeApp();
+    if (kIsWeb) {
+      await Firebase.initializeApp(options: webFirebaseOptions);
+    } else {
+      await Firebase.initializeApp();
+    }
   } catch (_) {}
 
   // mock 모드: 로그인 화면 없이 바로 앱 진입하도록 토큰 사전 주입

@@ -22,6 +22,7 @@ import '../features/academy/screens/academy_detail_screen.dart';
 import '../features/academy/screens/academy_review_write_screen.dart';
 import 'api_client.dart' show tokenStorageProvider;
 import 'constants.dart';
+import 'push_notifications.dart';
 import 'refresh_bus.dart';
 import '../features/admin/screens/admin_login_screen.dart';
 import '../features/admin/screens/admin_home_screen.dart';
@@ -139,14 +140,72 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-class _MainShell extends ConsumerWidget {
+class _MainShell extends ConsumerStatefulWidget {
   final StatefulNavigationShell shell;
   const _MainShell({required this.shell});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends ConsumerState<_MainShell> {
+  bool _showPushBanner = false;
+  bool _pushRequesting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initPush();
+  }
+
+  Future<void> _initPush() async {
+    // 재방문 시 이미 허용된 상태면 조용히 토큰만 최신화, 아직 결정 안 됐으면 배너 노출.
+    await PushNotifications.silentlyRegisterIfAlreadyAllowed(ref);
+    final show = await PushNotifications.shouldShowBanner();
+    if (mounted) setState(() => _showPushBanner = show);
+    PushNotifications.listenForegroundMessages((msg) {
+      if (!mounted) return;
+      final title = msg.notification?.title ?? 'MomsTalk';
+      final body = msg.notification?.body ?? '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(body.isEmpty ? title : '$title — $body'), duration: const Duration(seconds: 4)),
+      );
+    });
+  }
+
+  Future<void> _enablePush() async {
+    setState(() => _pushRequesting = true);
+    final ok = await PushNotifications.requestAndRegister(ref);
+    if (mounted) {
+      setState(() { _showPushBanner = false; _pushRequesting = false; });
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('알림이 차단되었습니다. 브라우저 설정에서 다시 허용할 수 있어요.')),
+        );
+      }
+    }
+    await PushNotifications.dismissBanner();
+  }
+
+  Future<void> _dismissPushBanner() async {
+    setState(() => _showPushBanner = false);
+    await PushNotifications.dismissBanner();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final shell = widget.shell;
     return Scaffold(
-      body: shell,
+      body: Column(
+        children: [
+          if (_showPushBanner) _PushPermissionBanner(
+            requesting: _pushRequesting,
+            onEnable: _enablePush,
+            onDismiss: _dismissPushBanner,
+          ),
+          Expanded(child: shell),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: shell.currentIndex,
         onDestinationSelected: (i) {
@@ -161,6 +220,49 @@ class _MainShell extends ConsumerWidget {
           NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: '대화'),
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '내정보'),
         ],
+      ),
+    );
+  }
+}
+
+// ── 웹 푸시 권한 유도 배너 ────────────────────────────────────────
+// 진입 즉시 브라우저 권한 팝업을 띄우면 대부분 거절당하고(한 번 거절되면
+// 사용자가 직접 브라우저 설정을 풀기 전까지 재요청 불가), 사용자가 이 배너를
+// 눌렀을 때만 권한 팝업이 뜨도록 유도한다.
+class _PushPermissionBanner extends StatelessWidget {
+  final bool requesting;
+  final VoidCallback onEnable;
+  final VoidCallback onDismiss;
+  const _PushPermissionBanner({required this.requesting, required this.onEnable, required this.onDismiss});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Theme.of(context).colorScheme.primaryContainer,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(children: [
+            const Icon(Icons.notifications_active_outlined, size: 18),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('새 댓글이나 좋아요 알림을 받아보세요!', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+            ),
+            TextButton(
+              onPressed: requesting ? null : onEnable,
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 10)),
+              child: requesting
+                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('알림 켜기', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 16),
+              visualDensity: VisualDensity.compact,
+              onPressed: requesting ? null : onDismiss,
+            ),
+          ]),
+        ),
       ),
     );
   }
