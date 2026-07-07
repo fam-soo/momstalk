@@ -11,12 +11,13 @@ importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: 'TODO_FIREBASE_WEB_API_KEY',
-  authDomain: 'TODO_FIREBASE_PROJECT_ID.firebaseapp.com',
-  projectId: 'TODO_FIREBASE_PROJECT_ID',
-  storageBucket: 'TODO_FIREBASE_PROJECT_ID.appspot.com',
-  messagingSenderId: 'TODO_FIREBASE_MESSAGING_SENDER_ID',
-  appId: 'TODO_FIREBASE_WEB_APP_ID',
+  apiKey: 'AIzaSyC1sQNZIQTGh9HWdsridTGjeWv_z8QqEv8',
+  authDomain: 'momstalk-d65d7.firebaseapp.com',
+  projectId: 'momstalk-d65d7',
+  storageBucket: 'momstalk-d65d7.firebasestorage.app',
+  messagingSenderId: '145724452730',
+  appId: '1:145724452730:web:2452261d4c3c7e038470c3',
+  measurementId: 'G-DSLGJL6KFV',
 });
 
 const messaging = firebase.messaging();
