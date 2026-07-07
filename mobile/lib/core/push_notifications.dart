@@ -9,7 +9,7 @@ import 'api_client.dart';
 /// Firebase Console > 프로젝트 설정 > Cloud Messaging > 웹 구성 > 키 쌍 생성
 /// 에서 발급받아 채워 넣어야 웹 브라우저에서 알림 토큰이 발급된다.
 /// `web/firebase-messaging-sw.js`의 firebaseConfig와 프로젝트가 같아야 한다.
-const webVapidKey = 'TODO_FIREBASE_WEB_VAPID_KEY';
+const webVapidKey = 'BLieISX2Fz-M4KRH0UJVJqWIMJ2d9k6EOGHSYgt77_a0QUHSl1G8XMDRL6ByUQ7P-bn2kCq9lDEjPPAo_vxWMLY';
 
 const _prefDismissedKey = 'push_banner_dismissed';
 
