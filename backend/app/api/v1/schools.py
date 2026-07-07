@@ -9,8 +9,19 @@ from app.db import get_db
 from app.models.service_models import School
 from app.schemas.school import SchoolSearchResult
 from app.services.neis_service import search_schools as neis_search_schools
+from app.services.school_unlock_service import get_unlock_status
 
 router = APIRouter(prefix="/schools", tags=["schools"])
+
+
+@router.get("/{school_code}/unlock-status")
+async def unlock_status(
+    school_code: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """학교 게시판 언락 현황(현재 인원/기준 인원). 지역·학원 게시판은 제한이
+    없고, 학교 게시판만 같은 학교 정회원이 일정 인원 모여야 열린다."""
+    return await get_unlock_status(school_code, db)
 
 
 @router.get("/search", response_model=list[SchoolSearchResult])

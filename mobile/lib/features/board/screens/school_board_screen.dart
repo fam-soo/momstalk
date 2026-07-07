@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -31,6 +32,12 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   List<Map<String, dynamic>> _children = [];
   int _selectedChildIdx = 0;
   bool _authPending = false;
+  bool _isAdmin = false;
+  // 학교 게시판 언락(같은 학교 정회원 N명 모임) 상태
+  bool _schoolLocked = false;
+  int _schoolMemberCount = 0;
+  int _schoolThreshold = 10;
+  int _schoolRemaining = 10;
   static const _tapLimit = 2;
   static const _prefKey = 'preview_taps_school';
   static const _lurkerReadKey = 'school_lurker_reads';
@@ -77,21 +84,54 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
         final activeIdx = activeChildId == null
             ? 0
             : children.indexWhere((c) => c['id'] == activeChildId);
+        final resolvedIdx = activeIdx >= 0 ? activeIdx : 0;
         setState(() {
           _isMember = canAccess;
           // auth_pending 중이면 lurker도 아닌 '인증 대기' 상태로 처리
           _isLurker = !canAccess && !authPending;
           _authPending = authPending && !isAdmin;
+          _isAdmin = isAdmin;
           _schoolName = profile['school_name'] as String? ?? '';
           _grade = profile['grade'] as int? ?? 1;
           _children = children;
-          _selectedChildIdx = activeIdx >= 0 ? activeIdx : 0;
+          _selectedChildIdx = resolvedIdx;
           _tabController = tabs;
           _loading = false;
         });
+        if (canAccess && !isAdmin) {
+          final schoolCode = children.isNotEmpty && resolvedIdx < children.length
+              ? children[resolvedIdx]['school_code'] as String?
+              : null;
+          await _loadUnlockStatus(schoolCode);
+        }
       }
     } catch (_) {
       await _loadPreview();
+    }
+  }
+
+  /// 학교 게시판 언락 현황 조회 — 지역/학원과 달리 학교 게시판만 같은 학교
+  /// 정회원이 일정 인원 모여야 열린다.
+  Future<void> _loadUnlockStatus(String? schoolCode) async {
+    if (schoolCode == null || schoolCode.isEmpty) {
+      if (mounted) setState(() => _schoolLocked = false);
+      return;
+    }
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.get('/schools/$schoolCode/unlock-status');
+      final data = Map<String, dynamic>.from(resp.data as Map);
+      if (mounted) {
+        setState(() {
+          _schoolLocked = !(data['unlocked'] as bool? ?? true);
+          _schoolMemberCount = data['member_count'] as int? ?? 0;
+          _schoolThreshold = data['threshold'] as int? ?? _schoolThreshold;
+          _schoolRemaining = data['remaining'] as int? ?? 0;
+        });
+      }
+    } catch (_) {
+      // 조회 실패 시 잠그지 않음 (서버 오류로 접근을 막지 않기 위함)
+      if (mounted) setState(() => _schoolLocked = false);
     }
   }
 
@@ -104,6 +144,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       _selectedChildIdx = idx;
       if (tc.index != 0) tc.animateTo(0);
     });
+    if (!_isAdmin) await _loadUnlockStatus(_children[idx]['school_code'] as String?);
     if (childId == null) return;
     try {
       final dio = ref.read(dioProvider);
@@ -111,6 +152,27 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       bumpBoardRefresh(ref);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('자녀 전환 실패: $e')));
+    }
+  }
+
+  /// 언락 안내 화면의 "초대하기" — 초대 링크를 발급해 클립보드에 복사한다.
+  Future<void> _shareInvite() async {
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.post('/auth/invite/generate');
+      final deeplink = resp.data['deeplink'] as String? ?? '';
+      if (deeplink.isEmpty) return;
+      await Clipboard.setData(ClipboardData(text: deeplink));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('초대 링크가 복사됐어요! 카카오톡 등에 붙여넣어 같은 학교 학부모를 초대해보세요.'),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('초대 링크 생성 실패: $e')));
     }
   }
 
@@ -214,17 +276,32 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
           ? (selChild['grade'] as int? ?? _grade)
           : _grade;
       final selectedChildId = selChild?['id'] as int?;
+      final appBarTitle = hasMultiChild
+          ? _SchoolDropdownTitle(
+              children: _children,
+              selectedIdx: _selectedChildIdx,
+              onChanged: (idx) => _onSelectChild(idx, tc),
+            )
+          : Text(displaySchool.isNotEmpty ? displaySchool : '학교 게시판',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15));
+
+      // 같은 학교 정회원이 기준 인원 미만이면 게시판 대신 언락 안내를 보여준다.
+      if (_schoolLocked) {
+        return Scaffold(
+          appBar: AppBar(title: appBarTitle),
+          body: _SchoolLockedView(
+            schoolName: displaySchool,
+            memberCount: _schoolMemberCount,
+            threshold: _schoolThreshold,
+            remaining: _schoolRemaining,
+            onInvite: _shareInvite,
+          ),
+        );
+      }
 
       return Scaffold(
         appBar: AppBar(
-          title: hasMultiChild
-              ? _SchoolDropdownTitle(
-                  children: _children,
-                  selectedIdx: _selectedChildIdx,
-                  onChanged: (idx) => _onSelectChild(idx, tc),
-                )
-              : Text(displaySchool.isNotEmpty ? displaySchool : '학교 게시판',
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+          title: appBarTitle,
           actions: [
             IconButton(icon: const Icon(Icons.search), onPressed: () => context.push('/search')),
           ],
@@ -303,6 +380,78 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
         onTap: _onPreviewTap,
         onCertify: () => context.go('/auth/school-select'),
         lurkerReadsLeft: null,
+      ),
+    );
+  }
+}
+
+// ── 학교 게시판 언락 안내 (같은 학교 정회원 N명 모임 전) ──────────────
+class _SchoolLockedView extends StatelessWidget {
+  final String schoolName;
+  final int memberCount;
+  final int threshold;
+  final int remaining;
+  final VoidCallback onInvite;
+
+  const _SchoolLockedView({
+    required this.schoolName,
+    required this.memberCount,
+    required this.threshold,
+    required this.remaining,
+    required this.onInvite,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final progress = threshold == 0 ? 0.0 : (memberCount / threshold).clamp(0.0, 1.0);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.groups_outlined, size: 56, color: theme.colorScheme.primary),
+            const SizedBox(height: 16),
+            Text(
+              schoolName.isNotEmpty ? '$schoolName 게시판, 곧 열려요!' : '학교 게시판, 곧 열려요!',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '같은 학교 학부모가 모이면 자동으로 열려요.\n지금 $memberCount명 모였고, $remaining명 더 모이면 이용할 수 있어요.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, height: 1.5, color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 20),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: LinearProgressIndicator(
+                value: progress,
+                minHeight: 10,
+                backgroundColor: Colors.grey.shade200,
+                valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text('$memberCount / $threshold명', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            const SizedBox(height: 28),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onInvite,
+                icon: const Icon(Icons.person_add_alt_1, size: 18),
+                label: const Text('같은 학교 학부모 초대하기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('지역·학원 게시판은 지금 바로 이용할 수 있어요',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+          ],
+        ),
       ),
     );
   }

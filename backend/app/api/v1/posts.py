@@ -48,18 +48,21 @@ async def list_posts(
         grade = (active.grade if active else None) or user.grade
         class_num = (active.class_num if active else None) or user.class_num
 
-    return await post_service.list_posts(
-        board_type=board_type,
-        school_code=school_code,
-        grade=grade,
-        class_num=class_num,
-        size=size,
-        user=user,
-        db=db,
-        q=q,
-        sort=sort,
-        cursor=cursor,
-    )
+    try:
+        return await post_service.list_posts(
+            board_type=board_type,
+            school_code=school_code,
+            grade=grade,
+            class_num=class_num,
+            size=size,
+            user=user,
+            db=db,
+            q=q,
+            sort=sort,
+            cursor=cursor,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
 
 
 @router.post("", response_model=PostResponse, status_code=status.HTTP_201_CREATED)

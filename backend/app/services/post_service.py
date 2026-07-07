@@ -7,6 +7,11 @@ from app.core.profanity import check_profanity
 from app.models.service_models import Block, Comment, Like, Post, Report, Scrap, School, User
 from app.schemas.post import PostCreate, PostListItem, PostResponse, ScrapResponse, PostUpdate
 from app.services import temperature_service
+from app.services.school_unlock_service import get_unlock_status
+
+# 지역/학원 게시판은 자유롭게 열되, 학교 게시판(school/grade)만 같은 학교
+# 정회원이 일정 인원 모여야 잠금 해제된다 (school_unlock_service 참고).
+SCHOOL_GATED_BOARDS = {"school", "grade"}
 
 REPORT_AUTO_HIDE_THRESHOLD = 5
 
@@ -49,6 +54,11 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
         )).scalar_one_or_none()
         if row:
             school_code = row
+
+    if req.board_type in SCHOOL_GATED_BOARDS and not user.is_admin:
+        unlock = await get_unlock_status(school_code, db)
+        if not unlock["unlocked"]:
+            raise ValueError("학교 게시판이 아직 잠겨 있어요. 같은 학교 학부모가 더 모이면 열려요.")
 
     post = Post(
         author_id=user.id,
@@ -127,6 +137,11 @@ async def list_posts(
     cursor: int | None = None,  # cursor 기반 페이지네이션: 마지막 post.id
 ) -> "PostListResponse":
     from app.schemas.post import PostListResponse
+
+    if board_type in SCHOOL_GATED_BOARDS and not user.is_admin:
+        unlock = await get_unlock_status(school_code, db)
+        if not unlock["unlocked"]:
+            raise ValueError("학교 게시판이 아직 잠겨 있어요. 같은 학교 학부모가 더 모이면 열려요.")
 
     # 차단한 유저의 게시글 제외
     blocked_ids_result = await db.execute(select(Block.blocked_user_id).where(Block.user_id == user.id))
