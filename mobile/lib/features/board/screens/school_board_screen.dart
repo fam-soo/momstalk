@@ -26,7 +26,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   bool _isMember = false;
   bool _isLurker = false; // 로그인 했지만 미인증
   String _schoolName = '';
-  int _grade = 1;
+  int? _grade; // null이면 학년 미선택 — 학년 탭을 잠근다
   List<Map<String, dynamic>> _previewPosts = [];
   int _previewTaps = 0;
   int _lurkerReads = 0; // lurker 읽기 횟수 (계정당 1회, 초기화 없음)
@@ -149,7 +149,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
           _authPending = authPending && !isAdmin;
           _isAdmin = isAdmin;
           _schoolName = profile['school_name'] as String? ?? '';
-          _grade = profile['grade'] as int? ?? 1;
+          _grade = profile['grade'] as int?;
           _children = children;
           _selectedChildIdx = resolvedIdx;
           _tabController = tabs;
@@ -338,8 +338,9 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
           ? (selChild['school_name'] as String? ?? _schoolName)
           : _schoolName;
       final displayGrade = selChild != null
-          ? (selChild['grade'] as int? ?? _grade)
+          ? selChild['grade'] as int?
           : _grade;
+      final hasGrade = displayGrade != null;
       final selectedChildId = selChild?['id'] as int?;
       final appBarTitle = hasMultiChild
           ? _SchoolDropdownTitle(
@@ -385,9 +386,26 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
             preferredSize: const Size.fromHeight(48),
             child: TabBar(
               controller: tc,
+              onTap: (i) {
+                if (i == 1 && !hasGrade) {
+                  tc.animateTo(0);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: const Text('학년이 등록되어 있지 않아요. 내정보에서 학년을 선택해주세요.'),
+                    action: SnackBarAction(label: '내정보로', onPressed: () => context.go('/my')),
+                  ));
+                }
+              },
               tabs: [
                 const Tab(text: '학교 전체'),
-                Tab(text: '$displayGrade학년'),
+                Tab(
+                  child: hasGrade
+                      ? Text('$displayGrade학년')
+                      : Row(mainAxisSize: MainAxisSize.min, children: const [
+                          Icon(Icons.lock_outline, size: 14),
+                          SizedBox(width: 4),
+                          Text('학년 미선택'),
+                        ]),
+                ),
               ],
             ),
           ),
@@ -401,16 +419,31 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
               boardType: 'school',
               childId: selectedChildId,
             ),
-            PostListWidget(
-              key: ValueKey('grade-$displaySchool-$displayGrade-$selectedChildId'),
-              boardType: 'grade',
-              childId: selectedChildId,
-            ),
+            if (hasGrade)
+              PostListWidget(
+                key: ValueKey('grade-$displaySchool-$displayGrade-$selectedChildId'),
+                boardType: 'grade',
+                childId: selectedChildId,
+              )
+            else
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.lock_outline, size: 40, color: Colors.grey.shade400),
+                    const SizedBox(height: 12),
+                    Text('학년 정보가 없어 학년 게시판을 이용할 수 없어요.\n내정보에서 학년을 선택해주세요.',
+                        textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
+                    const SizedBox(height: 12),
+                    OutlinedButton(onPressed: () => context.go('/my'), child: const Text('내정보로 이동')),
+                  ]),
+                ),
+              ),
           ],
         ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () {
-            final boardType = tc.index == 0 ? 'school' : 'grade';
+            final boardType = tc.index == 1 && hasGrade ? 'grade' : 'school';
             context.push('/board/write?board_type=$boardType');
           },
           icon: const Icon(Icons.edit_outlined),

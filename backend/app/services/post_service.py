@@ -70,6 +70,9 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
         if not unlock["unlocked"]:
             raise ValueError("학교 게시판이 아직 잠겨 있어요. 같은 학교 학부모가 더 모이면 열려요.")
 
+    if req.board_type == "grade" and not grade and not user.is_admin:
+        raise ValueError("학년 정보가 없어 학년 게시판을 이용할 수 없어요. 내정보에서 학년을 선택해주세요.")
+
     post = Post(
         author_id=user.id,
         board_type=req.board_type,
@@ -153,6 +156,9 @@ async def list_posts(
         unlock = await get_unlock_status(school_code, db)
         if not unlock["unlocked"]:
             raise ValueError("학교 게시판이 아직 잠겨 있어요. 같은 학교 학부모가 더 모이면 열려요.")
+
+    if board_type == "grade" and not grade and not user.is_admin:
+        raise ValueError("학년 정보가 없어 학년 게시판을 이용할 수 없어요. 내정보에서 학년을 선택해주세요.")
 
     # 차단한 유저의 게시글 제외
     blocked_ids_result = await db.execute(select(Block.blocked_user_id).where(Block.user_id == user.id))

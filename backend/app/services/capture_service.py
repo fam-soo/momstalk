@@ -22,6 +22,53 @@ from app.services.notification_service import notify_user
 _ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/heic", "image/heif"}
 
 
+async def _upsert_child(
+    user: User,
+    school_code: str,
+    school_name: str,
+    grade: int | None,
+    class_num: int | None,
+    school_type: str | None,
+    region: str | None,
+    db: AsyncSession,
+) -> UserChild:
+    """school_code 기준으로 UserChild를 만들거나 갱신한다.
+
+    예전엔 capture_type='child_add'(자녀 추가)일 때만 이 로직을 태워서,
+    최초 가입 승인(capture_type='initial')된 유저는 legacy users.school_code/
+    grade만 채워지고 UserChild 행이 아예 없었다. 학교 게시판 언락 인원,
+    관리자 대시보드, "학교별 인원 조회"가 모두 UserChild.school_code 기준으로
+    집계하기 때문에, 최초 가입자는 두 번째 자녀를 추가하기 전까지 이 모든
+    카운팅에서 통째로 빠져 있었다 — 최초 가입 승인 시에도 항상 UserChild를
+    만들도록 통일한다.
+    """
+    existing = (await db.execute(
+        select(UserChild).where(UserChild.user_id == user.id, UserChild.school_code == school_code)
+    )).scalar_one_or_none()
+    if existing:
+        existing.grade = grade
+        if class_num:
+            existing.class_num = class_num
+        if school_type:
+            existing.school_type = school_type
+        child = existing
+    else:
+        child = UserChild(
+            user_id=user.id,
+            school_code=school_code,
+            school_name=school_name,
+            grade=grade,
+            class_num=class_num,
+            school_type=school_type or None,
+            region=region or user.region,
+        )
+        db.add(child)
+        await db.flush()
+    if not user.active_child_id:
+        user.active_child_id = child.id
+    return child
+
+
 async def submit_capture(
     user: User,
     image_data: bytes | None,
@@ -148,33 +195,10 @@ async def _auto_approve_trusted(
     capture.image_data = None
     capture.image_content_type = None
 
-    if capture.capture_type == "child_add":
-        from sqlalchemy import select as _select
-        existing_child = (await db.execute(
-            _select(UserChild).where(
-                UserChild.user_id == user.id,
-                UserChild.school_code == school_code,
-            )
-        )).scalar_one_or_none()
-        if existing_child:
-            existing_child.grade = grade
-            existing_child.class_num = class_num
-            existing_child.school_type = school_type or existing_child.school_type
-        else:
-            child = UserChild(
-                user_id=user.id,
-                school_code=school_code,
-                school_name=school_name,
-                grade=grade,
-                class_num=class_num,
-                school_type=school_type or None,
-                region=region or user.region,
-            )
-            db.add(child)
-            await db.flush()
-            if not user.active_child_id:
-                user.active_child_id = child.id
-    else:
+    await _upsert_child(user, school_code, school_name, grade, class_num, school_type, region, db)
+
+    if capture.capture_type != "child_add":
+        # 최초 가입: 정회원 승급 + legacy 필드 동기화 (UserChild 생성은 위에서 이미 처리)
         user.member_grade = "member"
         user.auth_pending = False
         user.school_code = school_code
@@ -203,36 +227,24 @@ async def approve_capture(capture_id: int, admin: User, db: AsyncSession) -> Non
     capture.image_data = None
     capture.image_content_type = None
 
+    # 캡처 타입과 무관하게 항상 UserChild를 만들거나 갱신한다. 예전엔
+    # capture_type='child_add'일 때만 이걸 했어서, 최초 가입 승인만 거친
+    # 유저는 UserChild가 아예 없어 학교별 인원 집계에서 통째로 빠졌었다.
+    was_first_child = user.active_child_id is None
+    await _upsert_child(
+        user,
+        capture.input_school_code,
+        capture.input_school_name,
+        capture.input_grade,
+        capture.input_class_num,
+        capture.input_school_type,
+        capture.input_region,
+        db,
+    )
+
     if capture.capture_type == "child_add":
-        # 자녀 추가 승인: UserChild 생성 또는 학년 업데이트
-        existing_child = (await db.execute(
-            select(UserChild).where(
-                UserChild.user_id == user.id,
-                UserChild.school_code == capture.input_school_code,
-            )
-        )).scalar_one_or_none()
-
-        if existing_child:
-            existing_child.grade = capture.input_grade
-            if capture.input_class_num:
-                existing_child.class_num = capture.input_class_num
-            child = existing_child
-        else:
-            child = UserChild(
-                user_id=user.id,
-                school_code=capture.input_school_code,
-                school_name=capture.input_school_name,
-                grade=capture.input_grade,
-                class_num=capture.input_class_num,
-                school_type=capture.input_school_type,
-                region=capture.input_region or user.region,
-            )
-            db.add(child)
-            await db.flush()
-
-        if not user.active_child_id:
-            user.active_child_id = child.id
-            # 첫 자녀인 경우에만 deprecated 필드 동기화
+        if was_first_child:
+            # 첫 자녀인 경우에만 deprecated 필드 동기화 (기존 동작 유지)
             user.school_code = capture.input_school_code
             user.school_name = capture.input_school_name
             user.grade = capture.input_grade
