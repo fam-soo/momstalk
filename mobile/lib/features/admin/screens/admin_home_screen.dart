@@ -680,6 +680,21 @@ class _UserTile extends StatelessWidget {
     _ => g,
   };
 
+  /// 등록된 모든 자녀의 학교를 보여준다. users.school_name(레거시, 첫 자녀
+  /// 등록 시에만 동기화)만 보면 다자녀·학교 변경 계정에서 실제와 달라 보이는
+  /// 문제가 있어, GET /admin/users가 내려주는 children 배열을 우선 사용한다.
+  String _schoolsLabel(Map<String, dynamic> user) {
+    final children = (user['children'] as List?)?.cast<Map>() ?? [];
+    if (children.isEmpty) return (user['school_name'] as String?) ?? '-';
+    return children.map((c) {
+      final name = c['school_name'] as String? ?? '-';
+      final grade = c['grade'] as int?;
+      final active = c['is_active'] == true;
+      final label = grade != null ? '$name($grade학년)' : name;
+      return children.length > 1 && active ? '$label★' : label;
+    }).join(', ');
+  }
+
   @override
   Widget build(BuildContext context) {
     final isBanned = user['is_banned'] as bool? ?? false;
@@ -712,7 +727,7 @@ class _UserTile extends StatelessWidget {
         children: [
           const SizedBox(height: 2),
           Text(
-            '${user['school_name'] ?? '-'} · 가입 ${_timeAgo(user['created_at'] as String?)}'
+            '${_schoolsLabel(user)} · 가입 ${_timeAgo(user['created_at'] as String?)}'
             ' · 최근 접속 ${user['last_login_at'] != null ? _timeAgo(user['last_login_at'] as String?) : '기록 없음'}',
             style: const TextStyle(fontSize: 11),
             maxLines: 1,

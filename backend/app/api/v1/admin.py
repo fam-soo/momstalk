@@ -165,6 +165,19 @@ async def list_users(
             "nickname": u.nickname,
             "school_name": u.school_name,
             "grade": u.grade,
+            # 다자녀 계정은 등록된 자녀 수만큼 학교가 있을 수 있다. 위 school_name/
+            # grade는 "첫 자녀 등록 시"에만 동기화되는 레거시 필드라 다자녀·학교
+            # 변경 계정에서는 실제와 어긋난다 — 화면에서는 children을 우선 쓸 것.
+            "children": [
+                {
+                    "id": c.id,
+                    "school_name": c.school_name,
+                    "grade": c.grade,
+                    "school_type": c.school_type,
+                    "is_active": c.id == u.active_child_id,
+                }
+                for c in u.children
+            ],
             "member_grade": u.member_grade,
             "is_banned": u.is_banned,
             "is_trusted": u.is_trusted,
@@ -231,6 +244,16 @@ async def school_members(
                 "nickname": u.nickname,
                 "school_name": u.school_name,
                 "grade": u.grade,
+                "children": [
+                    {
+                        "id": c.id,
+                        "school_name": c.school_name,
+                        "grade": c.grade,
+                        "school_type": c.school_type,
+                        "is_active": c.id == u.active_child_id,
+                    }
+                    for c in u.children
+                ],
                 "member_grade": u.member_grade,
                 "is_banned": u.is_banned,
                 "is_trusted": u.is_trusted,
@@ -269,6 +292,16 @@ async def get_user_detail(
         "nickname": user.nickname,
         "school_name": user.school_name,
         "grade": user.grade,
+        "children": [
+            {
+                "id": c.id,
+                "school_name": c.school_name,
+                "grade": c.grade,
+                "school_type": c.school_type,
+                "is_active": c.id == user.active_child_id,
+            }
+            for c in user.children
+        ],
         "member_grade": user.member_grade,
         "is_banned": user.is_banned,
         "is_trusted": user.is_trusted,
@@ -613,18 +646,27 @@ async def get_stats(
     ))).fetchall()
     daily_signup = [{"date": str(r.d), "count": r.cnt} for r in daily_rows]
 
-    # 학교별 정회원 수 — 학교 게시판 언락 화면과 동일 기준(UserChild.school_code
-    # + member_grade='member', 관리자 제외)으로 집계해 대시보드 막대그래프에 사용.
+    # 학교별 정회원 수 — 학교 게시판 언락 화면(count_school_members)·관리자
+    # "학교별 인원 조회"와 정확히 같은 그룹 기준(UserChild.school_code +
+    # member_grade='member', 관리자 제외)으로 집계한다. 예전엔 School.school_name
+    # 으로 GROUP BY 했는데, school_code가 아닌 이름 기준이라 이론상 동명 학교가
+    # 있으면 다른 화면과 숫자가 어긋날 수 있었다 — code 기준으로 통일.
     school_rows = (await db.execute(
-        select(School.school_name, func.count(func.distinct(UserChild.user_id)).label("cnt"))
-        .join(UserChild, UserChild.school_code == School.school_code)
+        select(UserChild.school_code, func.count(func.distinct(UserChild.user_id)).label("cnt"))
         .join(User, User.id == UserChild.user_id)
-        .where(User.member_grade == "member", User.is_admin.is_(False))
-        .group_by(School.school_name)
+        .where(User.member_grade == "member", User.is_admin.is_(False), UserChild.school_code.isnot(None))
+        .group_by(UserChild.school_code)
         .order_by(func.count(func.distinct(UserChild.user_id)).desc())
         .limit(10)
     )).all()
-    by_school = [{"school_name": r.school_name, "member_count": r.cnt} for r in school_rows]
+    _school_codes = [r.school_code for r in school_rows]
+    _school_names = dict((await db.execute(
+        select(School.school_code, School.school_name).where(School.school_code.in_(_school_codes))
+    )).all()) if _school_codes else {}
+    by_school = [
+        {"school_name": _school_names.get(r.school_code, r.school_code), "member_count": r.cnt}
+        for r in school_rows
+    ]
 
     return {
         "users": {
