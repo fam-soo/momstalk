@@ -135,9 +135,10 @@ class Post(Base):
 
     id = Column(Integer, primary_key=True)
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    board_type = Column(String(20), nullable=False)     # grade / school / free / region
+    board_type = Column(String(20), nullable=False)     # grade / school / free / region / notice
     mention_tags = Column(JSON, nullable=True)           # free 게시판 @태그 ["region:기장군", "school:B100", "grade:1"]
-    school_code = Column(String(20), nullable=False)
+    school_code = Column(String(20), nullable=True)      # 일반 게시글은 항상 값 있음. 공지사항만 NULL 가능(지역/전체 타겟)
+    target_region = Column(String(50), nullable=True)    # 공지사항 지역 타겟 (school_code 미지정 시). 일반 게시글은 미사용
     grade = Column(Integer, nullable=True)              # class / grade 게시판에서만 사용
     class_num = Column(Integer, nullable=True)          # class 게시판에서만 사용
     title = Column(String(200), nullable=False)

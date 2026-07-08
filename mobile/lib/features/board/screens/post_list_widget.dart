@@ -293,6 +293,7 @@ class _PostCardState extends State<PostCard> {
     return Consumer(builder: (ctx, ref, _) {
       final isPinned = post['is_pinned'] == true;
       final isHot = post['is_hot'] == true;
+      final isNotice = post['is_notice'] == true;
       final tags = (post['mention_tags'] as List<dynamic>? ?? []).cast<String>();
       final time = _relativeTime(post['created_at'] as String?);
 
@@ -330,7 +331,16 @@ class _PostCardState extends State<PostCard> {
               ]),
               const SizedBox(height: 8),
               Row(children: [
-                if (isHot) Container(
+                if (isNotice) Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  margin: const EdgeInsets.only(right: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: const Text('📌공지', style: TextStyle(fontSize: 10, color: Colors.redAccent, fontWeight: FontWeight.w700)),
+                ),
+                if (!isNotice && isHot) Container(
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   margin: const EdgeInsets.only(right: 6),
                   decoration: BoxDecoration(
@@ -339,7 +349,7 @@ class _PostCardState extends State<PostCard> {
                   ),
                   child: const Text('🔥인기', style: TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.w700)),
                 ),
-                if (isPinned && !isHot) Container(
+                if (!isNotice && isPinned && !isHot) Container(
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   margin: const EdgeInsets.only(right: 6),
                   decoration: BoxDecoration(

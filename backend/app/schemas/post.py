@@ -80,6 +80,7 @@ class PostListItem(BaseModel):
     mention_tags: list[str] = []
     is_liked: bool = False
     is_pinned: bool = False
+    is_notice: bool = False
     is_hot: bool = False
     created_at: datetime
 

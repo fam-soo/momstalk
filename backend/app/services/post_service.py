@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.exc import IntegrityError
 
 from app.core.profanity import check_profanity
@@ -45,8 +45,18 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
     school_code = (active.school_code if active else None) or user.school_code
     grade = (active.grade if active else None) or user.grade
     class_num = (active.class_num if active else None) or user.class_num
+    target_region = None
 
-    if user.is_admin and req.target_school_code:
+    if req.board_type == "notice":
+        # 공지사항 타겟 범위: 학교 지정 > 지역 지정 > 전체(둘 다 미지정)
+        if req.target_school_code:
+            school_code = req.target_school_code
+        elif req.target_region:
+            school_code = None
+            target_region = req.target_region
+        else:
+            school_code = None  # 전체 공지 — 모든 게시판 상단에 노출
+    elif user.is_admin and req.target_school_code:
         school_code = req.target_school_code
     elif user.is_admin and req.target_region and req.board_type == "region":
         row = (await db.execute(
@@ -64,6 +74,7 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
         author_id=user.id,
         board_type=req.board_type,
         school_code=school_code,
+        target_region=target_region,
         grade=grade if req.board_type in ("class", "grade") else None,
         class_num=class_num if req.board_type == "class" else None,
         title=req.title,
@@ -155,11 +166,12 @@ async def list_posts(
     if q:
         query = query.where(or_(Post.title.ilike(f"%{q}%"), Post.content.ilike(f"%{q}%")))
 
+    _DEFAULT_REGION = "양천구"
+    effective_region = user.region or _DEFAULT_REGION
+
     # 관리자: 모든 지역/학교 필터 없이 전체 조회
     if not user.is_admin:
-        _DEFAULT_REGION = "양천구"
         if board_type == "region":
-            effective_region = user.region or _DEFAULT_REGION
             # 일반 유저 글: 같은 지역 유저의 school_code 기준
             # 관리자 공지: School 테이블의 region 기준 (등록된 유저 없어도 표시)
             query = query.where(
@@ -207,6 +219,26 @@ async def list_posts(
         posts = posts[:size]
     next_cursor = posts[-1].id if has_more and posts else None
 
+    # 공지사항: 이 게시판 범위(학교/지역/전체)에 해당하는 공지를 최상단에 고정.
+    # 페이지네이션과 무관하게 항상 붙어야 하므로 첫 페이지(cursor 없음)에만 붙인다.
+    notice_ids: set[int] = set()
+    if cursor is None and board_type != "notice":
+        notice_query = select(Post).where(
+            Post.board_type == "notice", Post.is_hidden == False, Post.is_deleted == False
+        )
+        _global_notice = and_(Post.school_code.is_(None), Post.target_region.is_(None))
+        if board_type == "region":
+            notice_query = notice_query.where(or_(Post.target_region == effective_region, _global_notice))
+        elif board_type in ("school", "grade"):
+            notice_query = notice_query.where(or_(Post.school_code == school_code, _global_notice))
+        else:  # free
+            notice_query = notice_query.where(_global_notice)
+        notice_query = notice_query.order_by(Post.created_at.desc()).limit(3)
+        notices = list((await db.execute(notice_query)).scalars().all())
+        if notices:
+            notice_ids = {p.id for p in notices}
+            posts = notices + [p for p in posts if p.id not in notice_ids]
+
     # 유저 @태그 집합
     user_tags: set[str] = set()
     if user.region:
@@ -217,6 +249,8 @@ async def list_posts(
         user_tags.add(f"{user.grade}학년")
 
     def _is_pinned(p: Post) -> bool:
+        if p.id in notice_ids:
+            return False
         return bool(user_tags & set(p.mention_tags or []))
 
     def _hot_score(p: Post, comment_count: int) -> float:
@@ -246,21 +280,27 @@ async def list_posts(
             select(func.count()).where(Comment.post_id == post.id, Comment.is_hidden == False, Comment.is_deleted == False)
         )).scalar() or 0
         comment_counts[post.id] = cnt
+        if post.id in notice_ids:
+            continue  # 공지는 인기글 산정에서 제외
         score = _hot_score(post, cnt)
         if score >= 3:
             hot_scores[post.id] = score
 
+    # 인기글은 최대 3개로 제한 (게시판 전체 글이 적을 때 과도하게 붙는 것 방지)
     top_hot_ids = set(sorted(hot_scores, key=lambda pid: hot_scores[pid], reverse=True)[:3])
 
-    # 최신순일 때만 pinned/hot 재정렬 (인기순은 like_count 정렬 유지)
-    if sort == "recent":
-        def _sort_key(p: Post):
+    # 공지는 정렬 기준과 무관하게 항상 최상단, 그다음 인기글/고정글(최신순일 때만), 나머지는 기존 정렬 유지
+    def _sort_key(p: Post):
+        if p.id in notice_ids:
+            return (0, -p.created_at.timestamp())
+        if sort == "recent":
             if p.id in top_hot_ids:
-                return (0, -p.created_at.timestamp())
-            if _is_pinned(p):
                 return (1, -p.created_at.timestamp())
-            return (2, -p.created_at.timestamp())
-        posts = sorted(posts, key=_sort_key)
+            if _is_pinned(p):
+                return (2, -p.created_at.timestamp())
+            return (3, -p.created_at.timestamp())
+        return (1, 0)  # 인기순 등 기존 정렬 유지 (안정 정렬이므로 원래 순서 보존)
+    posts = sorted(posts, key=_sort_key)
 
     author_ids = {p.author_id for p in posts}
     authors_result = await db.execute(select(User).where(User.id.in_(author_ids)))
@@ -287,6 +327,7 @@ async def list_posts(
             mention_tags=tags,
             is_liked=post.id in liked_ids,
             is_pinned=_is_pinned(post),
+            is_notice=post.id in notice_ids,
             is_hot=post.id in top_hot_ids,
             created_at=post.created_at,
         ))
