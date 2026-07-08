@@ -20,7 +20,7 @@ def upgrade() -> None:
     op.create_table(
         "notifications",
         sa.Column("id", sa.Integer, primary_key=True),
-        sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("type", sa.String(30), nullable=False),
         sa.Column("title", sa.String(200), nullable=False),
         sa.Column("body", sa.Text, nullable=True),
