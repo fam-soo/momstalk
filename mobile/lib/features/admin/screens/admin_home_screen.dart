@@ -151,7 +151,7 @@ class _StatsTabState extends ConsumerState<_StatsTab> {
             _AlertBanner(captures: pending['captures'] as int, reports: pending['reports'] as int),
           const SizedBox(height: 10),
 
-          // 사용자 현황
+          // 사용자 현황 (막대그래프 공간 확보를 위해 카드 높이를 축소)
           _SectionTitle('사용자'),
           _StatGrid([
             _StatItem('전체', '${users['total']}명', Icons.people, Colors.blue),
@@ -160,30 +160,29 @@ class _StatsTabState extends ConsumerState<_StatsTab> {
             _StatItem('오늘 가입', '+${users['new_today']}명', Icons.person_add, Colors.teal),
             _StatItem('이번주', '+${users['new_week']}명', Icons.calendar_today, Colors.indigo),
             _StatItem('정지/차단', '${(users['suspended'] as int) + (users['banned'] as int)}명', Icons.block, Colors.red),
-          ]),
-          const SizedBox(height: 12),
+          ], aspectRatio: 2.7),
+          const SizedBox(height: 8),
 
-          // 게시글 현황
-          _SectionTitle('게시글'),
+          // 게시글 + 학원 후기 현황 (한 그리드로 압축)
+          _SectionTitle('게시글 · 학원 후기'),
           _StatGrid([
-            _StatItem('전체', '${posts['total']}건', Icons.article, Colors.purple),
+            _StatItem('게시글 전체', '${posts['total']}건', Icons.article, Colors.purple),
             _StatItem('오늘', '+${posts['today']}건', Icons.today, Colors.deepPurple),
             _StatItem('이번주', '+${posts['week']}건', Icons.calendar_month, Colors.purple.shade300),
             _StatItem('블라인드', '${posts['hidden']}건', Icons.hide_source, Colors.orange),
-          ]),
-          const SizedBox(height: 12),
-
-          // 학원 후기
-          _SectionTitle('학원 후기'),
-          _StatGrid([
-            _StatItem('전체', '${reviews['total']}건', Icons.rate_review, Colors.cyan),
-            _StatItem('블라인드', '${reviews['hidden']}건', Icons.hide_source, Colors.orange),
-          ]),
-          const SizedBox(height: 12),
+            _StatItem('후기 전체', '${reviews['total']}건', Icons.rate_review, Colors.cyan),
+            _StatItem('후기 블라인드', '${reviews['hidden']}건', Icons.hide_source, Colors.orange),
+          ], aspectRatio: 2.7),
+          const SizedBox(height: 8),
 
           // 7일 가입 추이
           _SectionTitle('최근 7일 가입 추이'),
           _DailyChart(daily: List<Map<String, dynamic>>.from(_data!['daily_signup'] ?? [])),
+          const SizedBox(height: 8),
+
+          // 학교별 가입 인원 (학교 게시판 언락 화면과 동일 기준)
+          _SectionTitle('학교별 가입 인원 (정회원 기준, 상위 10곳)'),
+          _SchoolBarChart(bySchool: List<Map<String, dynamic>>.from(_data!['by_school'] ?? [])),
         ],
       ),
     );
@@ -241,7 +240,8 @@ class _StatItem {
 
 class _StatGrid extends StatelessWidget {
   final List<_StatItem> items;
-  const _StatGrid(this.items);
+  final double aspectRatio;
+  const _StatGrid(this.items, {this.aspectRatio = 2.0});
 
   @override
   Widget build(BuildContext context) {
@@ -249,9 +249,9 @@ class _StatGrid extends StatelessWidget {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: items.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        childAspectRatio: 2.0,
+        childAspectRatio: aspectRatio,
         crossAxisSpacing: 8,
         mainAxisSpacing: 8,
       ),
@@ -324,6 +324,72 @@ class _DailyChart extends StatelessWidget {
                 Text(dateStr, style: const TextStyle(fontSize: 9, color: Colors.grey)),
               ]),
             ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _SchoolBarChart extends StatelessWidget {
+  final List<Map<String, dynamic>> bySchool;
+  const _SchoolBarChart({required this.bySchool});
+
+  @override
+  Widget build(BuildContext context) {
+    if (bySchool.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: const Text('아직 학교별 가입자 데이터가 없습니다.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+      );
+    }
+    final maxVal = bySchool.map((s) => s['member_count'] as int).reduce((a, b) => a > b ? a : b);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: bySchool.map((s) {
+          final name = s['school_name'] as String? ?? '-';
+          final cnt = s['member_count'] as int;
+          final ratio = maxVal > 0 ? cnt / maxVal : 0.0;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(children: [
+              SizedBox(
+                width: 92,
+                child: Text(name, style: const TextStyle(fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              Expanded(
+                child: LayoutBuilder(builder: (ctx, constraints) {
+                  return Stack(children: [
+                    Container(height: 16, decoration: BoxDecoration(
+                      color: Colors.grey.shade200, borderRadius: BorderRadius.circular(3))),
+                    Container(
+                      height: 16,
+                      width: constraints.maxWidth * ratio.clamp(0.02, 1.0),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF4A90D9),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ]);
+                }),
+              ),
+              const SizedBox(width: 6),
+              SizedBox(
+                width: 36,
+                child: Text('$cnt명', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600), textAlign: TextAlign.right),
+              ),
+            ]),
           );
         }).toList(),
       ),

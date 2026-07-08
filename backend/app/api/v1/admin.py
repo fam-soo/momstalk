@@ -22,6 +22,7 @@ from app.models.service_models import (
     Post,
     ProfanityWord,
     Report,
+    School,
     User,
     UserChild,
     UserWarning,
@@ -612,6 +613,19 @@ async def get_stats(
     ))).fetchall()
     daily_signup = [{"date": str(r.d), "count": r.cnt} for r in daily_rows]
 
+    # 학교별 정회원 수 — 학교 게시판 언락 화면과 동일 기준(UserChild.school_code
+    # + member_grade='member', 관리자 제외)으로 집계해 대시보드 막대그래프에 사용.
+    school_rows = (await db.execute(
+        select(School.school_name, func.count(func.distinct(UserChild.user_id)).label("cnt"))
+        .join(UserChild, UserChild.school_code == School.school_code)
+        .join(User, User.id == UserChild.user_id)
+        .where(User.member_grade == "member", User.is_admin.is_(False))
+        .group_by(School.school_name)
+        .order_by(func.count(func.distinct(UserChild.user_id)).desc())
+        .limit(10)
+    )).all()
+    by_school = [{"school_name": r.school_name, "member_count": r.cnt} for r in school_rows]
+
     return {
         "users": {
             "total": total_users,
@@ -637,6 +651,7 @@ async def get_stats(
             "hidden": hidden_reviews,
         },
         "daily_signup": daily_signup,
+        "by_school": by_school,
     }
 
 
