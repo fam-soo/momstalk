@@ -151,7 +151,7 @@ class _StatsTabState extends ConsumerState<_StatsTab> {
             _AlertBanner(captures: pending['captures'] as int, reports: pending['reports'] as int),
           const SizedBox(height: 10),
 
-          // 사용자 현황 (막대그래프 공간 확보를 위해 카드 높이를 축소)
+          // 사용자 현황 (한 줄에 6개 — 카드 폭을 절반으로 줄여 더 압축)
           _SectionTitle('사용자'),
           _StatGrid([
             _StatItem('전체', '${users['total']}명', Icons.people, Colors.blue),
@@ -160,7 +160,7 @@ class _StatsTabState extends ConsumerState<_StatsTab> {
             _StatItem('오늘 가입', '+${users['new_today']}명', Icons.person_add, Colors.teal),
             _StatItem('이번주', '+${users['new_week']}명', Icons.calendar_today, Colors.indigo),
             _StatItem('정지/차단', '${(users['suspended'] as int) + (users['banned'] as int)}명', Icons.block, Colors.red),
-          ], aspectRatio: 2.7),
+          ], crossAxisCount: 6, aspectRatio: 1.3),
           const SizedBox(height: 8),
 
           // 게시글 + 학원 후기 현황 (한 그리드로 압축)
@@ -172,7 +172,7 @@ class _StatsTabState extends ConsumerState<_StatsTab> {
             _StatItem('블라인드', '${posts['hidden']}건', Icons.hide_source, Colors.orange),
             _StatItem('후기 전체', '${reviews['total']}건', Icons.rate_review, Colors.cyan),
             _StatItem('후기 블라인드', '${reviews['hidden']}건', Icons.hide_source, Colors.orange),
-          ], aspectRatio: 2.7),
+          ], crossAxisCount: 6, aspectRatio: 1.3),
           const SizedBox(height: 8),
 
           // 7일 가입 추이
@@ -183,6 +183,14 @@ class _StatsTabState extends ConsumerState<_StatsTab> {
           // 학교별 가입 인원 (학교 게시판 언락 화면과 동일 기준)
           _SectionTitle('학교별 가입 인원 (정회원 기준, 상위 10곳)'),
           _SchoolBarChart(bySchool: List<Map<String, dynamic>>.from(_data!['by_school'] ?? [])),
+          const SizedBox(height: 8),
+
+          // 7일 게시글 작성 추이 — 가입 추이만으로는 "가입은 했는데 활동은
+          // 하는지"를 알 수 없어서, 실제 콘텐츠 생산 활동을 보여주는 그래프를
+          // 추가로 추천함. 가입 추이와 나란히 비교하면 온보딩 이후 이탈 여부를
+          // 가늠할 수 있다.
+          _SectionTitle('최근 7일 게시글 작성 추이'),
+          _DailyChart(daily: List<Map<String, dynamic>>.from(_data!['daily_posts'] ?? []), color: Colors.deepPurple),
         ],
       ),
     );
@@ -241,24 +249,28 @@ class _StatItem {
 class _StatGrid extends StatelessWidget {
   final List<_StatItem> items;
   final double aspectRatio;
-  const _StatGrid(this.items, {this.aspectRatio = 2.0});
+  final int crossAxisCount;
+  const _StatGrid(this.items, {this.aspectRatio = 2.0, this.crossAxisCount = 3});
 
   @override
   Widget build(BuildContext context) {
+    // 카드 폭이 좁아질수록(칼럼 수가 많을수록) 아이콘/글자 크기를 줄여서
+    // 라벨이 잘리거나 줄바꿈되지 않도록 한다.
+    final compact = crossAxisCount >= 5;
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: items.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
+        crossAxisCount: crossAxisCount,
         childAspectRatio: aspectRatio,
-        crossAxisSpacing: 8,
+        crossAxisSpacing: compact ? 6 : 8,
         mainAxisSpacing: 8,
       ),
       itemBuilder: (_, i) {
         final item = items[i];
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: EdgeInsets.symmetric(horizontal: compact ? 6 : 10, vertical: compact ? 6 : 8),
           decoration: BoxDecoration(
             color: item.color.withOpacity(0.08),
             borderRadius: BorderRadius.circular(8),
@@ -269,12 +281,18 @@ class _StatGrid extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Row(children: [
-                Icon(item.icon, size: 13, color: item.color),
-                const SizedBox(width: 4),
-                Text(item.label, style: TextStyle(fontSize: 10, color: item.color.withOpacity(0.8))),
+                Icon(item.icon, size: compact ? 11 : 13, color: item.color),
+                const SizedBox(width: 3),
+                Expanded(
+                  child: Text(item.label,
+                      style: TextStyle(fontSize: compact ? 9 : 10, color: item.color.withOpacity(0.8)),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
               ]),
               const SizedBox(height: 2),
-              Text(item.value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: item.color)),
+              Text(item.value,
+                  style: TextStyle(fontSize: compact ? 12 : 14, fontWeight: FontWeight.bold, color: item.color),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
             ],
           ),
         );
@@ -285,7 +303,8 @@ class _StatGrid extends StatelessWidget {
 
 class _DailyChart extends StatelessWidget {
   final List<Map<String, dynamic>> daily;
-  const _DailyChart({required this.daily});
+  final Color color;
+  const _DailyChart({required this.daily, this.color = const Color(0xFF4A90D9)});
 
   @override
   Widget build(BuildContext context) {
@@ -316,7 +335,7 @@ class _DailyChart extends StatelessWidget {
                 Container(
                   height: 60 * ratio + 4,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF4A90D9).withOpacity(0.7),
+                    color: color.withOpacity(0.7),
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),

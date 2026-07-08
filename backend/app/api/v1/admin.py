@@ -699,6 +699,13 @@ async def get_stats(
     ))).fetchall()
     daily_signup = [{"date": str(r.d), "count": r.cnt} for r in daily_rows]
 
+    daily_post_rows = (await db.execute(text(
+        "SELECT DATE(created_at) as d, COUNT(*) as cnt "
+        "FROM posts WHERE created_at >= NOW() - INTERVAL '7 days' AND is_deleted = false "
+        "GROUP BY d ORDER BY d"
+    ))).fetchall()
+    daily_posts = [{"date": str(r.d), "count": r.cnt} for r in daily_post_rows]
+
     # 학교별 정회원 수 — 학교 게시판 언락 화면(count_school_members)·관리자
     # "학교별 인원 조회"와 정확히 같은 그룹 기준(UserChild.school_code +
     # member_grade='member', 관리자 제외)으로 집계한다. 예전엔 School.school_name
@@ -746,6 +753,7 @@ async def get_stats(
             "hidden": hidden_reviews,
         },
         "daily_signup": daily_signup,
+        "daily_posts": daily_posts,
         "by_school": by_school,
     }
 
