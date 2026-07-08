@@ -14,3 +14,15 @@ final boardRefreshSignal = StateProvider<int>((_) => 0);
 void bumpBoardRefresh(WidgetRef ref) {
   ref.read(boardRefreshSignal.notifier).state++;
 }
+
+/// 관리자 패널 전용 새로고침 신호. 관리자 패널은 각 탭(Pane)이
+/// AutomaticKeepAliveClientMixin으로 State를 유지하도록 되어 있어(탭 전환
+/// 시 데이터가 사라지는 문제 대응), 반대로 "탭을 다시 선택하거나 화면을
+/// 새로고침하면 최신 데이터를 다시 불러와야 한다"는 요구를 만족시키려면
+/// 별도 신호가 필요하다. 최상단 탭이 바뀔 때마다 이 신호를 bump하고, 각
+/// Pane은 이를 구독해 다시 로드한다.
+final adminRefreshSignal = StateProvider<int>((_) => 0);
+
+void bumpAdminRefresh(WidgetRef ref) {
+  ref.read(adminRefreshSignal.notifier).state++;
+}

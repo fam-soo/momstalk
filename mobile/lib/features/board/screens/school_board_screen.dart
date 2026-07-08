@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,7 +20,7 @@ class SchoolBoardScreen extends ConsumerStatefulWidget {
 }
 
 class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   bool _loading = true;
   bool _isMember = false;
   bool _isLurker = false; // 로그인 했지만 미인증
@@ -41,17 +42,49 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   static const _tapLimit = 2;
   static const _prefKey = 'preview_taps_school';
   static const _lurkerReadKey = 'school_lurker_reads';
+  Timer? _unlockPollTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _init();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _unlockPollTimer?.cancel();
     _tabController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 잠금 화면을 보고 있다가 앱으로 돌아오면 그 사이 학교 인원이 늘었을 수
+    // 있으니 즉시 최신 현황을 반영한다.
+    if (state == AppLifecycleState.resumed && _schoolLocked && !_isAdmin) {
+      _loadUnlockStatus(_children.isNotEmpty && _selectedChildIdx < _children.length
+          ? _children[_selectedChildIdx]['school_code'] as String?
+          : null);
+    }
+  }
+
+  /// 잠금 화면을 보는 동안 실시간에 가깝게 인원 현황이 갱신되도록 주기적으로
+  /// 폴링한다. 잠금이 풀리거나 화면을 벗어나면 스스로 멈춘다.
+  void _ensureUnlockPolling() {
+    if (_unlockPollTimer != null || !_schoolLocked || _isAdmin) return;
+    _unlockPollTimer = Timer.periodic(const Duration(seconds: 20), (_) async {
+      if (!mounted || !_schoolLocked) {
+        _unlockPollTimer?.cancel();
+        _unlockPollTimer = null;
+        return;
+      }
+      final schoolCode = _children.isNotEmpty && _selectedChildIdx < _children.length
+          ? _children[_selectedChildIdx]['school_code'] as String?
+          : null;
+      await _loadUnlockStatus(schoolCode);
+    });
   }
 
   Future<void> _init() async {
@@ -125,6 +158,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
           _schoolRemaining = remaining;
           _loading = false;
         });
+        if (schoolLocked) _ensureUnlockPolling();
       }
     } catch (_) {
       await _loadPreview();
@@ -154,6 +188,12 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       _schoolThreshold = data?['threshold'] as int? ?? _schoolThreshold;
       _schoolRemaining = data?['remaining'] as int? ?? 0;
     });
+    if (_schoolLocked) {
+      _ensureUnlockPolling();
+    } else {
+      _unlockPollTimer?.cancel();
+      _unlockPollTimer = null;
+    }
   }
 
   /// 학교 게시판에서 자녀를 바꾸면 내정보(active_child)에도 반영하고,
@@ -309,7 +349,16 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       // 같은 학교 정회원이 기준 인원 미만이면 게시판 대신 언락 안내를 보여준다.
       if (_schoolLocked) {
         return Scaffold(
-          appBar: AppBar(title: appBarTitle),
+          appBar: AppBar(
+            title: appBarTitle,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: '인원 현황 새로고침',
+                onPressed: () => _loadUnlockStatus(selChild?['school_code'] as String?),
+              ),
+            ],
+          ),
           body: _SchoolLockedView(
             schoolName: displaySchool,
             memberCount: _schoolMemberCount,

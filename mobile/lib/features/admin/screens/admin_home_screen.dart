@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/kst_time.dart';
+import '../../../core/refresh_bus.dart';
 import '../admin_api.dart';
 
 // ── 공통 유틸 ────────────────────────────────────────
@@ -79,7 +80,14 @@ class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
+        onDestinationSelected: (i) {
+          setState(() => _tab = i);
+          // 탭을 다시 선택했을 때(같은 탭이든 다른 탭이든) 항상 최신 데이터를
+          // 다시 불러오도록 신호를 보낸다. AutomaticKeepAliveClientMixin으로
+          // 탭 전환 시 State는 유지되지만, 그 사이 다른 경로로 데이터가 바뀌었을
+          // 수 있으므로 탭 선택은 곧 새로고침 요청으로 취급한다.
+          bumpAdminRefresh(ref);
+        },
         height: 60,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: List.generate(5, (i) => NavigationDestination(
@@ -123,6 +131,9 @@ class _StatsTabState extends ConsumerState<_StatsTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(adminRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _load();
+    });
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_data == null) return _errWidget(_load);
     final users = _data!['users'] as Map;
@@ -419,6 +430,9 @@ class _UserListPaneState extends ConsumerState<_UserListPane> with AutomaticKeep
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    ref.listen<int>(adminRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _load(_ctrl.text);
+    });
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
@@ -673,6 +687,9 @@ class _CapturesPaneState extends ConsumerState<_CapturesPane> with AutomaticKeep
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    ref.listen<int>(adminRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _load();
+    });
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_items.isEmpty) return const Center(child: Text('대기 중인 캡처가 없습니다.', style: TextStyle(color: Colors.grey)));
 
@@ -834,6 +851,9 @@ class _ReportsTabState extends ConsumerState<_ReportsTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(adminRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _load();
+    });
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
@@ -1064,6 +1084,9 @@ class _PostListPaneState extends ConsumerState<_PostListPane> with AutomaticKeep
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    ref.listen<int>(adminRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _load(reset: true);
+    });
     return Column(children: [
       _ContentFilter(
         ctrl: _ctrl,
@@ -1190,6 +1213,9 @@ class _CommentListPaneState extends ConsumerState<_CommentListPane> with Automat
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    ref.listen<int>(adminRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _load(reset: true);
+    });
     return Column(children: [
       _ContentFilter(
         ctrl: _ctrl,
@@ -1316,6 +1342,9 @@ class _ReviewListPaneState extends ConsumerState<_ReviewListPane> with Automatic
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    ref.listen<int>(adminRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _load(reset: true);
+    });
     return Column(children: [
       _ContentFilter(
         ctrl: _ctrl,
@@ -1810,6 +1839,9 @@ class _ProfanityPaneState extends ConsumerState<_ProfanityPane> with AutomaticKe
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    ref.listen<int>(adminRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _load();
+    });
     return Column(children: [
       Padding(
         padding: const EdgeInsets.all(12),
@@ -1911,6 +1943,9 @@ class _LogPaneState extends ConsumerState<_LogPane> with AutomaticKeepAliveClien
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    ref.listen<int>(adminRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _load();
+    });
     return Column(children: [
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
