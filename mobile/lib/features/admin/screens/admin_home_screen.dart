@@ -175,22 +175,23 @@ class _StatsTabState extends ConsumerState<_StatsTab> {
           ], crossAxisCount: 6, aspectRatio: 1.3),
           const SizedBox(height: 8),
 
-          // 7일 가입 추이
-          _SectionTitle('최근 7일 가입 추이'),
-          _DailyChart(daily: List<Map<String, dynamic>>.from(_data!['daily_signup'] ?? [])),
+          // 7일 가입·게시글 작성 추이 — 가입 추이만으로는 "가입은 했는데
+          // 활동은 하는지"를 알 수 없어서, 같은 날짜 축에 게시글 작성 추이도
+          // 막대로 함께 표시해 온보딩 이후 이탈 여부를 한눈에 비교할 수 있게 함.
+          _SectionTitle('최근 7일 가입·게시글 작성 추이'),
+          _GroupedDailyChart(
+            daily1: List<Map<String, dynamic>>.from(_data!['daily_signup'] ?? []),
+            daily2: List<Map<String, dynamic>>.from(_data!['daily_posts'] ?? []),
+            label1: '가입',
+            label2: '게시글',
+            color1: const Color(0xFF4A90D9),
+            color2: Colors.deepPurple,
+          ),
           const SizedBox(height: 8),
 
           // 학교별 가입 인원 (학교 게시판 언락 화면과 동일 기준)
           _SectionTitle('학교별 가입 인원 (정회원 기준, 상위 10곳)'),
           _SchoolBarChart(bySchool: List<Map<String, dynamic>>.from(_data!['by_school'] ?? [])),
-          const SizedBox(height: 8),
-
-          // 7일 게시글 작성 추이 — 가입 추이만으로는 "가입은 했는데 활동은
-          // 하는지"를 알 수 없어서, 실제 콘텐츠 생산 활동을 보여주는 그래프를
-          // 추가로 추천함. 가입 추이와 나란히 비교하면 온보딩 이후 이탈 여부를
-          // 가늠할 수 있다.
-          _SectionTitle('최근 7일 게시글 작성 추이'),
-          _DailyChart(daily: List<Map<String, dynamic>>.from(_data!['daily_posts'] ?? []), color: Colors.deepPurple),
         ],
       ),
     );
@@ -301,18 +302,35 @@ class _StatGrid extends StatelessWidget {
   }
 }
 
-class _DailyChart extends StatelessWidget {
-  final List<Map<String, dynamic>> daily;
-  final Color color;
-  const _DailyChart({required this.daily, this.color = const Color(0xFF4A90D9)});
+class _GroupedDailyChart extends StatelessWidget {
+  final List<Map<String, dynamic>> daily1;
+  final List<Map<String, dynamic>> daily2;
+  final String label1;
+  final String label2;
+  final Color color1;
+  final Color color2;
+  const _GroupedDailyChart({
+    required this.daily1,
+    required this.daily2,
+    required this.label1,
+    required this.label2,
+    required this.color1,
+    required this.color2,
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (daily.isEmpty) return const Padding(
-      padding: EdgeInsets.all(12),
-      child: Text('데이터 없음', style: TextStyle(color: Colors.grey, fontSize: 13)),
-    );
-    final maxVal = daily.map((d) => (d['count'] as int)).reduce((a, b) => a > b ? a : b);
+    if (daily1.isEmpty && daily2.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.all(12),
+        child: Text('데이터 없음', style: TextStyle(color: Colors.grey, fontSize: 13)),
+      );
+    }
+    final counts1 = {for (final d in daily1) d['date'] as String: d['count'] as int};
+    final counts2 = {for (final d in daily2) d['date'] as String: d['count'] as int};
+    final dates = {...counts1.keys, ...counts2.keys}.toList()..sort();
+    final maxVal = [...counts1.values, ...counts2.values, 1].reduce((a, b) => a > b ? a : b);
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -320,33 +338,64 @@ class _DailyChart extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: daily.map((d) {
-          final cnt = d['count'] as int;
-          final ratio = maxVal > 0 ? cnt / maxVal : 0.0;
-          final dateStr = (d['date'] as String).substring(5); // MM-DD
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text('$cnt', style: const TextStyle(fontSize: 9, color: Colors.grey)),
-                const SizedBox(height: 2),
-                Container(
-                  height: 60 * ratio + 4,
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.7),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(dateStr, style: const TextStyle(fontSize: 9, color: Colors.grey)),
-              ]),
-            ),
-          );
-        }).toList(),
-      ),
+      child: Column(children: [
+        // 범례
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          _legendDot(color1, label1),
+          const SizedBox(width: 14),
+          _legendDot(color2, label2),
+        ]),
+        const SizedBox(height: 10),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: dates.map((date) {
+            final c1 = counts1[date] ?? 0;
+            final c2 = counts2[date] ?? 0;
+            final ratio1 = maxVal > 0 ? c1 / maxVal : 0.0;
+            final ratio2 = maxVal > 0 ? c2 / maxVal : 0.0;
+            final dateStr = date.substring(5); // MM-DD
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Row(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text('$c1', style: const TextStyle(fontSize: 8, color: Colors.grey)),
+                      const SizedBox(height: 2),
+                      Container(
+                        width: 10,
+                        height: 60 * ratio1 + 3,
+                        decoration: BoxDecoration(color: color1.withOpacity(0.75), borderRadius: BorderRadius.circular(2)),
+                      ),
+                    ]),
+                    const SizedBox(width: 3),
+                    Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text('$c2', style: const TextStyle(fontSize: 8, color: Colors.grey)),
+                      const SizedBox(height: 2),
+                      Container(
+                        width: 10,
+                        height: 60 * ratio2 + 3,
+                        decoration: BoxDecoration(color: color2.withOpacity(0.75), borderRadius: BorderRadius.circular(2)),
+                      ),
+                    ]),
+                  ]),
+                  const SizedBox(height: 4),
+                  Text(dateStr, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+                ]),
+              ),
+            );
+          }).toList(),
+        ),
+      ]),
     );
+  }
+
+  Widget _legendDot(Color color, String label) {
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+      const SizedBox(width: 4),
+      Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+    ]);
   }
 }
 
