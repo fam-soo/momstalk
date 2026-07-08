@@ -8,6 +8,7 @@ import 'package:kakao_flutter_sdk_share/kakao_flutter_sdk_share.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api_client.dart';
 import '../../../core/kst_time.dart';
+import '../../../core/notification_bell.dart';
 import '../../../core/push_notifications.dart';
 import '../../../core/refresh_bus.dart';
 import '../../../core/router.dart';
@@ -189,6 +190,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     });
     return Scaffold(
       appBar: AppBar(
+        leading: const NotificationBellButton(),
         title: const Text('내 정보'),
       ),
       body: _loading
@@ -237,13 +239,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         // ── 기본 프로필 카드 ──────────────────────────────
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
-                  const CircleAvatar(radius: 28, child: Icon(Icons.person, size: 28)),
-                  const SizedBox(width: 16),
+                  const CircleAvatar(radius: 24, child: Icon(Icons.person, size: 24)),
+                  const SizedBox(width: 14),
                   Expanded(child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -267,10 +269,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   )),
                 ]),
                 if (!isAdmin) ...[
-                  const Divider(height: 24),
+                  const Divider(height: 16),
                   _row(Icons.location_on_outlined, '지역',
                       isMember ? (displayRegion ?? '-') : '미인증'),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   _row(Icons.school_outlined, '학교', () {
                       if (!isMember) return '미인증';
                       final name = displaySchool ?? '-';
@@ -281,7 +283,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
 
         // ── 지역·학교·학년 변경 + 심사 상태 통합 카드 (관리자 제외) ──────
         if (!isAdmin) ...[
@@ -290,6 +292,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Column(
               children: [
                 ListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
                   leading: Icon(
                     isPending
                         ? Icons.hourglass_top_rounded
@@ -481,7 +485,7 @@ class _QuickAction extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [

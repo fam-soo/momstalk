@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_
 from sqlalchemy.exc import IntegrityError
@@ -332,6 +332,114 @@ async def list_posts(
             created_at=post.created_at,
         ))
     return PostListResponse(items=items, next_cursor=next_cursor)
+
+
+async def get_hot_posts(user: User, db: AsyncSession, limit: int = 30) -> "PostListResponse":
+    """지역·학교·학원 게시판을 가로질러 인기글만 모아 보여주는 '인기' 탭용.
+
+    초기 활성화 단계에서 학교 게시판은 잠겨 있고 개별 게시판 콘텐츠도 아직
+    적어, 신규 유저가 "볼 게 없어서" 이탈하는 문제를 완화하기 위한 화면.
+    list_posts()의 _hot_score와 동일한 기준(좋아요*2 + 댓글*1.5 + 스크랩 -
+    신고*3, 7일 이내 최신도 감쇠)을 사용하되 여러 게시판을 한 번에 훑는다.
+    """
+    from app.schemas.post import PostListResponse
+
+    blocked_ids_result = await db.execute(select(Block.blocked_user_id).where(Block.user_id == user.id))
+    blocked_ids = {r for r in blocked_ids_result.scalars()}
+
+    _DEFAULT_REGION = "양천구"
+    effective_region = user.region or _DEFAULT_REGION
+    since = datetime.utcnow() - timedelta(days=7)
+
+    query = select(Post).where(
+        Post.board_type.in_(("region", "free", "school", "grade")),
+        Post.is_hidden == False,
+        Post.is_deleted == False,
+        Post.created_at >= since,
+    )
+    if blocked_ids:
+        query = query.where(Post.author_id.notin_(blocked_ids))
+
+    if not user.is_admin:
+        active = user.active_child
+        school_code = (active.school_code if active else None) or user.school_code
+        school_unlocked = False
+        if school_code:
+            unlock = await get_unlock_status(school_code, db)
+            school_unlocked = unlock["unlocked"]
+
+        _region_match = or_(
+            Post.school_code.in_(select(User.school_code).where(User.region == effective_region)),
+            Post.school_code.in_(select(School.school_code).where(School.region == effective_region)),
+        )
+        scope_conditions = [
+            Post.board_type == "free",
+            and_(Post.board_type == "region", _region_match),
+        ]
+        if school_unlocked and school_code:
+            scope_conditions.append(and_(Post.board_type.in_(("school", "grade")), Post.school_code == school_code))
+        query = query.where(or_(*scope_conditions))
+
+    query = query.order_by(Post.created_at.desc()).limit(300)  # 산정 후보 풀
+    posts = list((await db.execute(query)).scalars().all())
+
+    def _hot_score(p: Post, comment_count: int) -> float:
+        now = datetime.now(timezone.utc)
+        age_hours = (now - p.created_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
+        decay = 1.0 if age_hours <= 24 else (0.7 if age_hours <= 72 else 0.4)
+        return (p.like_count * 2 + comment_count * 1.5 + p.scrap_count - p.report_count * 3) * decay
+
+    comment_counts: dict[int, int] = {}
+    for post in posts:
+        comment_counts[post.id] = (await db.execute(
+            select(func.count()).where(Comment.post_id == post.id, Comment.is_hidden == False, Comment.is_deleted == False)
+        )).scalar() or 0
+
+    scored = sorted(
+        posts,
+        key=lambda p: (_hot_score(p, comment_counts[p.id]), p.created_at),
+        reverse=True,
+    )[:limit]
+
+    post_ids = [p.id for p in scored]
+    liked_ids: set[int] = set()
+    if post_ids:
+        likes_result = await db.execute(
+            select(Like.target_id).where(
+                Like.user_id == user.id, Like.target_type == "post", Like.target_id.in_(post_ids),
+            )
+        )
+        liked_ids = {row for row in likes_result.scalars()}
+
+    author_ids = {p.author_id for p in scored}
+    authors_result = await db.execute(select(User).where(User.id.in_(author_ids)))
+    authors: dict[int, User] = {u.id: u for u in authors_result.scalars()}
+
+    items = []
+    for post in scored:
+        author = authors.get(post.author_id)
+        display_name = _author_display_name(post, author) if author else None
+        items.append(PostListItem(
+            id=post.id,
+            board_type=post.board_type,
+            title=post.title,
+            is_anonymous=post.is_anonymous,
+            nickname_type=getattr(post, "nickname_type", "anon"),
+            author_display_name=display_name,
+            author_region=author.region if author else None,
+            author_school=author.school_name if author else None,
+            view_count=post.view_count,
+            like_count=post.like_count,
+            scrap_count=post.scrap_count,
+            comment_count=comment_counts[post.id],
+            mention_tags=post.mention_tags or [],
+            is_liked=post.id in liked_ids,
+            is_pinned=False,
+            is_notice=False,
+            is_hot=True,
+            created_at=post.created_at,
+        ))
+    return PostListResponse(items=items, next_cursor=None)
 
 
 async def update_post(post: Post, req: PostUpdate, db: AsyncSession) -> Post:

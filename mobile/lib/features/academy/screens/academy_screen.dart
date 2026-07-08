@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
+import '../../../core/notification_bell.dart';
 import '../../../core/refresh_bus.dart';
 
 class AcademyScreen extends ConsumerStatefulWidget {
@@ -596,6 +597,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
 
   PreferredSizeWidget _buildNormalAppBar(ThemeData theme) {
     return AppBar(
+      leading: const NotificationBellButton(),
       title: Text(
         _isAdmin
             ? '전지역 학원 후기'

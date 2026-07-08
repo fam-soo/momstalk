@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
 import '../../../core/kst_time.dart';
+import '../../../core/notification_bell.dart';
 import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart';
 
@@ -298,7 +299,10 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
     // 인증 사진 심사 대기 중
     if (_authPending) {
       return Scaffold(
-        appBar: AppBar(title: const Text('학교 게시판', style: TextStyle(fontWeight: FontWeight.bold))),
+        appBar: AppBar(
+          leading: const NotificationBellButton(),
+          title: const Text('학교 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(32),
@@ -350,6 +354,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       if (_schoolLocked) {
         return Scaffold(
           appBar: AppBar(
+            leading: const NotificationBellButton(),
             title: appBarTitle,
             actions: [
               IconButton(
@@ -371,6 +376,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
 
       return Scaffold(
         appBar: AppBar(
+          leading: const NotificationBellButton(),
           title: appBarTitle,
           actions: [
             IconButton(icon: const Icon(Icons.search), onPressed: () => context.push('/search')),
@@ -417,6 +423,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
     if (_isLurker) {
       return Scaffold(
         appBar: AppBar(
+          leading: const NotificationBellButton(),
           title: const Text('학교 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
           actions: [
             TextButton(
@@ -437,6 +444,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
     // 비로그인 미리보기
     return Scaffold(
       appBar: AppBar(
+        leading: const NotificationBellButton(),
         title: const Text('학교 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           TextButton(

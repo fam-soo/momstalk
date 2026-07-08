@@ -16,8 +16,8 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.core.fcm import send_push_to_user
 from app.models.service_models import AdminAction, AuthCapture, User, UserChild
+from app.services.notification_service import notify_user
 
 _ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/heic", "image/heif"}
 
@@ -261,7 +261,7 @@ async def approve_capture(capture_id: int, admin: User, db: AsyncSession) -> Non
     ))
     await db.commit()
 
-    await send_push_to_user(db, user.id, title=push_title, body=push_body, data={"type": "auth_approved"})
+    await notify_user(db, user.id, "auth_approved", title=push_title, body=push_body, data={"type": "auth_approved"})
 
 
 async def reject_capture(capture_id: int, admin: User, reason: str, db: AsyncSession) -> None:
@@ -294,8 +294,8 @@ async def reject_capture(capture_id: int, admin: User, reason: str, db: AsyncSes
 
     if user:
         title = "자녀 추가 심사 결과" if capture.capture_type == "child_add" else "가입 심사 결과"
-        await send_push_to_user(
-            db, user.id,
+        await notify_user(
+            db, user.id, "auth_rejected",
             title=title,
             body=f"심사가 반려되었습니다. 사유: {reason[:60]}",
             data={"type": "auth_rejected"},

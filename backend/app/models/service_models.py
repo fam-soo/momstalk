@@ -72,6 +72,22 @@ class UserFcmToken(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class Notification(Base):
+    """알림함에 쌓이는 알림 이력. FCM 푸시는 기기가 꺼져있거나 알림 권한이
+    없으면 놓치기 쉬워서, 앱 안에서 모아 볼 수 있는 목록을 별도로 남긴다.
+    푸시 발송과 항상 함께 생성된다 (notification_service.notify_user 참고)."""
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    type = Column(String(30), nullable=False)   # comment / dm / auth_approved / auth_rejected
+    title = Column(String(200), nullable=False)
+    body = Column(Text, nullable=True)
+    data = Column(JSON, nullable=True)          # {"post_id": "123"} 등 클릭 시 이동에 필요한 정보
+    is_read = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class User(Base):
     """익명 유저. anon_id만 알며 전화번호 등 신원 정보는 없음."""
     __tablename__ = "users"

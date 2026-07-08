@@ -138,6 +138,16 @@ async def preview_posts(
     ]
 
 
+@router.get("/hot", response_model=PostListResponse)
+async def hot_posts(
+    limit: int = Query(30, ge=1, le=50),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """지역·학교·학원 게시판을 가로질러 인기글만 모아 보여주는 '인기' 탭."""
+    return await post_service.get_hot_posts(user, db, limit=limit)
+
+
 @router.get("/me/scraps", response_model=list[ScrapResponse])
 async def my_scraps(
     user: User = Depends(get_current_user),

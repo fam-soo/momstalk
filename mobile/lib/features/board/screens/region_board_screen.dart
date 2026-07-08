@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
 import '../../../core/kst_time.dart';
+import '../../../core/notification_bell.dart';
 import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart';
 
@@ -154,6 +155,7 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
     if (_isMember) {
       return Scaffold(
         appBar: AppBar(
+          leading: const NotificationBellButton(),
           title: Text(_region.isNotEmpty ? '$_region 게시판' : '지역 게시판',
               style: const TextStyle(fontWeight: FontWeight.bold)),
           actions: [
@@ -178,6 +180,7 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
     if (_isLurker) {
       return Scaffold(
         appBar: AppBar(
+          leading: const NotificationBellButton(),
           title: const Text('지역 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
         ),
         body: _LurkerGate(onVerify: () => context.go('/auth/pending')),
@@ -187,6 +190,7 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
     // 비회원 미리보기
     return Scaffold(
       appBar: AppBar(
+        leading: const NotificationBellButton(),
         title: const Text('지역 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           TextButton(

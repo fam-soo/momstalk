@@ -10,8 +10,10 @@ import '../features/board/screens/post_detail_screen.dart';
 import '../features/board/screens/post_write_screen.dart';
 import '../features/board/screens/region_board_screen.dart';
 import '../features/board/screens/school_board_screen.dart';
+import '../features/board/screens/hot_board_screen.dart';
 import '../features/profile/screens/profile_screen.dart';
 import '../features/profile/screens/add_child_screen.dart';
+import '../features/notifications/screens/notification_list_screen.dart';
 import '../features/search/screens/search_screen.dart';
 import '../features/dm/screens/dm_list_screen.dart';
 import '../features/dm/screens/dm_chat_screen.dart';
@@ -23,6 +25,7 @@ import '../features/academy/screens/academy_review_write_screen.dart';
 import 'api_client.dart' show tokenStorageProvider;
 import 'constants.dart';
 import 'push_notifications.dart';
+import 'push_target.dart';
 import 'refresh_bus.dart';
 import '../features/admin/screens/admin_login_screen.dart';
 import '../features/admin/screens/admin_home_screen.dart';
@@ -87,6 +90,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootNavKey,
         builder: (ctx, s) => PostDetailScreen(postId: int.parse(s.pathParameters['postId']!)),
       ),
+      // 대화(DM) 기능은 하단 탭에서는 뺐지만(당분간 미사용) 라우트 자체는 남겨둔다.
+      GoRoute(path: '/dm', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const DmListScreen()),
       GoRoute(
         path: '/dm/:convId',
         parentNavigatorKey: _rootNavKey,
@@ -97,6 +102,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: '/profile', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const ProfileScreen()),
       GoRoute(path: '/profile/add-child', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const AddChildScreen()),
+      GoRoute(path: '/notifications', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const NotificationListScreen()),
       GoRoute(path: '/terms', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const TermsScreen()),
       GoRoute(path: '/privacy', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const PrivacyScreen()),
       GoRoute(path: '/search', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const SearchScreen()),
@@ -129,7 +135,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [GoRoute(path: '/academy', builder: (ctx, s) => const AcademyScreen())],
           ),
           StatefulShellBranch(
-            routes: [GoRoute(path: '/dm', builder: (ctx, s) => const DmListScreen())],
+            routes: [GoRoute(path: '/hot', builder: (ctx, s) => const HotBoardScreen())],
           ),
           StatefulShellBranch(
             routes: [GoRoute(path: '/my', builder: (ctx, s) => const ProfileScreen())],
@@ -140,23 +146,6 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-/// FCM 메시지의 data payload(type, post_id 등)로 이동할 라우트 경로를 계산.
-/// web/firebase-messaging-sw.js의 _targetPath()와 대응되는 로직(포그라운드용).
-String? _pushTargetLocation(Map<String, dynamic> data) {
-  switch (data['type']) {
-    case 'comment':
-      final postId = data['post_id'];
-      return postId == null ? null : '/board/$postId';
-    case 'dm':
-      final convId = data['conversation_id'];
-      return convId == null ? null : '/dm/$convId';
-    case 'auth_approved':
-    case 'auth_rejected':
-      return '/my';
-    default:
-      return null;
-  }
-}
 
 class _MainShell extends ConsumerStatefulWidget {
   final StatefulNavigationShell shell;
@@ -185,7 +174,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
       if (!mounted) return;
       final title = msg.notification?.title ?? 'MomsTalk';
       final body = msg.notification?.body ?? '';
-      final location = _pushTargetLocation(msg.data);
+      final location = pushTargetLocation(msg.data);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(body.isEmpty ? title : '$title — $body'),
@@ -242,7 +231,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
           NavigationDestination(icon: Icon(Icons.location_on_outlined), selectedIcon: Icon(Icons.location_on), label: '지역'),
           NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: '학교'),
           NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: '학원'),
-          NavigationDestination(icon: Icon(Icons.chat_bubble_outline), selectedIcon: Icon(Icons.chat_bubble), label: '대화'),
+          NavigationDestination(icon: Icon(Icons.local_fire_department_outlined), selectedIcon: Icon(Icons.local_fire_department), label: '인기'),
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '내정보'),
         ],
       ),
