@@ -453,6 +453,7 @@ class _UserListPaneState extends ConsumerState<_UserListPane> with AutomaticKeep
   // 달라 보이는 문제가 있었다.
   Map<String, dynamic>? _schoolUnlock;
   String? _schoolName;
+  List<Map<String, dynamic>> _schoolSiblings = [];
 
   @override
   bool get wantKeepAlive => true;
@@ -555,14 +556,31 @@ class _UserListPaneState extends ConsumerState<_UserListPane> with AutomaticKeep
     setState(() {
       _schoolUnlock = {'school_code': picked['school_code']};
       _schoolName = picked['school_name'] as String?;
+      _schoolSiblings = [];
     });
     await _load('');
+    await _checkNameDuplicates(picked['school_name'] as String? ?? '');
+  }
+
+  /// 같은 이름의 학교가 school_code만 다르게 여러 개 있으면(NEIS 데이터
+  /// 특성상 지역별로 실제 존재), 유저 목록에서 이름만 보고 센 인원과
+  /// 특정 코드 하나만 보는 이 화면의 인원이 서로 달라 보일 수 있다.
+  Future<void> _checkNameDuplicates(String schoolName) async {
+    if (schoolName.isEmpty) return;
+    try {
+      final dio = ref.read(adminDioProvider);
+      final resp = await dio.get('/admin/schools/name-check', queryParameters: {'name': schoolName});
+      final data = Map<String, dynamic>.from(resp.data as Map);
+      final schools = List<Map<String, dynamic>>.from(data['schools'] as List);
+      if (mounted) setState(() => _schoolSiblings = schools);
+    } catch (_) {}
   }
 
   void _clearSchoolMode() {
     setState(() {
       _schoolUnlock = null;
       _schoolName = null;
+      _schoolSiblings = [];
     });
     _load(_ctrl.text);
   }
@@ -650,6 +668,32 @@ class _UserListPaneState extends ConsumerState<_UserListPane> with AutomaticKeep
                 visualDensity: VisualDensity.compact,
                 onPressed: _clearSchoolMode,
               ),
+            ]),
+          ),
+        ),
+      if (_schoolSiblings.length > 1)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.red.shade200),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('⚠️ 같은 이름의 학교가 ${_schoolSiblings.length}개(코드가 다름) 등록돼 있어요 — '
+                  '유저 목록에서 "$_schoolName"으로 보이는 인원은 아래 전체를 합친 숫자일 수 있어요.',
+                  style: TextStyle(fontSize: 12, color: Colors.red.shade700, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              ..._schoolSiblings.map((s) => Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  '· ${s['school_code']} (${s['address'] ?? s['region'] ?? '주소 미상'}) — '
+                  '정회원 ${s['member_count']}명 · 전체 가입 ${s['total_registered']}명',
+                  style: TextStyle(fontSize: 11, color: Colors.red.shade700),
+                ),
+              )),
             ]),
           ),
         ),

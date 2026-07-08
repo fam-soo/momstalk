@@ -194,6 +194,47 @@ async def list_users(
     ]
 
 
+@router.get("/schools/name-check")
+async def school_name_check(
+    name: str = Query(..., min_length=2),
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """같은 이름의 학교가 school_code만 다르게 여러 개 등록돼 있는지 점검한다.
+
+    schools.school_code는 UNIQUE지만 school_name은 아니라서, NEIS 데이터에
+    같은 이름의 학교가 지역별로 서로 다른 코드로 여러 개 존재할 수 있다.
+    검색해서 다른 학교를 고른 학부모끼리는 UserChild.school_code가 갈리기
+    때문에, 관리자 유저 목록에서 이름만 보고 센 인원과 특정 코드 하나만
+    보는 언락/대시보드 인원이 서로 다르게 보이는 원인이 될 수 있다.
+    """
+    schools = (await db.execute(
+        select(School).where(School.school_name == name)
+    )).scalars().all()
+
+    result = []
+    for s in schools:
+        member_count = (await db.execute(
+            select(func.count(func.distinct(UserChild.user_id)))
+            .join(User, User.id == UserChild.user_id)
+            .where(UserChild.school_code == s.school_code, User.member_grade == "member", User.is_admin.is_(False))
+        )).scalar() or 0
+        total_registered = (await db.execute(
+            select(func.count(func.distinct(UserChild.user_id)))
+            .join(User, User.id == UserChild.user_id)
+            .where(UserChild.school_code == s.school_code, User.is_admin.is_(False))
+        )).scalar() or 0
+        result.append({
+            "school_code": s.school_code,
+            "school_name": s.school_name,
+            "address": s.address,
+            "region": s.region,
+            "member_count": member_count,
+            "total_registered": total_registered,
+        })
+    return {"count": len(result), "schools": result}
+
+
 @router.get("/schools/{school_code}/members")
 async def school_members(
     school_code: str,
