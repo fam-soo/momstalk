@@ -380,6 +380,13 @@ class _UserListPaneState extends ConsumerState<_UserListPane> with AutomaticKeep
   final _ctrl = TextEditingController();
   List<Map<String, dynamic>> _users = [];
   bool _loading = false;
+  // 학교별 조회 모드 — 학교 게시판 언락 화면(UserChild.school_code +
+  // member_grade='member' 기준)과 동일한 인원수를 그대로 보여준다. 예전에는
+  // 관리자가 유저 목록에서 레거시 users.school_name 문구만 보고 눈대중으로
+  // 세다 보니(다자녀·학교 변경 시 갱신 안 되는 필드) 언락 화면 숫자와 서로
+  // 달라 보이는 문제가 있었다.
+  Map<String, dynamic>? _schoolUnlock;
+  String? _schoolName;
 
   @override
   bool get wantKeepAlive => true;
@@ -394,10 +401,104 @@ class _UserListPaneState extends ConsumerState<_UserListPane> with AutomaticKeep
     setState(() => _loading = true);
     try {
       final dio = ref.read(adminDioProvider);
-      final resp = await dio.get('/admin/users', queryParameters: q.isNotEmpty ? {'q': q} : null);
-      setState(() => _users = List<Map<String, dynamic>>.from(resp.data));
+      if (_schoolUnlock != null) {
+        final resp = await dio.get('/admin/schools/${_schoolUnlock!['school_code']}/members');
+        final data = Map<String, dynamic>.from(resp.data);
+        setState(() {
+          _schoolUnlock = data;
+          _users = List<Map<String, dynamic>>.from(data['users']);
+        });
+      } else {
+        final resp = await dio.get('/admin/users', queryParameters: q.isNotEmpty ? {'q': q} : null);
+        setState(() => _users = List<Map<String, dynamic>>.from(resp.data));
+      }
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _pickSchool() async {
+    final searchCtrl = TextEditingController();
+    var results = <Map<String, dynamic>>[];
+    var searching = false;
+    final picked = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          Future<void> search() async {
+            final q = searchCtrl.text.trim();
+            if (q.length < 2) return;
+            setDialogState(() => searching = true);
+            try {
+              final dio = ref.read(adminDioProvider);
+              final resp = await dio.get('/schools/search', queryParameters: {'q': q});
+              results = List<Map<String, dynamic>>.from(resp.data as List);
+            } catch (_) {}
+            setDialogState(() => searching = false);
+          }
+
+          return AlertDialog(
+            title: const Text('학교별 인원 조회', style: TextStyle(fontSize: 15)),
+            content: SizedBox(
+              width: 320,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: searchCtrl,
+                      decoration: const InputDecoration(
+                        labelText: '학교명 검색', border: OutlineInputBorder(), isDense: true),
+                      onSubmitted: (_) => search(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton(
+                    onPressed: searching ? null : search,
+                    child: searching
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('검색'),
+                  ),
+                ]),
+                if (results.isNotEmpty)
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    margin: const EdgeInsets.only(top: 8),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: results.length,
+                      itemBuilder: (_, i) {
+                        final s = results[i];
+                        return ListTile(
+                          dense: true,
+                          title: Text(s['school_name'] as String? ?? ''),
+                          subtitle: Text(s['address'] as String? ?? '', style: const TextStyle(fontSize: 11)),
+                          onTap: () => Navigator.pop(dialogCtx, s),
+                        );
+                      },
+                    ),
+                  ),
+              ]),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogCtx), child: const Text('취소')),
+            ],
+          );
+        },
+      ),
+    );
+    if (picked == null) return;
+    setState(() {
+      _schoolUnlock = {'school_code': picked['school_code']};
+      _schoolName = picked['school_name'] as String?;
+    });
+    await _load('');
+  }
+
+  void _clearSchoolMode() {
+    setState(() {
+      _schoolUnlock = null;
+      _schoolName = null;
+    });
+    _load(_ctrl.text);
   }
 
   Future<void> _action(int userId, String action, {String reason = '', int days = 0}) async {
@@ -436,18 +537,55 @@ class _UserListPaneState extends ConsumerState<_UserListPane> with AutomaticKeep
     return Column(children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-        child: TextField(
-          controller: _ctrl,
-          decoration: InputDecoration(
-            hintText: '닉네임, 내부 ID 또는 카카오 ID 검색',
-            prefixIcon: const Icon(Icons.search, size: 18),
-            isDense: true,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            suffixIcon: IconButton(icon: const Icon(Icons.send, size: 16), onPressed: () => _load(_ctrl.text)),
+        child: Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _ctrl,
+              enabled: _schoolUnlock == null,
+              decoration: InputDecoration(
+                hintText: '닉네임, 내부 ID 또는 카카오 ID 검색',
+                prefixIcon: const Icon(Icons.search, size: 18),
+                isDense: true,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                suffixIcon: IconButton(icon: const Icon(Icons.send, size: 16), onPressed: () => _load(_ctrl.text)),
+              ),
+              onSubmitted: _load,
+            ),
           ),
-          onSubmitted: _load,
-        ),
+          const SizedBox(width: 6),
+          IconButton(
+            icon: const Icon(Icons.school_outlined, size: 20),
+            tooltip: '학교별 인원 조회 (학교 게시판 언락 화면과 동일 기준)',
+            onPressed: _pickSchool,
+          ),
+        ]),
       ),
+      if (_schoolUnlock != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.4),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(children: [
+              Expanded(
+                child: Text(
+                  '$_schoolName · 정회원 ${_schoolUnlock!['member_count']}/${_schoolUnlock!['threshold']}명'
+                  '${(_schoolUnlock!['unlocked'] as bool? ?? false) ? ' (언락됨)' : ''}'
+                  ' — 학교 게시판 언락 화면과 동일 기준',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 16),
+                visualDensity: VisualDensity.compact,
+                onPressed: _clearSchoolMode,
+              ),
+            ]),
+          ),
+        ),
       if (_loading) const LinearProgressIndicator(minHeight: 2),
       Expanded(
         child: ListView.builder(

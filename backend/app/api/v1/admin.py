@@ -23,9 +23,11 @@ from app.models.service_models import (
     ProfanityWord,
     Report,
     User,
+    UserChild,
     UserWarning,
 )
 from app.services import capture_service
+from app.services.school_unlock_service import get_unlock_status
 from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -176,6 +178,71 @@ async def list_users(
         }
         for u, post_count, like_count in rows
     ]
+
+
+@router.get("/schools/{school_code}/members")
+async def school_members(
+    school_code: str,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """해당 학교 학교게시판 언락 화면과 '동일한 기준'으로 정회원 명단을 보여준다.
+
+    이전에는 관리자 화면이 유저의 레거시 users.school_name(다자녀 시 첫 자녀
+    등록 때만 동기화되어 자녀 전환 후에는 실제 소속 학교와 어긋날 수 있음)을
+    기준으로 학교별 인원을 눈대중으로 셌기 때문에, UserChild.school_code
+    기준으로 계산하는 언락 화면의 인원수와 서로 달라 보이는 문제가 있었다.
+    같은 school_unlock_service.get_unlock_status()를 그대로 사용하고, 명단도
+    동일한 필터(UserChild.school_code + member_grade='member' + 관리자 제외)로
+    조회해 두 화면의 숫자가 항상 일치하도록 한다.
+    """
+    unlock = await get_unlock_status(school_code, db)
+
+    post_count_subq = (
+        select(func.count(Post.id))
+        .where(Post.author_id == User.id, Post.is_deleted == False)
+        .correlate(User)
+        .scalar_subquery()
+    )
+    like_count_subq = (
+        select(func.coalesce(func.sum(Post.like_count), 0))
+        .where(Post.author_id == User.id, Post.is_deleted == False)
+        .correlate(User)
+        .scalar_subquery()
+    )
+    query = (
+        select(User, post_count_subq.label("post_count"), like_count_subq.label("like_count"))
+        .join(UserChild, UserChild.user_id == User.id)
+        .where(
+            UserChild.school_code == school_code,
+            User.member_grade == "member",
+            User.is_admin.is_(False),
+        )
+        .distinct()
+        .order_by(User.created_at.desc())
+    )
+    rows = (await db.execute(query)).all()
+    return {
+        **unlock,
+        "users": [
+            {
+                "id": u.id,
+                "nickname": u.nickname,
+                "school_name": u.school_name,
+                "grade": u.grade,
+                "member_grade": u.member_grade,
+                "is_banned": u.is_banned,
+                "is_trusted": u.is_trusted,
+                "kakao_id": u.kakao_id,
+                "post_count": post_count,
+                "like_count": like_count,
+                "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+                "login_count": u.login_count or 0,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+            }
+            for u, post_count, like_count in rows
+        ],
+    }
 
 
 @router.get("/users/{user_id}")
