@@ -209,8 +209,19 @@ async def school_members(
     같은 school_unlock_service.get_unlock_status()를 그대로 사용하고, 명단도
     동일한 필터(UserChild.school_code + member_grade='member' + 관리자 제외)로
     조회해 두 화면의 숫자가 항상 일치하도록 한다.
+
+    학교 언락 인원(member_count)은 "정회원"만 세므로, 캡처 인증 대기 중인
+    lurker까지 포함한 "전체 가입(자녀 등록)" 수와는 의도적으로 다를 수 있다
+    — 아무나 학교명만 입력해도 언락 인원에 잡히면 인증 문턱의 의미가 없어지기
+    때문. 두 숫자를 둘 다 보여줘서 혼동을 없앤다.
     """
     unlock = await get_unlock_status(school_code, db)
+
+    total_registered = (await db.execute(
+        select(func.count(func.distinct(UserChild.user_id)))
+        .join(User, User.id == UserChild.user_id)
+        .where(UserChild.school_code == school_code, User.is_admin.is_(False))
+    )).scalar() or 0
 
     post_count_subq = (
         select(func.count(Post.id))
@@ -238,6 +249,7 @@ async def school_members(
     rows = (await db.execute(query)).all()
     return {
         **unlock,
+        "total_registered": total_registered,
         "users": [
             {
                 "id": u.id,

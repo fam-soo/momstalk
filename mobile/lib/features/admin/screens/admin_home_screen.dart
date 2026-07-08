@@ -640,7 +640,8 @@ class _UserListPaneState extends ConsumerState<_UserListPane> with AutomaticKeep
                 child: Text(
                   '$_schoolName · 정회원 ${_schoolUnlock!['member_count']}/${_schoolUnlock!['threshold']}명'
                   '${(_schoolUnlock!['unlocked'] as bool? ?? false) ? ' (언락됨)' : ''}'
-                  ' — 학교 게시판 언락 화면과 동일 기준',
+                  ' · 전체 가입(인증대기 포함) ${_schoolUnlock!['total_registered'] ?? '-'}명'
+                  '\n학교 게시판 언락/대시보드는 "정회원"만 세요 — 인증 전 계정까지 세면 문턱 의미가 없어져요.',
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ),
