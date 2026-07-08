@@ -1783,13 +1783,17 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
   final _titleCtrl = TextEditingController();
   final _contentCtrl = TextEditingController();
   final _schoolSearchCtrl = TextEditingController();
-  String _boardType = 'notice';
+  // 공지는 항상 board_type='notice'로 저장되고(post_service.list_posts가
+  // 게시판별로 알아서 상단에 고정해줌), 이 값은 어느 범위에 노출할지만
+  // 결정한다. 예전엔 이 값을 그대로 board_type으로 보내서 "지역" 선택 시
+  // 실제로는 board_type='region'인 평범한 게시글이 만들어졌고, 그 결과
+  // 공지 고정이 전혀 동작하지 않고 인기글에 밀려 보이는 버그가 있었다.
+  String _scope = 'global';
   String? _targetRegion;
   String? _targetSchoolCode;
   String? _targetSchoolName;
   List<Map<String, dynamic>> _schoolResults = [];
   bool _schoolSearching = false;
-  bool _pinned = false;
   bool _saving = false;
 
   static const _regions = [
@@ -1826,11 +1830,11 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('제목과 내용을 입력해주세요.')));
       return;
     }
-    if (_boardType == 'region' && _targetRegion == null) {
+    if (_scope == 'region' && _targetRegion == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('지역을 선택해주세요.')));
       return;
     }
-    if (_boardType == 'school' && _targetSchoolCode == null) {
+    if (_scope == 'school' && _targetSchoolCode == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('학교를 선택해주세요.')));
       return;
     }
@@ -1840,18 +1844,17 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
       final body = <String, dynamic>{
         'title': _titleCtrl.text,
         'content': _contentCtrl.text,
-        'board_type': _boardType,
-        'is_pinned': _pinned,
+        'board_type': 'notice',
       };
-      if (_boardType == 'region' && _targetRegion != null) body['target_region'] = _targetRegion;
-      if (_boardType == 'school' && _targetSchoolCode != null) body['target_school_code'] = _targetSchoolCode;
+      if (_scope == 'region' && _targetRegion != null) body['target_region'] = _targetRegion;
+      if (_scope == 'school' && _targetSchoolCode != null) body['target_school_code'] = _targetSchoolCode;
       await dio.post('/posts', data: body);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('공지 작성 완료')));
         _titleCtrl.clear();
         _contentCtrl.clear();
         _schoolSearchCtrl.clear();
-        setState(() { _pinned = false; _targetRegion = null; _targetSchoolCode = null; _targetSchoolName = null; _schoolResults = []; });
+        setState(() { _targetRegion = null; _targetSchoolCode = null; _targetSchoolName = null; _schoolResults = []; });
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('실패: $e')));
@@ -1866,17 +1869,16 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         DropdownButtonFormField<String>(
-          value: _boardType,
+          value: _scope,
           decoration: const InputDecoration(
-            labelText: '게시판', border: OutlineInputBorder(), isDense: true),
+            labelText: '노출 범위', border: OutlineInputBorder(), isDense: true),
           items: const [
-            DropdownMenuItem(value: 'notice', child: Text('공지사항')),
-            DropdownMenuItem(value: 'free', child: Text('전체')),
-            DropdownMenuItem(value: 'region', child: Text('지역')),
-            DropdownMenuItem(value: 'school', child: Text('학교')),
+            DropdownMenuItem(value: 'global', child: Text('전체 게시판')),
+            DropdownMenuItem(value: 'region', child: Text('특정 지역 게시판')),
+            DropdownMenuItem(value: 'school', child: Text('특정 학교 게시판')),
           ],
           onChanged: (v) => setState(() {
-            _boardType = v!;
+            _scope = v!;
             _targetRegion = null;
             _targetSchoolCode = null;
             _targetSchoolName = null;
@@ -1884,8 +1886,8 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
             _schoolSearchCtrl.clear();
           }),
         ),
-        // 지역 선택 (region 게시판)
-        if (_boardType == 'region') ...[
+        // 지역 선택
+        if (_scope == 'region') ...[
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
             value: _targetRegion,
@@ -1896,8 +1898,8 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
             onChanged: (v) => setState(() => _targetRegion = v),
           ),
         ],
-        // 학교 검색 (school 게시판)
-        if (_boardType == 'school') ...[
+        // 학교 검색
+        if (_scope == 'school') ...[
           const SizedBox(height: 10),
           if (_targetSchoolName != null)
             Container(
@@ -1978,14 +1980,9 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
             labelText: '내용', border: OutlineInputBorder(),
             alignLabelWithHint: true),
         ),
-        const SizedBox(height: 8),
-        CheckboxListTile(
-          title: const Text('상단 고정', style: TextStyle(fontSize: 13)),
-          value: _pinned,
-          onChanged: (v) => setState(() => _pinned = v!),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-        ),
+        const SizedBox(height: 4),
+        Text('작성한 공지는 해당 범위의 게시판 상단에 자동으로 고정돼요.',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
         const SizedBox(height: 10),
         FilledButton(
           onPressed: _saving ? null : _submit,
