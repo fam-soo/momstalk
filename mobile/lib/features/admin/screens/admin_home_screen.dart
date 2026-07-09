@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/kst_time.dart';
@@ -2127,6 +2128,35 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
 
 // ── 금칙어 관리 ────────────────────────────────────────
 
+class _PresetSetTile extends StatelessWidget {
+  final String title;
+  final List<String> words;
+  final VoidCallback onCopy;
+  const _PresetSetTile({required this.title, required this.words, required this.onCopy});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700))),
+            TextButton.icon(
+              onPressed: onCopy,
+              icon: const Icon(Icons.copy, size: 14),
+              label: const Text('복사', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+            ),
+          ]),
+          Text(words.join(', '), style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        ]),
+      ),
+    );
+  }
+}
+
 class _ProfanityPane extends ConsumerStatefulWidget {
   const _ProfanityPane();
 
@@ -2170,6 +2200,103 @@ class _ProfanityPaneState extends ConsumerState<_ProfanityPane> with AutomaticKe
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('실패: $e')));
     }
   }
+
+  Future<void> _bulkAdd() async {
+    final ctrl = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('금칙어 일괄 추가'),
+        content: SizedBox(
+          width: 360,
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('쉼표(,)로 구분해서 여러 단어를 한 번에 붙여넣으세요.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              maxLines: 6,
+              decoration: const InputDecoration(
+                hintText: '예: 시발, 개새끼, 병신',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('일괄 추가')),
+        ],
+      ),
+    );
+    if (text == null || text.trim().isEmpty) return;
+    try {
+      final dio = ref.read(adminDioProvider);
+      final resp = await dio.post('/admin/profanity/bulk', data: {'words': text});
+      final added = resp.data['added'] as int? ?? 0;
+      final skipped = resp.data['skipped'] as int? ?? 0;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$added개 추가됨' + (skipped > 0 ? ' · $skipped개는 이미 등록되어 건너뜀' : ''))),
+        );
+      }
+      await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('일괄 추가 실패: $e')));
+    }
+  }
+
+  void _showPresetSets() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('금칙어 세트'),
+        content: SizedBox(
+          width: 380,
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('아래에서 복사한 뒤 "일괄 추가" 창에 붙여넣으세요.',
+                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 12),
+              ..._profanityPresets.entries.map((e) => _PresetSetTile(
+                    title: e.key,
+                    words: e.value,
+                    onCopy: () async {
+                      await Clipboard.setData(ClipboardData(text: e.value.join(', ')));
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('"${e.key}" 세트가 복사되었습니다.')),
+                        );
+                      }
+                    },
+                  )),
+            ]),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('닫기')),
+        ],
+      ),
+    );
+  }
+
+  // 이미 core/profanity.py의 기본 목록(_DEFAULT_WORDS)이 코드 레벨에서 항상
+  // 적용되므로, 여기서는 그것과 겹치지 않는 추가 세트만 제공한다 — 커뮤니티
+  // 특성상 자주 문제되는 표현/은어/우회 변형 위주.
+  static const Map<String, List<String>> _profanityPresets = {
+    '자녀·가족 비하': [
+      '급식충', '유치원충', '초딩충', '개저씨', '노키즈존', '맘충', '전업맘 무시',
+    ],
+    '외모·비교 비하': [
+      '못생김', '뚱뚱해서', '살쪄서', '거지같이', '싼티', '없어보임',
+    ],
+    '광고·스팸성 표현': [
+      '무료체험', '지금클릭', '최저가보장', '카톡문의', '텔레그램문의', '부업추천',
+    ],
+    '자음/변형 우회 욕설': [
+      'ㅗㅗ', 'ㅄㅅㄲ', 'ㅁㄴㅆㄲ', 'ㅅㄲㄲ', 'fuckyou', 'stfu',
+    ],
+  };
 
   Future<void> _edit(int id, String currentWord) async {
     final ctrl = TextEditingController(text: currentWord);
@@ -2247,6 +2374,24 @@ class _ProfanityPaneState extends ConsumerState<_ProfanityPane> with AutomaticKe
           ),
           const SizedBox(height: 8),
           FilledButton(onPressed: _add, child: const Text('금칙어 추가')),
+          const SizedBox(height: 6),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _bulkAdd,
+                icon: const Icon(Icons.playlist_add, size: 16),
+                label: const Text('일괄 추가 (쉼표 구분)', style: TextStyle(fontSize: 12)),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _showPresetSets,
+                icon: const Icon(Icons.content_copy, size: 16),
+                label: const Text('금칙어 세트', style: TextStyle(fontSize: 12)),
+              ),
+            ),
+          ]),
         ]),
       ),
       if (_loading) const LinearProgressIndicator(minHeight: 2),
@@ -2257,32 +2402,25 @@ class _ProfanityPaneState extends ConsumerState<_ProfanityPane> with AutomaticKe
       Expanded(
         child: _words.isEmpty && !_loading
             ? const Center(child: Text('등록된 금칙어가 없습니다.', style: TextStyle(color: Colors.grey)))
-            : ListView.builder(
-                itemCount: _words.length,
-                itemBuilder: (_, i) {
-                  final w = _words[i];
-                  final word = w['word'] as String;
-                  return ListTile(
-                    dense: true,
-                    title: Text(word, style: const TextStyle(fontSize: 13)),
-                    subtitle: Text(_timeAgo(w['created_at'] as String?),
-                        style: const TextStyle(fontSize: 11)),
-                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                      TextButton.icon(
-                        onPressed: () => _edit(w['id'] as int, word),
-                        icon: const Icon(Icons.edit_outlined, size: 16),
-                        label: const Text('수정', style: TextStyle(fontSize: 12)),
-                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => _delete(w['id'] as int, word),
-                        icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
-                        label: const Text('삭제', style: TextStyle(color: Colors.red, fontSize: 12)),
-                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                      ),
-                    ]),
-                  );
-                },
+            : SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                // 한 줄에 하나씩 나열되던 리스트를, 여러 개가 한 줄에 배치되는
+                // 버튼(칩) 형태로 바꿔 한눈에 훑어보기 쉽게 함.
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: _words.map((w) {
+                    final id = w['id'] as int;
+                    final word = w['word'] as String;
+                    return InputChip(
+                      label: Text(word, style: const TextStyle(fontSize: 12)),
+                      onPressed: () => _edit(id, word),
+                      onDeleted: () => _delete(id, word),
+                      deleteIconColor: Colors.red.shade300,
+                      visualDensity: VisualDensity.compact,
+                    );
+                  }).toList(),
+                ),
               ),
       ),
     ]);
@@ -2370,6 +2508,7 @@ class _LogPaneState extends ConsumerState<_LogPane> with AutomaticKeepAliveClien
     'unhide_review': '후기 블라인드 해제',
     'delete_review': '후기 삭제',
     'add_profanity': '금칙어 추가',
+    'add_profanity_bulk': '금칙어 일괄 추가',
     'edit_profanity': '금칙어 수정',
     'delete_profanity': '금칙어 삭제',
     'report_warn': '신고 처리 — 경고',

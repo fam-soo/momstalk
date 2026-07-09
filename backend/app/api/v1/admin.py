@@ -1028,6 +1028,40 @@ async def add_profanity(
     return {"word": word}
 
 
+class ProfanityBulkRequest(BaseModel):
+    words: str  # 쉼표(또는 줄바꿈)로 구분된 여러 단어
+
+
+@router.post("/profanity/bulk", status_code=status.HTTP_201_CREATED)
+async def add_profanity_bulk(
+    req: ProfanityBulkRequest,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """쉼표(,) 또는 줄바꿈으로 구분된 여러 단어를 한 번에 등록.
+    하나씩 등록하기 번거롭다는 피드백 반영 — 이미 등록된 단어는 조용히 건너뛴다."""
+    raw_words = [w.strip().lower() for w in req.words.replace("\n", ",").split(",")]
+    candidates = list(dict.fromkeys(w for w in raw_words if w))  # 순서 유지 + 중복 제거
+    if not candidates:
+        raise HTTPException(status_code=400, detail="등록할 단어가 없습니다.")
+
+    existing_rows = (await db.execute(
+        select(ProfanityWord.word).where(ProfanityWord.word.in_(candidates))
+    )).scalars().all()
+    existing_set = set(existing_rows)
+    new_words = [w for w in candidates if w not in existing_set]
+
+    for w in new_words:
+        db.add(ProfanityWord(word=w))
+    if new_words:
+        db.add(AdminAction(
+            admin_id=admin.id, action_type="add_profanity_bulk",
+            detail=f"{len(new_words)}개 추가: {', '.join(new_words[:20])}{' 외' if len(new_words) > 20 else ''}",
+        ))
+        await db.commit()
+    return {"added": len(new_words), "skipped": len(candidates) - len(new_words), "words": new_words}
+
+
 @router.patch("/profanity/{word_id}")
 async def update_profanity(
     word_id: int,
