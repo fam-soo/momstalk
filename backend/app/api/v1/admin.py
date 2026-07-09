@@ -1028,6 +1028,31 @@ async def add_profanity(
     return {"word": word}
 
 
+@router.patch("/profanity/{word_id}")
+async def update_profanity(
+    word_id: int,
+    req: ProfanityRequest,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    new_word = req.word.strip().lower()
+    if not new_word:
+        raise HTTPException(status_code=400, detail="단어를 입력해주세요.")
+    word = (await db.execute(select(ProfanityWord).where(ProfanityWord.id == word_id))).scalar_one_or_none()
+    if not word:
+        raise HTTPException(status_code=404, detail="금칙어를 찾을 수 없습니다.")
+    if new_word != word.word:
+        existing = (await db.execute(
+            select(ProfanityWord).where(ProfanityWord.word == new_word, ProfanityWord.id != word_id)
+        )).scalar_one_or_none()
+        if existing:
+            raise HTTPException(status_code=409, detail="이미 등록된 금칙어입니다.")
+        db.add(AdminAction(admin_id=admin.id, action_type="edit_profanity", detail=f"{word.word} → {new_word}"))
+        word.word = new_word
+        await db.commit()
+    return {"id": word.id, "word": word.word}
+
+
 @router.delete("/profanity/{word_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_profanity(
     word_id: int,

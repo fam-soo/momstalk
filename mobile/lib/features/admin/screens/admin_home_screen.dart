@@ -2171,6 +2171,34 @@ class _ProfanityPaneState extends ConsumerState<_ProfanityPane> with AutomaticKe
     }
   }
 
+  Future<void> _edit(int id, String currentWord) async {
+    final ctrl = TextEditingController(text: currentWord);
+    final newWord = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('금칙어 수정'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: '금칙어', border: OutlineInputBorder(), isDense: true),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('취소')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('저장')),
+        ],
+      ),
+    );
+    if (newWord == null || newWord.isEmpty || newWord == currentWord) return;
+    try {
+      final dio = ref.read(adminDioProvider);
+      await dio.patch('/admin/profanity/$id', data: {'word': newWord});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('수정되었습니다.')));
+      await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('수정 실패: $e')));
+    }
+  }
+
   Future<void> _delete(int id, String word) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -2238,12 +2266,20 @@ class _ProfanityPaneState extends ConsumerState<_ProfanityPane> with AutomaticKe
                     title: Text(word, style: const TextStyle(fontSize: 13)),
                     subtitle: Text(_timeAgo(w['created_at'] as String?),
                         style: const TextStyle(fontSize: 11)),
-                    trailing: TextButton.icon(
-                      onPressed: () => _delete(w['id'] as int, word),
-                      icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
-                      label: const Text('삭제', style: TextStyle(color: Colors.red, fontSize: 12)),
-                      style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                    ),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      TextButton.icon(
+                        onPressed: () => _edit(w['id'] as int, word),
+                        icon: const Icon(Icons.edit_outlined, size: 16),
+                        label: const Text('수정', style: TextStyle(fontSize: 12)),
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => _delete(w['id'] as int, word),
+                        icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
+                        label: const Text('삭제', style: TextStyle(color: Colors.red, fontSize: 12)),
+                        style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                      ),
+                    ]),
                   );
                 },
               ),
@@ -2333,6 +2369,7 @@ class _LogPaneState extends ConsumerState<_LogPane> with AutomaticKeepAliveClien
     'unhide_review': '후기 블라인드 해제',
     'delete_review': '후기 삭제',
     'add_profanity': '금칙어 추가',
+    'edit_profanity': '금칙어 수정',
     'delete_profanity': '금칙어 삭제',
     'report_warn': '신고 처리 — 경고',
     'report_suspend_7d': '신고 처리 — 7일 정지',
