@@ -40,6 +40,9 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   int _schoolMemberCount = 0;
   int _schoolThreshold = 10;
   int _schoolRemaining = 10;
+  // 잠금 화면에서 "우리 학교도 모으면 열린다"는 경쟁심을 자극하기 위한
+  // 이미 열린 학교 현황(개수 + 인원 상위 학교 목록, 익명 집계).
+  Map<String, dynamic>? _leaderboard;
   static const _tapLimit = 2;
   static const _prefKey = 'preview_taps_school';
   static const _lurkerReadKey = 'school_lurker_reads';
@@ -159,7 +162,10 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
           _schoolRemaining = remaining;
           _loading = false;
         });
-        if (schoolLocked) _ensureUnlockPolling();
+        if (schoolLocked) {
+          _ensureUnlockPolling();
+          _loadLeaderboard();
+        }
       }
     } catch (_) {
       await _loadPreview();
@@ -180,6 +186,16 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
     }
   }
 
+  /// 이미 열린 학교 수 + 인원 상위 학교 목록. 잠금 화면에 "우리 학교도
+  /// 모으면 열린다"는 경쟁심을 자극하는 요소로 노출한다.
+  Future<void> _loadLeaderboard() async {
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.get('/schools/unlock-leaderboard');
+      if (mounted) setState(() => _leaderboard = Map<String, dynamic>.from(resp.data as Map));
+    } catch (_) {}
+  }
+
   Future<void> _loadUnlockStatus(String? schoolCode) async {
     final data = await _fetchUnlockStatus(schoolCode);
     if (!mounted) return;
@@ -191,6 +207,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
     });
     if (_schoolLocked) {
       _ensureUnlockPolling();
+      _loadLeaderboard();
     } else {
       _unlockPollTimer?.cancel();
       _unlockPollTimer = null;
@@ -371,6 +388,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
             threshold: _schoolThreshold,
             remaining: _schoolRemaining,
             onInvite: _shareInvite,
+            leaderboard: _leaderboard,
           ),
         );
       }
@@ -503,6 +521,7 @@ class _SchoolLockedView extends StatelessWidget {
   final int threshold;
   final int remaining;
   final VoidCallback onInvite;
+  final Map<String, dynamic>? leaderboard;
 
   const _SchoolLockedView({
     required this.schoolName,
@@ -510,60 +529,127 @@ class _SchoolLockedView extends StatelessWidget {
     required this.threshold,
     required this.remaining,
     required this.onInvite,
+    this.leaderboard,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final progress = threshold == 0 ? 0.0 : (memberCount / threshold).clamp(0.0, 1.0);
+    final unlockedCount = leaderboard?['unlocked_school_count'] as int? ?? 0;
+    final topSchools = (leaderboard?['top_schools'] as List?)?.cast<Map>() ?? [];
 
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.groups_outlined, size: 56, color: theme.colorScheme.primary),
-            const SizedBox(height: 16),
-            Text(
-              schoolName.isNotEmpty ? '$schoolName 게시판, 곧 열려요!' : '학교 게시판, 곧 열려요!',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.groups_outlined, size: 56, color: theme.colorScheme.primary),
+          const SizedBox(height: 16),
+          Text(
+            schoolName.isNotEmpty ? '$schoolName 게시판, 곧 열려요!' : '학교 게시판, 곧 열려요!',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '같은 학교 학부모가 모이면 자동으로 열려요.\n지금 $memberCount명 모였고, $remaining명 더 모이면 이용할 수 있어요.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, height: 1.5, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 20),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 10,
+              backgroundColor: Colors.grey.shade200,
+              valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary),
             ),
-            const SizedBox(height: 8),
-            Text(
-              '같은 학교 학부모가 모이면 자동으로 열려요.\n지금 $memberCount명 모였고, $remaining명 더 모이면 이용할 수 있어요.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, height: 1.5, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 6),
+          Text('$memberCount / $threshold명', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+          const SizedBox(height: 28),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onInvite,
+              icon: const Icon(Icons.person_add_alt_1, size: 18),
+              label: const Text('같은 학교 학부모 초대하기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
             ),
-            const SizedBox(height: 20),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 10,
-                backgroundColor: Colors.grey.shade200,
-                valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text('$memberCount / $threshold명', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+          ),
+          const SizedBox(height: 8),
+          Text('지역·학원 게시판은 지금 바로 이용할 수 있어요',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+          if (topSchools.isNotEmpty) ...[
             const SizedBox(height: 28),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: onInvite,
-                icon: const Icon(Icons.person_add_alt_1, size: 18),
-                label: const Text('같은 학교 학부모 초대하기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text('지역·학원 게시판은 지금 바로 이용할 수 있어요',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
+            const Divider(),
+            const SizedBox(height: 16),
+            _SchoolUnlockLeaderboard(unlockedCount: unlockedCount, topSchools: topSchools),
           ],
-        ),
+        ],
       ),
+    );
+  }
+}
+
+/// 잠금 화면 하단에 이미 열린 학교 현황을 보여줘 "우리 학교도 모으면
+/// 열린다"는 경쟁심을 자극한다. 개인정보 없이 학교명·지역·인원수만 노출.
+class _SchoolUnlockLeaderboard extends StatelessWidget {
+  final int unlockedCount;
+  final List<Map> topSchools;
+  const _SchoolUnlockLeaderboard({required this.unlockedCount, required this.topSchools});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withOpacity(0.25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.15)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(Icons.emoji_events_outlined, size: 18, color: theme.colorScheme.primary),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              '이미 $unlockedCount개교 게시판이 열렸어요!',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: theme.colorScheme.primary),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        ...topSchools.asMap().entries.map((entry) {
+          final rank = entry.key + 1;
+          final s = entry.value;
+          final name = s['school_name'] as String? ?? '';
+          final region = s['region'] as String?;
+          final count = s['member_count'] as int? ?? 0;
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(children: [
+              SizedBox(
+                width: 20,
+                child: Text('$rank', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: theme.colorScheme.primary)),
+              ),
+              Expanded(
+                child: Text(
+                  region != null && region.isNotEmpty ? '$region · $name' : name,
+                  style: const TextStyle(fontSize: 12.5),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Text('$count명', style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+            ]),
+          );
+        }),
+      ]),
     );
   }
 }

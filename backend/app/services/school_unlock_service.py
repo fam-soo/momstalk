@@ -11,7 +11,7 @@
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.service_models import User, UserChild
+from app.models.service_models import School, User, UserChild
 
 # 학교당 언락 기준 인원 — 우선 고정값으로 시작, 추후 학교 규모 비례 등으로 조정 가능.
 SCHOOL_UNLOCK_THRESHOLD = 10
@@ -43,4 +43,42 @@ async def get_unlock_status(school_code: str, db: AsyncSession) -> dict:
         "threshold": SCHOOL_UNLOCK_THRESHOLD,
         "unlocked": unlocked,
         "remaining": max(0, SCHOOL_UNLOCK_THRESHOLD - count),
+    }
+
+
+async def get_unlock_leaderboard(db: AsyncSession, limit: int = 5) -> dict:
+    """아직 학교 게시판이 잠긴 유저에게 "우리 학교도 빨리 모으자"는 경쟁심을
+    자극하기 위해, 이미 열린 학교 수와 인원 상위 학교 목록을 보여준다.
+    개인정보 없이 학교명·지역·인원수만 노출 — count_school_members와
+    동일한 기준(UserChild.school_code + member_grade='member', 관리자 제외)."""
+    rows = (await db.execute(
+        select(UserChild.school_code, func.count(func.distinct(UserChild.user_id)).label("cnt"))
+        .join(User, User.id == UserChild.user_id)
+        .where(User.member_grade == "member", User.is_admin.is_(False), UserChild.school_code.isnot(None))
+        .group_by(UserChild.school_code)
+        .having(func.count(func.distinct(UserChild.user_id)) >= SCHOOL_UNLOCK_THRESHOLD)
+        .order_by(func.count(func.distinct(UserChild.user_id)).desc())
+    )).all()
+
+    unlocked_codes = [r.school_code for r in rows]
+    top_rows = rows[:limit]
+    names: dict[str, tuple[str, str | None]] = {}
+    if top_rows:
+        school_infos = (await db.execute(
+            select(School.school_code, School.school_name, School.region)
+            .where(School.school_code.in_([r.school_code for r in top_rows]))
+        )).all()
+        names = {s.school_code: (s.school_name, s.region) for s in school_infos}
+
+    return {
+        "unlocked_school_count": len(unlocked_codes),
+        "top_schools": [
+            {
+                "school_code": r.school_code,
+                "school_name": names.get(r.school_code, (r.school_code, None))[0],
+                "region": names.get(r.school_code, (r.school_code, None))[1],
+                "member_count": r.cnt,
+            }
+            for r in top_rows
+        ],
     }

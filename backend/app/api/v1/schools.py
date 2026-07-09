@@ -9,7 +9,7 @@ from app.db import get_db
 from app.models.service_models import School
 from app.schemas.school import SchoolSearchResult
 from app.services.neis_service import search_schools as neis_search_schools
-from app.services.school_unlock_service import get_unlock_status
+from app.services.school_unlock_service import get_unlock_status, get_unlock_leaderboard
 
 router = APIRouter(prefix="/schools", tags=["schools"])
 
@@ -22,6 +22,16 @@ async def unlock_status(
     """학교 게시판 언락 현황(현재 인원/기준 인원). 지역·학원 게시판은 제한이
     없고, 학교 게시판만 같은 학교 정회원이 일정 인원 모여야 열린다."""
     return await get_unlock_status(school_code, db)
+
+
+@router.get("/unlock-leaderboard")
+async def unlock_leaderboard(
+    db: AsyncSession = Depends(get_db),
+):
+    """이미 학교 게시판이 열린 학교 수 + 인원 상위 학교 목록(익명 집계).
+    아직 학교가 잠긴 유저에게 "우리 학교도 모으면 열린다"는 동기를 주기 위한
+    잠금 화면용 데이터 — 인증 불필요."""
+    return await get_unlock_leaderboard(db)
 
 
 @router.get("/search", response_model=list[SchoolSearchResult])
