@@ -2235,17 +2235,18 @@ class _ProfanityPaneState extends ConsumerState<_ProfanityPane> with AutomaticKe
     return Column(children: [
       Padding(
         padding: const EdgeInsets.all(12),
-        child: Row(children: [
-          Expanded(
-            child: TextField(
-              controller: _ctrl,
-              decoration: const InputDecoration(
-                hintText: '금칙어 입력', border: OutlineInputBorder(), isDense: true),
-              onSubmitted: (_) => _add(),
-            ),
+        // Row + Expanded 조합 대신 세로로 쌓아, 폭 제약이 애매한 상황에서도
+        // 항상 버튼이 화면에 그려지도록 함(가로 배치에서 버튼이 아예 안
+        // 보인다는 리포트가 있었음).
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          TextField(
+            controller: _ctrl,
+            decoration: const InputDecoration(
+              hintText: '금칙어 입력', border: OutlineInputBorder(), isDense: true),
+            onSubmitted: (_) => _add(),
           ),
-          const SizedBox(width: 8),
-          FilledButton(onPressed: _add, child: const Text('추가')),
+          const SizedBox(height: 8),
+          FilledButton(onPressed: _add, child: const Text('금칙어 추가')),
         ]),
       ),
       if (_loading) const LinearProgressIndicator(minHeight: 2),

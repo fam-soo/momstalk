@@ -582,14 +582,53 @@ class _SchoolLockedView extends StatelessWidget {
           const SizedBox(height: 8),
           Text('지역·학원 게시판은 지금 바로 이용할 수 있어요',
               style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
-          if (topSchools.isNotEmpty) ...[
+          if (leaderboard != null) ...[
             const SizedBox(height: 28),
             const Divider(),
             const SizedBox(height: 16),
-            _SchoolUnlockLeaderboard(unlockedCount: unlockedCount, topSchools: topSchools),
+            topSchools.isNotEmpty
+                ? _SchoolUnlockLeaderboard(unlockedCount: unlockedCount, topSchools: topSchools)
+                : _FirstToOpenBanner(schoolName: schoolName),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// 아직 어느 학교도 언락 기준을 못 넘긴 초기 단계(전체 서비스 기준)에는
+/// 순위표 대신 "우리 학교가 최초 타이틀을 가져가자"는 메시지로 대체한다.
+/// topSchools가 비어 있다고 이 섹션 자체를 숨기면 잠금 화면 하단이 다시
+/// 텅 비어 보이는 문제가 있었다.
+class _FirstToOpenBanner extends StatelessWidget {
+  final String schoolName;
+  const _FirstToOpenBanner({required this.schoolName});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withOpacity(0.25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.15)),
+      ),
+      child: Column(children: [
+        Icon(Icons.flag_outlined, size: 28, color: theme.colorScheme.primary),
+        const SizedBox(height: 8),
+        Text(
+          '아직 열린 학교 게시판이 없어요!',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: theme.colorScheme.primary),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${schoolName.isNotEmpty ? schoolName : '우리 학교'}가 맘스토크 최초로 게시판을 여는 학교가 되어보세요!\n학부모를 초대할수록 더 빨리 열려요.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, height: 1.5, color: Colors.grey.shade700),
+        ),
+      ]),
     );
   }
 }
