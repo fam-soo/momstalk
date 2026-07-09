@@ -766,6 +766,14 @@ class _UserListPaneState extends ConsumerState<_UserListPane> with AutomaticKeep
           ),
         ),
       if (_loading) const LinearProgressIndicator(minHeight: 2),
+      if (_schoolUnlock == null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          child: Text(
+            _ctrl.text.isEmpty ? '총 ${_users.length}명 (최근 가입순, 최대 100명 표시)' : '검색 결과 ${_users.length}명',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
+          ),
+        ),
       Expanded(
         child: ListView.builder(
           itemCount: _users.length,
@@ -1029,80 +1037,88 @@ class _CapturesPaneState extends ConsumerState<_CapturesPane> with AutomaticKeep
       onRefresh: _load,
       child: ListView.separated(
         padding: const EdgeInsets.all(10),
-        itemCount: _items.length,
+        itemCount: _items.length + 1,
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (_, i) {
-          final c = _items[i];
-          final id = c['id'] as int;
-          return Card(
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Text(c['nickname'] as String? ?? '-',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(width: 6),
-                  if ((c['capture_type'] as String? ?? 'initial') == 'child_add')
-                    _statusChip('자녀 추가', Colors.purple)
-                  else
-                    _statusChip('신규 가입', Colors.blue),
-                  const Spacer(),
-                  Text(_timeAgo(c['created_at'] as String?),
-                      style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                ]),
-                const SizedBox(height: 4),
-                Text('${c['input_school_name']} · ${c['input_grade']}학년${c['input_class_num'] != null ? ' ${c['input_class_num']}반' : ''}',
-                    style: const TextStyle(fontSize: 12)),
-                if (c['has_image'] == true) ...[
-                  const SizedBox(height: 8),
-                  FutureBuilder<Uint8List?>(
-                    future: _fetchImage(id),
-                    builder: (_, snap) {
-                      if (snap.connectionState == ConnectionState.waiting) {
-                        return const SizedBox(height: 80, child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
-                      }
-                      if (snap.data == null) return const Text('이미지 없음', style: TextStyle(color: Colors.grey, fontSize: 12));
-                      return GestureDetector(
-                        onTap: () => _showFullImage(context, snap.data!),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Image.memory(snap.data!, height: 100, width: double.infinity, fit: BoxFit.cover),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _reject(id),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
-                        minimumSize: const Size.fromHeight(34),
-                        padding: EdgeInsets.zero,
-                      ),
-                      child: const Text('거절', style: TextStyle(fontSize: 13)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => _approve(id),
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(34),
-                        padding: EdgeInsets.zero,
-                      ),
-                      child: const Text('승인', style: TextStyle(fontSize: 13)),
-                    ),
-                  ),
-                ]),
-              ]),
-            ),
-          );
+          if (i == 0) {
+            return Text('심사 대기 총 ${_items.length}건',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600));
+          }
+          final c = _items[i - 1];
+          return _buildCaptureCard(c);
         },
+      ),
+    );
+  }
+
+  Widget _buildCaptureCard(Map<String, dynamic> c) {
+    final id = c['id'] as int;
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text(c['nickname'] as String? ?? '-',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(width: 6),
+            if ((c['capture_type'] as String? ?? 'initial') == 'child_add')
+              _statusChip('자녀 추가', Colors.purple)
+            else
+              _statusChip('신규 가입', Colors.blue),
+            const Spacer(),
+            Text(_timeAgo(c['created_at'] as String?),
+                style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          ]),
+          const SizedBox(height: 4),
+          Text('${c['input_school_name']} · ${c['input_grade']}학년${c['input_class_num'] != null ? ' ${c['input_class_num']}반' : ''}',
+              style: const TextStyle(fontSize: 12)),
+          if (c['has_image'] == true) ...[
+            const SizedBox(height: 8),
+            FutureBuilder<Uint8List?>(
+              future: _fetchImage(id),
+              builder: (_, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const SizedBox(height: 80, child: Center(child: CircularProgressIndicator(strokeWidth: 2)));
+                }
+                if (snap.data == null) return const Text('이미지 없음', style: TextStyle(color: Colors.grey, fontSize: 12));
+                return GestureDetector(
+                  onTap: () => _showFullImage(context, snap.data!),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Image.memory(snap.data!, height: 100, width: double.infinity, fit: BoxFit.cover),
+                  ),
+                );
+              },
+            ),
+          ],
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => _reject(id),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                  minimumSize: const Size.fromHeight(34),
+                  padding: EdgeInsets.zero,
+                ),
+                child: const Text('거절', style: TextStyle(fontSize: 13)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton(
+                onPressed: () => _approve(id),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size.fromHeight(34),
+                  padding: EdgeInsets.zero,
+                ),
+                child: const Text('승인', style: TextStyle(fontSize: 13)),
+              ),
+            ),
+          ]),
+        ]),
       ),
     );
   }
@@ -2155,13 +2171,30 @@ class _ProfanityPaneState extends ConsumerState<_ProfanityPane> with AutomaticKe
     }
   }
 
-  Future<void> _delete(int id) async {
+  Future<void> _delete(int id, String word) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('금칙어 삭제'),
+        content: Text('"$word"를 금칙어 목록에서 삭제할까요?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('삭제'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     try {
       final dio = ref.read(adminDioProvider);
       await dio.delete('/admin/profanity/$id');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('삭제되었습니다.')));
       await _load();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('실패: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
     }
   }
 
@@ -2188,6 +2221,10 @@ class _ProfanityPaneState extends ConsumerState<_ProfanityPane> with AutomaticKe
         ]),
       ),
       if (_loading) const LinearProgressIndicator(minHeight: 2),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+        child: Text('총 ${_words.length}개', style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+      ),
       Expanded(
         child: _words.isEmpty && !_loading
             ? const Center(child: Text('등록된 금칙어가 없습니다.', style: TextStyle(color: Colors.grey)))
@@ -2195,14 +2232,17 @@ class _ProfanityPaneState extends ConsumerState<_ProfanityPane> with AutomaticKe
                 itemCount: _words.length,
                 itemBuilder: (_, i) {
                   final w = _words[i];
+                  final word = w['word'] as String;
                   return ListTile(
                     dense: true,
-                    title: Text(w['word'] as String, style: const TextStyle(fontSize: 13)),
+                    title: Text(word, style: const TextStyle(fontSize: 13)),
                     subtitle: Text(_timeAgo(w['created_at'] as String?),
                         style: const TextStyle(fontSize: 11)),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                      onPressed: () => _delete(w['id'] as int),
+                    trailing: TextButton.icon(
+                      onPressed: () => _delete(w['id'] as int, word),
+                      icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red),
+                      label: const Text('삭제', style: TextStyle(color: Colors.red, fontSize: 12)),
+                      style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
                     ),
                   );
                 },
@@ -2269,6 +2309,56 @@ class _LogPaneState extends ConsumerState<_LogPane> with AutomaticKeepAliveClien
     return Colors.grey;
   }
 
+  // action_type은 서버가 영문 snake_case로 기록한다(approve_user,
+  // suspend_7d, report_warn 등). 그대로 보여주면 무슨 처리인지 알아보기
+  // 어렵다는 피드백을 받아 한국어 설명 문구로 변환한다. 정확히 일치하는
+  // 값을 먼저 찾고, suspend_7d/suspend_30d처럼 접미사가 붙는 값은 접두어
+  // 매칭으로 처리한다.
+  static const _exactLabels = <String, String>{
+    'approve_user': '유저 수동 승인 (정회원 승급)',
+    'approve_capture': '가입 인증 캡처 승인',
+    'reject_capture': '가입 인증 캡처 반려',
+    'warn': '경고 부여',
+    'ban': '영구 정지',
+    'unban': '정지 해제',
+    'grant_trust': '인증 면제 권한 부여',
+    'revoke_trust': '인증 면제 권한 회수',
+    'hide_post': '게시글 블라인드 처리',
+    'unhide_post': '게시글 블라인드 해제',
+    'delete_post': '게시글 삭제',
+    'hide_comment': '댓글 블라인드 처리',
+    'unhide_comment': '댓글 블라인드 해제',
+    'delete_comment': '댓글 삭제',
+    'hide_review': '후기 블라인드 처리',
+    'unhide_review': '후기 블라인드 해제',
+    'delete_review': '후기 삭제',
+    'add_profanity': '금칙어 추가',
+    'delete_profanity': '금칙어 삭제',
+    'report_warn': '신고 처리 — 경고',
+    'report_suspend_7d': '신고 처리 — 7일 정지',
+    'report_suspend_30d': '신고 처리 — 30일 정지',
+    'report_ban': '신고 처리 — 영구 정지',
+    'report_cleared': '신고 처리 — 조치 없음(기각)',
+  };
+
+  static const _targetLabels = <String, String>{
+    'user': '유저',
+    'post': '게시글',
+    'comment': '댓글',
+    'review': '학원 후기',
+    'capture': '인증 캡처',
+    'report': '신고',
+  };
+
+  String _actionLabel(String type) {
+    if (_exactLabels.containsKey(type)) return _exactLabels[type]!;
+    if (type.startsWith('suspend_')) {
+      final days = type.substring('suspend_'.length).replaceAll('d', '');
+      return '$days일 정지';
+    }
+    return type; // 매핑에 없는 새 action_type은 원문 그대로 표시 (누락 방지)
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -2293,32 +2383,47 @@ class _LogPaneState extends ConsumerState<_LogPane> with AutomaticKeepAliveClien
       ),
       if (_loading) const LinearProgressIndicator(minHeight: 2),
       Expanded(
-        child: ListView.builder(
+        child: ListView.separated(
           itemCount: _logs.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (_, i) {
             final log = _logs[i];
             final type = log['action_type'] as String;
-            return ListTile(
-              dense: true,
-              leading: Container(
-                width: 6,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: _actionColor(type),
-                  borderRadius: BorderRadius.circular(3),
-                ),
-              ),
-              title: Row(children: [
-                Text(type, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _actionColor(type))),
-                if ((log['target_type'] as String? ?? '').isNotEmpty) ...[
-                  const SizedBox(width: 4),
-                  Text('· ${log['target_type']} #${log['target_id']}',
-                      style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                ],
-              ]),
-              subtitle: Text(
-                '${log['admin_nickname']} · ${_timeAgo(log['created_at'] as String?)}${(log['detail'] as String? ?? '').isNotEmpty ? ' · ${(log['detail'] as String).substring(0, (log['detail'] as String).length.clamp(0, 40))}' : ''}',
-                style: const TextStyle(fontSize: 11),
+            final targetType = log['target_type'] as String? ?? '';
+            final detail = log['detail'] as String? ?? '';
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: IntrinsicHeight(
+                child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Container(
+                    width: 4,
+                    decoration: BoxDecoration(color: _actionColor(type), borderRadius: BorderRadius.circular(2)),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(_actionLabel(type),
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _actionColor(type))),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${log['admin_nickname'] ?? '관리자'} 처리 · ${_timeAgo(log['created_at'] as String?)}'
+                        '${targetType.isNotEmpty ? ' · 대상: ${_targetLabels[targetType] ?? targetType} #${log['target_id']}' : ''}',
+                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                      if (detail.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text('사유/내용: $detail', style: const TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ]),
+                  ),
+                ]),
               ),
             );
           },
