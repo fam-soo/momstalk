@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -33,6 +34,25 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  Future<void> _callPhone(String phone) async {
+    final uri = Uri(scheme: 'tel', path: phone);
+    try {
+      if (!await launchUrl(uri)) throw Exception();
+    } catch (_) {
+      // 데스크톱 브라우저 등 tel: 링크를 처리할 앱이 없는 환경 — 복사로 대체
+      await _copyPhone(phone);
+    }
+  }
+
+  Future<void> _copyPhone(String phone) async {
+    await Clipboard.setData(ClipboardData(text: phone));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('전화번호($phone)를 복사했어요.'), duration: const Duration(seconds: 2)),
+      );
+    }
   }
 
   Future<void> _load() async {
@@ -167,14 +187,20 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                     Expanded(child: Text(_academy!['address'] as String? ?? '', style: TextStyle(color: Colors.grey.shade700, fontSize: 13))),
                   ],
                 ),
-                if (_academy!['phone'] != null) ...[
+                if ((_academy!['phone'] as String? ?? '').isNotEmpty) ...[
                   const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(Icons.phone_outlined, size: 15, color: Colors.grey.shade600),
-                      const SizedBox(width: 4),
-                      Text(_academy!['phone'] as String, style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
-                    ],
+                  InkWell(
+                    onTap: () => _callPhone(_academy!['phone'] as String),
+                    onLongPress: () => _copyPhone(_academy!['phone'] as String),
+                    borderRadius: BorderRadius.circular(4),
+                    child: Row(
+                      children: [
+                        Icon(Icons.phone_outlined, size: 15, color: Colors.grey.shade600),
+                        const SizedBox(width: 4),
+                        Text(_academy!['phone'] as String,
+                            style: TextStyle(color: theme.colorScheme.primary, fontSize: 13, decoration: TextDecoration.underline)),
+                      ],
+                    ),
                   ),
                 ],
                 const SizedBox(height: 8),
@@ -247,7 +273,6 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
               unlockedLimit: _unlockedAcademyLimit,
               nextUnlockAt: _nextUnlockAt,
               userReviewCount: _userReviewCount,
-              onWriteTap: () => context.push('/academy/${widget.academyId}/review/write').then((_) => _load()),
             ),
 
           if (_reviewsLocked)
@@ -285,21 +310,6 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
             )
           else ...[
             ..._userReviews.map((r) => _ReviewCard(review: r)),
-            // 하단 잠금 안내 (이 학원이 잠겨 있을 때)
-            if (_academyLocked)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-                child: OutlinedButton.icon(
-                  onPressed: () => context.push('/academy/${widget.academyId}/review/write').then((_) => _load()),
-                  icon: const Icon(Icons.edit_outlined, size: 15),
-                  label: Text('후기 $_nextUnlockAt건 작성하면 이 학원 전체 열람'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey.shade600,
-                    textStyle: const TextStyle(fontSize: 13),
-                    minimumSize: const Size(double.infinity, 44),
-                  ),
-                ),
-              ),
           ],
 
         ],
@@ -316,7 +326,6 @@ class _QuotaBanner extends StatelessWidget {
   final int? unlockedLimit;   // null = 무제한
   final int nextUnlockAt;
   final int userReviewCount;
-  final VoidCallback onWriteTap;
 
   const _QuotaBanner({
     required this.academyLocked,
@@ -324,7 +333,6 @@ class _QuotaBanner extends StatelessWidget {
     required this.unlockedLimit,
     required this.nextUnlockAt,
     required this.userReviewCount,
-    required this.onWriteTap,
   });
 
   @override
@@ -356,7 +364,7 @@ class _QuotaBanner extends StatelessWidget {
     // 잠김 — 이 학원의 후기(기본 소개 + 사용자 후기)가 가림 처리됨
     final limitLabel = '이 학원 후기 가림 처리됨 (열람 가능 학원 $unlockedCount/$unlockedLimit곳)';
     final unlockMsg = nextUnlockAt > 0
-        ? '후기 $nextUnlockAt건 더 작성하면 열람 가능한 학원 수가 늘어납니다'
+        ? '후기 $nextUnlockAt건 더 작성하면 열람 가능한 학원 수가 늘어나요 (위 \'후기 작성\' 버튼 이용)'
         : '';
 
     return Container(
@@ -387,15 +395,6 @@ class _QuotaBanner extends StatelessWidget {
                   Text(unlockMsg, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
               ],
             ),
-          ),
-          TextButton(
-            onPressed: onWriteTap,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              visualDensity: VisualDensity.compact,
-              textStyle: const TextStyle(fontSize: 12),
-            ),
-            child: const Text('후기 작성'),
           ),
         ],
       ),
@@ -430,6 +429,8 @@ class _ReviewCard extends StatelessWidget {
             if (schoolName != null && schoolName.isNotEmpty) schoolName,
             if (grade != null) '$grade학년',
           ].join(' ');
+    // 과목/선생님 스타일 태그를 1번째 줄에 함께 압축 표기 (숙제량·성적향상은 상세화면에서만)
+    final detailTags = [...subjects, ...teacherStyles];
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
@@ -449,80 +450,57 @@ class _ReviewCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 1번째 줄 — 작성자·학교·과목/스타일 태그 + 별점
             Row(
               children: [
                 if (!isViewLimited)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(authorName, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: isSeed ? theme.colorScheme.primary : null)),
-                      if (schoolInfo.isNotEmpty)
-                        Text(schoolInfo, style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-                    ],
+                  Flexible(
+                    child: Text.rich(
+                      TextSpan(children: [
+                        TextSpan(
+                          text: authorName,
+                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: isSeed ? theme.colorScheme.primary : null),
+                        ),
+                        if (schoolInfo.isNotEmpty)
+                          TextSpan(text: '  $schoolInfo', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                        if (detailTags.isNotEmpty)
+                          TextSpan(text: '  ${detailTags.join(' · ')}', style: TextStyle(fontSize: 11, color: theme.colorScheme.primary)),
+                      ]),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   )
                 else
-                  Row(
-                    children: [
-                      Icon(Icons.lock_outline, size: 13, color: Colors.grey.shade400),
-                      const SizedBox(width: 4),
-                      Text('후기 열람 잠금', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
-                    ],
+                  const Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.lock_outline, size: 13, color: Colors.grey),
+                        SizedBox(width: 4),
+                        Text('후기 열람 잠금', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
                   ),
-                if (!isViewLimited && subjects.isNotEmpty) ...[
-                  const SizedBox(width: 6),
-                  Wrap(
-                    spacing: 4,
-                    children: subjects.map((s) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(s, style: const TextStyle(fontSize: 11, color: Colors.blue)),
-                    )).toList(),
-                  ),
-                ],
                 const Spacer(),
                 Row(
                   children: List.generate(5, (i) => Icon(
                     i < rating ? Icons.star : Icons.star_border,
-                    size: 14,
+                    size: 13,
                     color: isViewLimited ? Colors.grey.shade300 : Colors.amber.shade600,
                   )),
                 ),
               ],
             ),
-            if (isViewLimited) ...[
-              const SizedBox(height: 6),
-              if (text.isNotEmpty)
-                Text(text,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
-              const SizedBox(height: 4),
-              Text('후기를 작성하면 전체 내용을 볼 수 있습니다.',
+            const SizedBox(height: 4),
+            // 2번째 줄 — 후기 본문 (한 줄로 축약)
+            if (text.isNotEmpty)
+              Text(text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, color: isViewLimited ? Colors.grey.shade500 : null))
+            else if (isViewLimited)
+              Text('후기를 작성하면 전체 내용을 볼 수 있어요.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontStyle: FontStyle.italic)),
-            ],
-            if (!isViewLimited && text.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(text, style: const TextStyle(fontSize: 14, height: 1.5)),
-            ],
-            const SizedBox(height: 6),
-            if (!isSeed && !isViewLimited) ...[
-              if (teacherStyles.isNotEmpty)
-                _ReviewDetail(label: '선생님 스타일', value: teacherStyles.join(' · ')),
-              _ReviewDetail(label: '숙제량', value: review['homework_level'] as String?),
-              _ReviewDetail(label: '성적 향상', value: review['score_improvement'] as String?),
-            ],
-            if (!isViewLimited) ...[
-              const SizedBox(height: 4),
-              Text(
-                isSeed
-                    ? '수강생 후기를 바탕으로 AI가 요약한 정보입니다.'
-                    : '이 후기는 작성자 개인 경험을 바탕으로 한 의견입니다.',
-                style: TextStyle(fontSize: 10, color: Colors.grey.shade400, fontStyle: FontStyle.italic),
-              ),
-            ],
           ],
         ),
       ),
@@ -530,25 +508,3 @@ class _ReviewCard extends StatelessWidget {
   }
 }
 
-class _ReviewDetail extends StatelessWidget {
-  final String label;
-  final String? value;
-  const _ReviewDetail({required this.label, this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    if (value == null || value!.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 2),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-          ),
-          Text(value!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-}
