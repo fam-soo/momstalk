@@ -68,8 +68,11 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
       if (!kIsWeb && await isKakaoTalkInstalled()) {
         kakaoToken = await UserApi.instance.loginWithKakaoTalk();
       } else {
+        // login_screen.dart와 동일한 이유로 selectAccount 대신 login 사용 —
+        // 카카오 "간편 로그인" 목록엔 계정이 일부만 보이거나 원하는 계정이
+        // 안 보일 수 있어, 매번 로그인 화면에서 명확히 계정을 선택하게 한다.
         kakaoToken = await UserApi.instance.loginWithKakaoAccount(
-          prompts: [Prompt.selectAccount],
+          prompts: [Prompt.login],
         );
       }
       final dio = ref.read(dioProvider);
@@ -177,7 +180,9 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
 
     final schoolName = _inviteInfo?['school_name'] as String? ?? '';
     final schoolType = _inviteInfo?['school_type'] as String? ?? 'elementary';
-    final isUsed = _inviteInfo?['is_used'] as bool? ?? false;
+    final isFull = _inviteInfo?['is_full'] as bool? ?? (_inviteInfo?['is_used'] as bool? ?? false);
+    final useCount = _inviteInfo?['use_count'] as int?;
+    final maxUses = _inviteInfo?['max_uses'] as int?;
     final maxGrade = schoolType == 'elementary' ? 6 : 3;
     final schoolTypeLabel = switch (schoolType) {
       'elementary' => '초등학교',
@@ -186,7 +191,7 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
       _ => '',
     };
     // 이미 사용된 링크는 기존 정회원(자녀 추가 목적)만 허용
-    final isBlocked = isUsed && !_wasAlreadyMember;
+    final isBlocked = isFull && !_wasAlreadyMember;
     final isBusy = _joining || _loggingIn;
 
     // 학년이 범위를 벗어나면 리셋
@@ -224,6 +229,11 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
                     _wasAlreadyMember ? '이 학교를 자녀 학교로 추가합니다' : '학부모 커뮤니티 초대',
                     style: TextStyle(color: Colors.grey.shade600),
                   ),
+                  if (!_wasAlreadyMember && useCount != null && maxUses != null) ...[
+                    const SizedBox(height: 6),
+                    Text('지금까지 $useCount / $maxUses명 참여',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+                  ],
                 ]),
               ),
             ),
@@ -285,7 +295,7 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
                   border: Border.all(color: Colors.red.shade200),
                 ),
                 child: const Text(
-                  '이미 사용된 초대 링크입니다.\n새 초대 링크를 받아 다시 시도해주세요.',
+                  '이 초대 링크는 참여 인원이 가득 찼습니다.\n새 초대 링크를 받아 다시 시도해주세요.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 13, color: Colors.red),
                 ),

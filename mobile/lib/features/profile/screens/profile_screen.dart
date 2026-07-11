@@ -141,10 +141,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           data: selectedChildId != null ? {'child_id': selectedChildId} : {});
       final deeplink = resp.data['deeplink'] as String;
       final schoolName = resp.data['school_name'] as String? ?? '';
+      final maxUses = resp.data['max_uses'] as int? ?? 10;
       if (!mounted) return;
       await showDialog(
         context: context,
-        builder: (ctx) => _InviteShareDialog(deeplink: deeplink, schoolName: schoolName),
+        builder: (ctx) => _InviteShareDialog(deeplink: deeplink, schoolName: schoolName, maxUses: maxUses),
       );
     } catch (e) {
       if (mounted) {
@@ -1640,7 +1641,8 @@ class _TemperatureChip extends StatelessWidget {
 class _InviteShareDialog extends StatelessWidget {
   final String deeplink;
   final String schoolName;
-  const _InviteShareDialog({required this.deeplink, this.schoolName = ''});
+  final int maxUses;
+  const _InviteShareDialog({required this.deeplink, this.schoolName = '', this.maxUses = 10});
 
   Future<void> _copyLink(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: deeplink));
@@ -1659,7 +1661,7 @@ class _InviteShareDialog extends StatelessWidget {
     final template = FeedTemplate(
       content: Content(
         title: 'MomsTalk에 초대합니다!',
-        description: '아래 버튼을 눌러 48시간 내 가입해주세요.',
+        description: '아래 버튼을 눌러 24시간 내 가입해주세요.',
         imageUrl: Uri.parse('https://momstalk.co.kr/icons/Icon-192.png'),
         link: link,
       ),
@@ -1728,9 +1730,10 @@ class _InviteShareDialog extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
           ),
-        const Text(
-          '아래 링크를 공유해 주세요.\n48시간 내 1회만 사용 가능합니다.',
-          style: TextStyle(fontSize: 13, color: Colors.grey),
+        Text(
+          '아래 링크를 공유해 주세요.\n24시간 동안 최대 $maxUses명까지 함께 가입할 수 있어요.',
+          style: const TextStyle(fontSize: 13, color: Colors.grey),
+          textAlign: TextAlign.center,
         ),
         const SizedBox(height: 12),
         Container(

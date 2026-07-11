@@ -63,8 +63,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (!kIsWeb && await isKakaoTalkInstalled()) {
         token = await UserApi.instance.loginWithKakaoTalk();
       } else {
+        // Prompt.selectAccount는 카카오의 "간편 로그인" 위젯을 띄우는데, 이건
+        // 브라우저 세션에 최근 남아있는 계정 일부만 보여줄 뿐이라 사용자가
+        // 여러 카카오 계정을 쓰는 경우 원하는 계정이 목록에 아예 없거나
+        // "이 계정으로 로그인되는 건가?" 헷갈리는 문제가 있었다. Prompt.login으로
+        // 매번 카카오 로그인 화면 자체를 새로 띄워, 어떤 계정으로 로그인할지
+        // 직접 아이디/비번(또는 계정 전환)을 눌러 명확히 선택하게 한다.
         token = await UserApi.instance.loginWithKakaoAccount(
-          prompts: [Prompt.selectAccount],
+          prompts: [Prompt.login],
         );
       }
       await _authenticateWithBackend(token);

@@ -378,7 +378,7 @@ async def generate_invite(
     user: User = Depends(require_member),
     db: AsyncSession = Depends(get_db),
 ):
-    """정회원만 추천 링크 발급. active_child(또는 지정 child_id) 학교 고정, 48시간 유효."""
+    """정회원만 추천 링크 발급. active_child(또는 지정 child_id) 학교 고정, 24시간·최대 10명."""
     try:
         link = await invite_service.generate_invite(user, db, child_id=req.child_id)
     except ValueError as e:
@@ -389,14 +389,15 @@ async def generate_invite(
         expires_at=link.expires_at.isoformat(),
         deeplink=deeplink,
         school_name=link.school_name,
+        max_uses=link.max_uses,
     )
 
 
 @router.get("/invite/{token}")
 async def check_invite(token: str, db: AsyncSession = Depends(get_db)):
     """초대 링크 정보 표시 (사용 전 미리 보기).
-    사용 여부와 관계없이 링크 존재·만료 여부만 확인한다.
-    사용 제한 검증은 POST /invite/use 에서 수행."""
+    정원 마감 여부와 관계없이 링크 존재·만료 여부만 확인한다.
+    실제 정원 확인(원자적 처리)은 POST /invite/use 에서 수행."""
     link = await invite_service.get_invite(token, db)
     if not link:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효하지 않은 초대 링크입니다.")
@@ -408,7 +409,11 @@ async def check_invite(token: str, db: AsyncSession = Depends(get_db)):
         "school_code": link.school_code,
         "school_type": link.school_type,
         "expires_at": link.expires_at.isoformat(),
-        "is_used": link.used_by is not None,
+        "max_uses": link.max_uses,
+        "use_count": link.use_count,
+        "is_full": link.use_count >= link.max_uses,
+        # 하위 호환: 기존 프론트가 is_used를 참조할 수 있어 정원 마감 여부로 매핑
+        "is_used": link.use_count >= link.max_uses,
     }
 
 

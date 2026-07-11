@@ -117,6 +117,7 @@ class InviteGenerateResponse(BaseModel):
     expires_at: str
     deeplink: str
     school_name: str = ""
+    max_uses: int = 10
 
 
 class InviteUseRequest(BaseModel):

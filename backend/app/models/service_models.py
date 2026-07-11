@@ -337,7 +337,12 @@ class AuthCapture(Base):
 
 
 class InviteLink(Base):
-    """정회원이 발급하는 추천 링크."""
+    """정회원이 발급하는 추천 링크.
+
+    카카오톡 단체 채팅방 등 한 링크를 여러 명에게 동시에 공유하는 경우가
+    많아 1회 소모성이 아니라 정원제로 바꿨다(기본 24시간 · 최대 10명).
+    used_by/used_at은 "가장 최근 사용자" 표시용으로 남겨두고, 실제 사용
+    인원 집계와 중복 참여 방지는 InviteLinkUse로 한다."""
     __tablename__ = "invite_links"
 
     id = Column(Integer, primary_key=True)
@@ -346,10 +351,26 @@ class InviteLink(Base):
     school_code = Column(String(20), nullable=False)     # 발급자의 school_code 고정
     school_name = Column(String(100), nullable=False)
     school_type = Column(String(10), nullable=False)
-    used_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    used_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # 가장 최근 사용자 (표시용)
     used_at = Column(DateTime, nullable=True)
-    expires_at = Column(DateTime, nullable=False)        # 발급 후 48시간
+    max_uses = Column(Integer, nullable=False, server_default="10")
+    use_count = Column(Integer, nullable=False, server_default="0")
+    expires_at = Column(DateTime, nullable=False)        # 발급 후 24시간
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class InviteLinkUse(Base):
+    """초대 링크의 실제 사용 이력 — 정원 집계 + 같은 유저 중복 참여 방지용."""
+    __tablename__ = "invite_link_uses"
+
+    id = Column(Integer, primary_key=True)
+    invite_link_id = Column(Integer, ForeignKey("invite_links.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    used_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        __import__("sqlalchemy").UniqueConstraint("invite_link_id", "user_id", name="uq_invite_link_use"),
+    )
 
 
 class AdminUser(Base):
