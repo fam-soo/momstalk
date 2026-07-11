@@ -379,6 +379,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         // ── 알림 설정 ──────────────────────────────────
         const _PushSettingsCard(),
         const SizedBox(height: 8),
+        if (isMember && !isAdmin) ...[
+          const _BoardNotificationPrefsCard(),
+          const SizedBox(height: 8),
+        ],
 
         // ── 서비스 정보 + 로그아웃/탈퇴 통합 (컴팩트) ──
         Card(
@@ -616,6 +620,86 @@ class _PushSettingsCardState extends ConsumerState<_PushSettingsCard> with Widge
         activeColor: theme.colorScheme.primary,
         onChanged: (!switchEnabled || _busy || status == null) ? null : _toggle,
       ),
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// 게시판 종류별 "새 글 알림" — 내 글 댓글/DM 알림과는 별개로, 즐겨찾는
+// 게시판(지역/학교/학년/학원)에 새 글이 올라올 때마다 알림을 받을지
+// 게시판 종류별로 켜고 끌 수 있다.
+// ──────────────────────────────────────────────────────────────────
+
+class _BoardNotificationPrefsCard extends ConsumerStatefulWidget {
+  const _BoardNotificationPrefsCard();
+
+  @override
+  ConsumerState<_BoardNotificationPrefsCard> createState() => _BoardNotificationPrefsCardState();
+}
+
+class _BoardNotificationPrefsCardState extends ConsumerState<_BoardNotificationPrefsCard> {
+  Map<String, dynamic>? _prefs;
+  bool _busyKey = false;
+
+  static const _items = [
+    ('notify_region', '지역 게시판', '우리 동네에 새 글이 올라오면 알림', Icons.location_on_outlined),
+    ('notify_school', '학교 게시판', '우리 학교에 새 글이 올라오면 알림', Icons.school_outlined),
+    ('notify_grade', '학년 게시판', '같은 학년 게시판에 새 글이 올라오면 알림', Icons.groups_outlined),
+    ('notify_academy', '학원 후기', '우리 지역 학원에 새 후기가 올라오면 알림', Icons.storefront_outlined),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.get('/notifications/prefs');
+      if (mounted) setState(() => _prefs = Map<String, dynamic>.from(resp.data as Map));
+    } catch (_) {}
+  }
+
+  Future<void> _toggle(String key, bool value) async {
+    setState(() { _prefs = {...?_prefs, key: value}; _busyKey = true; });
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.patch('/notifications/prefs', data: {key: value});
+      if (mounted) setState(() => _prefs = Map<String, dynamic>.from(resp.data as Map));
+    } catch (e) {
+      // 실패 시 서버 상태를 다시 조회해 화면을 동기화
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('변경 실패: $e')));
+    } finally {
+      if (mounted) setState(() => _busyKey = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Row(children: [
+            Icon(Icons.campaign_outlined, size: 16, color: Colors.grey.shade600),
+            const SizedBox(width: 6),
+            Text('게시판 새 글 알림', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+          ]),
+        ),
+        for (final (key, title, subtitle, icon) in _items)
+          SwitchListTile(
+            dense: true,
+            secondary: Icon(icon, size: 20),
+            title: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
+            value: _prefs?[key] as bool? ?? false,
+            onChanged: (_prefs == null || _busyKey) ? null : (v) => _toggle(key, v),
+          ),
+      ]),
     );
   }
 }

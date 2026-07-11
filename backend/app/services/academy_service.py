@@ -370,6 +370,9 @@ async def create_review(
     await db.commit()
     await db.refresh(review)
 
+    from app.services.notification_service import notify_new_academy_review
+    await notify_new_academy_review(db, review, academy)
+
     author_display = None
     if not review.is_anonymous:
         author_display = user.nickname

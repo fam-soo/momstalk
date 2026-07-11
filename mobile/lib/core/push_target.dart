@@ -13,6 +13,9 @@ String? pushTargetLocation(Map<String, dynamic> data) {
     case 'auth_approved':
     case 'auth_rejected':
       return '/my';
+    case 'academy':
+      final academyId = data['academy_id'];
+      return academyId == null ? null : '/academy/$academyId';
     default:
       return null;
   }

@@ -90,6 +90,11 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
     await temperature_service.adjust(user.id, "post_created", db)
     await db.commit()
     await db.refresh(post)
+
+    if post.board_type in ("region", "school", "grade"):
+        from app.services.notification_service import notify_new_post
+        await notify_new_post(db, post)
+
     return post
 
 
