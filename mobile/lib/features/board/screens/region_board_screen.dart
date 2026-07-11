@@ -8,7 +8,7 @@ import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
 import '../../../core/kst_time.dart';
 import '../../../core/notification_bell.dart';
-import '../../../core/notification_prefs.dart';
+import '../../../core/unified_notify_button.dart';
 import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart';
 
@@ -156,11 +156,10 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
     if (_isMember) {
       return Scaffold(
         appBar: AppBar(
-          leading: const NotificationBellButton(),
           title: Text(_region.isNotEmpty ? '$_region 게시판' : '지역 게시판',
               style: const TextStyle(fontWeight: FontWeight.bold)),
           actions: [
-            const BoardNotifyButton(prefKey: 'notify_region', label: '지역'),
+            const UnifiedNotifyButton(prefKey: 'notify_region', label: '지역'),
             IconButton(icon: const Icon(Icons.search), onPressed: () => context.push('/search')),
           ],
         ),

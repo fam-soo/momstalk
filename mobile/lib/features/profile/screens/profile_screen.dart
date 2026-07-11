@@ -379,12 +379,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const SizedBox(height: 8),
 
         // ── 알림 설정 ──────────────────────────────────
-        const _PushSettingsCard(),
+        const _NotificationSettingsCard(),
         const SizedBox(height: 8),
-        if (isMember && !isAdmin) ...[
-          const _BoardNotificationPrefsCard(),
-          const SizedBox(height: 8),
-        ],
 
         // ── 서비스 정보 + 로그아웃/탈퇴 통합 (컴팩트) ──
         Card(
@@ -507,26 +503,37 @@ class _QuickAction extends StatelessWidget {
 }
 
 // ──────────────────────────────────────────────────────────────────
-// 알림(웹 푸시) 설정 카드 — 켜기/끄기를 한눈에 알 수 있도록 상태별로
-// 아이콘·색상·설명 문구를 뚜렷하게 구분한다.
+// 알림 설정 — 전체 푸시 on/off(브라우저 권한)와 게시판별(지역/학교/학년/
+// 학원) 새 글 알림을 한 줄에 모아 보여준다. 예전엔 카드가 둘로 나뉘어
+// 있어서 한눈에 비교하기 불편하다는 피드백을 반영했다. 전체 알림이
+// 꺼지면 게시판 알림도 실제로는 오지 않으므로(브라우저 알림 자체가
+// 안 뜸), 맨 앞에 "전체" 세그먼트로 두고 나머지 4개보다 시각적으로
+// 강조한다.
 // ──────────────────────────────────────────────────────────────────
 
-class _PushSettingsCard extends ConsumerStatefulWidget {
-  const _PushSettingsCard();
+class _NotificationSettingsCard extends ConsumerStatefulWidget {
+  const _NotificationSettingsCard();
 
   @override
-  ConsumerState<_PushSettingsCard> createState() => _PushSettingsCardState();
+  ConsumerState<_NotificationSettingsCard> createState() => _NotificationSettingsCardState();
 }
 
-class _PushSettingsCardState extends ConsumerState<_PushSettingsCard> with WidgetsBindingObserver {
-  PushStatus? _status;
-  bool _busy = false;
+class _NotificationSettingsCardState extends ConsumerState<_NotificationSettingsCard> with WidgetsBindingObserver {
+  PushStatus? _pushStatus;
+  bool _pushBusy = false;
+
+  static const _boardItems = [
+    ('notify_region', '지역', Icons.location_on_outlined),
+    ('notify_school', '학교', Icons.school_outlined),
+    ('notify_grade', '학년', Icons.groups_outlined),
+    ('notify_academy', '학원', Icons.storefront_outlined),
+  ];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _refresh();
+    _refreshPush();
   }
 
   @override
@@ -538,16 +545,17 @@ class _PushSettingsCardState extends ConsumerState<_PushSettingsCard> with Widge
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // 브라우저 알림 권한 설정을 바꾸고 탭으로 돌아왔을 때 최신 상태 반영
-    if (state == AppLifecycleState.resumed) _refresh();
+    if (state == AppLifecycleState.resumed) _refreshPush();
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refreshPush() async {
     final s = await PushNotifications.status();
-    if (mounted) setState(() => _status = s);
+    if (mounted) setState(() => _pushStatus = s);
   }
 
-  Future<void> _toggle(bool turnOn) async {
-    setState(() => _busy = true);
+  Future<void> _togglePush() async {
+    final turnOn = _pushStatus != PushStatus.on;
+    setState(() => _pushBusy = true);
     if (turnOn) {
       final ok = await PushNotifications.requestAndRegister(ref);
       if (mounted && !ok) {
@@ -566,85 +574,22 @@ class _PushSettingsCardState extends ConsumerState<_PushSettingsCard> with Widge
         );
       }
     }
-    await _refresh();
-    if (mounted) setState(() => _busy = false);
+    await _refreshPush();
+    if (mounted) setState(() => _pushBusy = false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final status = _status;
+    final prefs = ref.watch(notificationPrefsProvider);
     final theme = Theme.of(context);
 
-    final (icon, color, title, subtitle, switchValue, switchEnabled) = switch (status) {
-      PushStatus.on => (
-          Icons.notifications_active,
-          Colors.green.shade600,
-          '알림 켜짐',
-          '새 댓글·좋아요 알림을 받고 있어요',
-          true,
-          true,
-        ),
-      PushStatus.off => (
-          Icons.notifications_off_outlined,
-          Colors.grey.shade500,
-          '알림 꺼짐',
-          '탭해서 알림을 받아보세요',
-          false,
-          true,
-        ),
-      PushStatus.blocked => (
-          Icons.notifications_off,
-          Colors.red.shade400,
-          '알림 차단됨',
-          '브라우저 설정에서 이 사이트의 알림을 허용해주세요',
-          false,
-          false,
-        ),
-      PushStatus.unavailable || null => (
-          Icons.notifications_none,
-          Colors.grey.shade400,
-          '알림 사용 불가',
-          '이 브라우저/환경에서는 알림을 지원하지 않아요',
-          false,
-          false,
-        ),
+    final (pushIcon, pushColor, pushLabel, pushTappable) = switch (_pushStatus) {
+      PushStatus.on => (Icons.notifications_active, Colors.green.shade600, 'ON', true),
+      PushStatus.off => (Icons.notifications_off_outlined, Colors.grey.shade400, 'OFF', true),
+      PushStatus.blocked => (Icons.notifications_off, Colors.red.shade400, '차단됨', false),
+      PushStatus.unavailable || null => (Icons.notifications_none, Colors.grey.shade400, '지원안함', false),
     };
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: SwitchListTile(
-        secondary: _busy
-            ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
-            : Icon(icon, color: color),
-        title: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: color)),
-        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-        value: switchValue,
-        activeColor: theme.colorScheme.primary,
-        onChanged: (!switchEnabled || _busy || status == null) ? null : _toggle,
-      ),
-    );
-  }
-}
-
-// ──────────────────────────────────────────────────────────────────
-// 게시판 종류별 "새 글 알림" — 내 글 댓글/DM 알림과는 별개로, 즐겨찾는
-// 게시판(지역/학교/학년/학원)에 새 글이 올라올 때마다 알림을 받을지
-// 게시판 종류별로 켜고 끌 수 있다.
-// ──────────────────────────────────────────────────────────────────
-
-class _BoardNotificationPrefsCard extends ConsumerWidget {
-  const _BoardNotificationPrefsCard();
-
-  static const _items = [
-    ('notify_region', '지역', Icons.location_on_outlined),
-    ('notify_school', '학교', Icons.school_outlined),
-    ('notify_grade', '학년', Icons.groups_outlined),
-    ('notify_academy', '학원', Icons.storefront_outlined),
-  ];
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final prefs = ref.watch(notificationPrefsProvider);
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -653,51 +598,80 @@ class _BoardNotificationPrefsCard extends ConsumerWidget {
           Row(children: [
             Icon(Icons.campaign_outlined, size: 16, color: Colors.grey.shade600),
             const SizedBox(width: 6),
-            Text('게시판 새 글 알림', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+            Text('알림 설정', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
           ]),
+          const SizedBox(height: 2),
+          Text('전체를 꺼두면 새 댓글·좋아요·게시판 알림 모두 오지 않아요. 게시판별로는 새 글 알림만 따로 켤 수 있어요.',
+              style: TextStyle(fontSize: 10.5, color: Colors.grey.shade500)),
           const SizedBox(height: 10),
-          // 게시판 종류별 상태를 한눈에 비교할 수 있도록 한 줄에 배치.
-          // 각 게시판 화면 상단의 알림 버튼과 상태를 공유(notificationPrefsProvider)해
-          // 어느 쪽에서 바꾸든 즉시 반영된다.
-          Row(
-            children: _items.map((item) {
-              final (key, label, icon) = item;
-              final on = prefs?[key] as bool? ?? false;
-              return Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: prefs == null
-                      ? null
-                      : () => ref.read(notificationPrefsProvider.notifier).toggle(key),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Column(children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: on
-                              ? Theme.of(context).colorScheme.primaryContainer
-                              : Colors.grey.shade100,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(icon, size: 18,
-                            color: on ? Theme.of(context).colorScheme.primary : Colors.grey.shade400),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(label, style: const TextStyle(fontSize: 11)),
-                      const SizedBox(height: 2),
-                      Text(on ? 'ON' : 'OFF',
-                          style: TextStyle(
-                            fontSize: 9, fontWeight: FontWeight.bold,
-                            color: on ? Theme.of(context).colorScheme.primary : Colors.grey.shade400,
-                          )),
-                    ]),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
+          Row(children: [
+            _NotifySegment(
+              icon: _pushBusy ? null : pushIcon,
+              busy: _pushBusy,
+              label: '전체',
+              statusLabel: pushLabel,
+              color: pushColor,
+              onTap: (pushTappable && !_pushBusy) ? _togglePush : null,
+            ),
+            Container(width: 1, height: 40, color: Colors.grey.shade200, margin: const EdgeInsets.symmetric(horizontal: 2)),
+            for (final (key, label, icon) in _boardItems)
+              _NotifySegment(
+                icon: icon,
+                label: label,
+                statusLabel: (prefs?[key] as bool? ?? false) ? 'ON' : 'OFF',
+                color: (prefs?[key] as bool? ?? false) ? theme.colorScheme.primary : Colors.grey.shade400,
+                onTap: prefs == null ? null : () => ref.read(notificationPrefsProvider.notifier).toggle(key),
+              ),
+          ]),
         ]),
+      ),
+    );
+  }
+}
+
+class _NotifySegment extends StatelessWidget {
+  final IconData? icon;
+  final bool busy;
+  final String label;
+  final String statusLabel;
+  final Color color;
+  final VoidCallback? onTap;
+  const _NotifySegment({
+    this.icon,
+    this.busy = false,
+    required this.label,
+    required this.statusLabel,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(children: [
+            Container(
+              width: 34, height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: statusLabel == 'ON' ? color.withOpacity(0.12) : Colors.grey.shade100,
+                shape: BoxShape.circle,
+              ),
+              child: busy
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : Icon(icon, size: 18, color: color),
+            ),
+            const SizedBox(height: 4),
+            Text(label, style: const TextStyle(fontSize: 11)),
+            const SizedBox(height: 2),
+            Text(statusLabel,
+                style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: color)),
+          ]),
+        ),
       ),
     );
   }

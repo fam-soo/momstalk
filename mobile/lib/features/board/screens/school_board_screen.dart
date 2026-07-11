@@ -10,7 +10,7 @@ import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
 import '../../../core/kst_time.dart';
 import '../../../core/notification_bell.dart';
-import '../../../core/notification_prefs.dart';
+import '../../../core/unified_notify_button.dart';
 import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart';
 
@@ -396,7 +396,6 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
 
       return Scaffold(
         appBar: AppBar(
-          leading: const NotificationBellButton(),
           title: appBarTitle,
           actions: [
             // 학교 게시판은 탭이 학교/학년 둘이라, 현재 선택된 탭 기준으로
@@ -404,8 +403,8 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
             AnimatedBuilder(
               animation: tc,
               builder: (_, __) => tc.index == 1 && hasGrade
-                  ? const BoardNotifyButton(prefKey: 'notify_grade', label: '학년')
-                  : const BoardNotifyButton(prefKey: 'notify_school', label: '학교'),
+                  ? const UnifiedNotifyButton(prefKey: 'notify_grade', label: '학년')
+                  : const UnifiedNotifyButton(prefKey: 'notify_school', label: '학교'),
             ),
             IconButton(icon: const Icon(Icons.search), onPressed: () => context.push('/search')),
           ],
