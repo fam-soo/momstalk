@@ -382,6 +382,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
         'content': contentCtrl.text.trim(),
       });
       await _load();
+      // 좋아요/댓글/삭제와 달리 제목·내용 수정은 이 신호를 안 보내서,
+      // 게시판 목록 화면(keep-alive로 상태 유지)이 예전 제목을 계속
+      // 보여주던 문제가 있었다.
+      bumpBoardRefresh(ref);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('수정 실패: $e')));
     }
