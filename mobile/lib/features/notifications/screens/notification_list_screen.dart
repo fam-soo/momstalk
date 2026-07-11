@@ -64,6 +64,8 @@ class _NotificationListScreenState extends ConsumerState<NotificationListScreen>
   IconData _iconFor(String type) {
     switch (type) {
       case 'comment': return Icons.chat_bubble_outline;
+      case 'new_post': return Icons.article_outlined;
+      case 'new_academy_review': return Icons.storefront_outlined;
       case 'dm': return Icons.mail_outline;
       case 'auth_approved': return Icons.verified_outlined;
       case 'auth_rejected': return Icons.error_outline;

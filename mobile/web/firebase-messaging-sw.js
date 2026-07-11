@@ -41,7 +41,14 @@ function _targetPath(data) {
   data = data || {};
   switch (data.type) {
     case 'comment':
-      return data.post_id ? `/#/board/${data.post_id}` : '/#/region';
+      if (!data.post_id) return '/#/region';
+      // 댓글 알림은 게시글만 여는 게 아니라 해당 댓글까지 스크롤+하이라이트
+      // 하도록 highlight_comment_id를 함께 넘긴다(core/push_target.dart와 동일 로직).
+      return data.comment_id
+        ? `/#/board/${data.post_id}?highlight_comment_id=${data.comment_id}`
+        : `/#/board/${data.post_id}`;
+    case 'academy':
+      return data.academy_id ? `/#/academy/${data.academy_id}` : '/#/academy';
     case 'dm':
       return data.conversation_id ? `/#/dm/${data.conversation_id}` : '/#/dm';
     case 'auth_approved':

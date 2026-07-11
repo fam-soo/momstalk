@@ -178,7 +178,8 @@ Future<void> showPostActions(
 
 class PostDetailScreen extends ConsumerStatefulWidget {
   final int postId;
-  const PostDetailScreen({super.key, required this.postId});
+  final int? highlightCommentId;
+  const PostDetailScreen({super.key, required this.postId, this.highlightCommentId});
 
   @override
   ConsumerState<PostDetailScreen> createState() => _PostDetailScreenState();
@@ -193,11 +194,20 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
   static const _anonAllowedBoards = {'school', 'free', 'region'};
   bool _anonComment = false;
 
+  // 댓글 알림을 탭했을 때 해당 댓글까지 스크롤+하이라이트하기 위한 상태.
+  // 댓글은 하나의 ListView 안에 게시글 본문과 함께 섞여 있어 위치를
+  // 미리 계산할 수 없으므로, 댓글마다 GlobalKey를 붙여두고 첫 로드 후
+  // Scrollable.ensureVisible로 실제 렌더된 위치까지 스크롤한다.
+  final Map<int, GlobalKey> _commentKeys = {};
+  int? _flashCommentId;
+  bool _didScrollToHighlight = false;
+
   bool get _anonCommentAllowed => _anonAllowedBoards.contains(_post?['board_type']);
 
   @override
   void initState() {
     super.initState();
+    _flashCommentId = widget.highlightCommentId;
     _load();
   }
 
@@ -221,9 +231,29 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
         _comments = List<Map<String, dynamic>>.from(results[1].data);
         _me = Map<String, dynamic>.from(results[2].data);
       });
+      _scrollToHighlightedCommentIfNeeded();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _scrollToHighlightedCommentIfNeeded([int attempt = 0]) {
+    if (_didScrollToHighlight || widget.highlightCommentId == null || attempt > 20) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _didScrollToHighlight) return;
+      final ctx = _commentKeys[widget.highlightCommentId]?.currentContext;
+      if (ctx == null) {
+        // 댓글 위젯이 아직 트리에 올라오기 전(빌드가 몇 프레임 더 필요한 경우) —
+        // 다음 프레임에 다시 시도한다.
+        _scrollToHighlightedCommentIfNeeded(attempt + 1);
+        return;
+      }
+      _didScrollToHighlight = true;
+      await Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 400), alignment: 0.2);
+      // 몇 초간 강조 색을 보여준 뒤 원래대로 되돌린다.
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) setState(() => _flashCommentId = null);
+    });
   }
 
   Future<void> _submitComment() async {
@@ -426,7 +456,20 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                 const Divider(height: 32),
                 Text('댓글 ${_comments.length}', style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                ..._comments.map((c) => _CommentTile(comment: c, postId: widget.postId, myId: myId, onChanged: _load)),
+                ..._comments.map((c) {
+                  final id = c['id'] as int;
+                  final key = _commentKeys.putIfAbsent(id, () => GlobalKey());
+                  final highlighted = _flashCommentId == id;
+                  return AnimatedContainer(
+                    key: key,
+                    duration: const Duration(milliseconds: 400),
+                    decoration: BoxDecoration(
+                      color: highlighted ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5) : null,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: _CommentTile(comment: c, postId: widget.postId, myId: myId, onChanged: _load),
+                  );
+                }),
               ],
             ),
           ),

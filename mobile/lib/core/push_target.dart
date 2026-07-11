@@ -6,7 +6,13 @@ String? pushTargetLocation(Map<String, dynamic> data) {
   switch (data['type']) {
     case 'comment':
       final postId = data['post_id'];
-      return postId == null ? null : '/board/$postId';
+      if (postId == null) return null;
+      final commentId = data['comment_id'];
+      // 댓글 알림은 게시글만 여는 게 아니라 해당 댓글까지 스크롤+하이라이트
+      // 하도록 highlight_comment_id를 함께 넘긴다 (post_detail_screen.dart 참고).
+      // "새 글" 알림도 이 'comment' 타입을 재사용하지만 comment_id가 없어
+      // 게시글만 열리는 기존 동작이 그대로 유지된다.
+      return commentId == null ? '/board/$postId' : '/board/$postId?highlight_comment_id=$commentId';
     case 'dm':
       final convId = data['conversation_id'];
       return convId == null ? null : '/dm/$convId';

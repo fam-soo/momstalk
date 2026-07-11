@@ -90,7 +90,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/board/:postId',
         parentNavigatorKey: _rootNavKey,
-        builder: (ctx, s) => PostDetailScreen(postId: int.parse(s.pathParameters['postId']!)),
+        builder: (ctx, s) => PostDetailScreen(
+          postId: int.parse(s.pathParameters['postId']!),
+          highlightCommentId: int.tryParse(s.uri.queryParameters['highlight_comment_id'] ?? ''),
+        ),
       ),
       // 대화(DM) 기능은 하단 탭에서는 뺐지만(당분간 미사용) 라우트 자체는 남겨둔다.
       GoRoute(path: '/dm', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const DmListScreen()),

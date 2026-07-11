@@ -72,7 +72,7 @@ async def create_comment(
                 db, post_obj.author_id, "comment",
                 title="새 댓글이 달렸어요",
                 body=f"{label}: {comment.content[:50]}",
-                data={"type": "comment", "post_id": str(post_id)},
+                data={"type": "comment", "post_id": str(post_id), "comment_id": str(comment.id)},
             )
 
     return response
