@@ -163,7 +163,6 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
         children: [
           // ── 학원 프로필 ─────────────────────────────────
           Container(
-            color: isB2b ? theme.colorScheme.primaryContainer.withOpacity(0.2) : null,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,6 +224,17 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
           ),
           const Divider(height: 1),
 
+          // ── 조회 쿼터 배너 ─────────────────────────────
+          // 학원 목록 화면과 동일하게 상단 요약 바로 아래에 배치한다.
+          if (!_reviewsLocked && (_totalReviews > 0 || _seedReviews.isNotEmpty))
+            _QuotaBanner(
+              academyLocked: _academyLocked,
+              unlockedCount: _unlockedAcademyCount,
+              unlockedLimit: _unlockedAcademyLimit,
+              nextUnlockAt: _nextUnlockAt,
+              userReviewCount: _userReviewCount,
+            ),
+
           // ── 학원 소개 (seed 후기) ────────────────────────
           if (_seedReviews.isNotEmpty) ...[
             Padding(
@@ -264,16 +274,6 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
               ],
             ),
           ),
-
-          // ── 조회 쿼터 배너 ─────────────────────────────
-          if (!_reviewsLocked && (_totalReviews > 0 || _seedReviews.isNotEmpty))
-            _QuotaBanner(
-              academyLocked: _academyLocked,
-              unlockedCount: _unlockedAcademyCount,
-              unlockedLimit: _unlockedAcademyLimit,
-              nextUnlockAt: _nextUnlockAt,
-              userReviewCount: _userReviewCount,
-            ),
 
           if (_reviewsLocked)
             Padding(

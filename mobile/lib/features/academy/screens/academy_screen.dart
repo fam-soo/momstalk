@@ -701,49 +701,60 @@ class _AcademyTile extends StatelessWidget {
           style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
         ),
       ),
+      // 1번째 줄 — 학원명 + 별점·후기수·과목
       title: Row(children: [
-        Expanded(
-          child: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+        Flexible(
+          child: Text(name,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
-        if (isB2b)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text('공식', style: TextStyle(
-              fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.w600)),
+        const SizedBox(width: 6),
+        ...List.generate(5, (i) => Icon(
+          i < rating.round() ? Icons.star_rounded : Icons.star_outline_rounded,
+          size: 13,
+          color: Colors.amber.shade600,
+        )),
+        const SizedBox(width: 4),
+        Text(
+          rating > 0 ? rating.toStringAsFixed(1) : '-',
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(width: 4),
+        Text('후기 $userReviewCount', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        if (subjects.isNotEmpty) ...[
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(subjects.join('·'),
+                style: TextStyle(fontSize: 12, color: theme.colorScheme.primary),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
+        ],
       ]),
-      // 2번째 줄 — 별점·후기수·AI소개 배지·주소·과목을 한 줄로 압축
+      // 2번째 줄 — 주소 + 공식/AI소개 배지
       subtitle: Row(
         children: [
-          ...List.generate(5, (i) => Icon(
-            i < rating.round() ? Icons.star_rounded : Icons.star_outline_rounded,
-            size: 13,
-            color: Colors.amber.shade600,
-          )),
-          const SizedBox(width: 4),
-          Text(
-            rating > 0 ? rating.toStringAsFixed(1) : '-',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(width: 4),
-          Text('후기 $userReviewCount', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          if (address.isNotEmpty)
+            Expanded(
+              child: Text(address,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          if (isB2b) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text('공식', style: TextStyle(
+                fontSize: 11, color: theme.colorScheme.primary, fontWeight: FontWeight.w600)),
+            ),
+          ],
           if (hasSeed) ...[
             const SizedBox(width: 4),
             Icon(Icons.auto_awesome, size: 11, color: Colors.purple.shade400),
           ],
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              [if (subjects.isNotEmpty) subjects.join('·'), if (address.isNotEmpty) address]
-                  .join(' · '),
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              maxLines: 1, overflow: TextOverflow.ellipsis,
-            ),
-          ),
         ],
       ),
       trailing: const Icon(Icons.chevron_right, color: Colors.grey),
