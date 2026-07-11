@@ -364,35 +364,43 @@ class _PostCardState extends State<PostCard> {
                 ),
               ]),
               const SizedBox(height: 4),
+              // 제목은 항상 왼쪽에서 시작(들여쓰기 흔들림 없이 정렬), 공지/인기/추천
+              // 배지는 부가 정보이므로 오른쪽으로 배치.
               Row(children: [
-                if (isNotice) Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                  margin: const EdgeInsets.only(right: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                  child: const Text('📌공지', style: TextStyle(fontSize: 10, color: Colors.redAccent, fontWeight: FontWeight.w700)),
-                ),
-                if (!isNotice && isHot) Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                  margin: const EdgeInsets.only(right: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                  child: const Text('🔥인기', style: TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.w700)),
-                ),
-                if (!isNotice && isPinned && !isHot) Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                  margin: const EdgeInsets.only(right: 6),
-                  decoration: BoxDecoration(
-                    color: Theme.of(ctx).colorScheme.primary.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                  child: Text('추천', style: TextStyle(fontSize: 10, color: Theme.of(ctx).colorScheme.primary, fontWeight: FontWeight.w700)),
-                ),
                 Expanded(child: Text(post['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                if (isNotice) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: const Text('📌공지', style: TextStyle(fontSize: 10, color: Colors.redAccent, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+                if (!isNotice && isHot) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: const Text('🔥인기', style: TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.w700)),
+                  ),
+                ],
+                if (!isNotice && isPinned && !isHot) ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Theme.of(ctx).colorScheme.primary.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text('추천', style: TextStyle(fontSize: 10, color: Theme.of(ctx).colorScheme.primary, fontWeight: FontWeight.w700)),
+                  ),
+                ],
               ]),
             ],
           ),

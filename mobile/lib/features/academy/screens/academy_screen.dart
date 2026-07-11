@@ -699,16 +699,6 @@ class _AcademyTile extends StatelessWidget {
       onTap: () => context.push('/academy/${academy['id']}'),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       tileColor: isUnlocked ? Colors.grey.shade100 : null,
-      leading: CircleAvatar(
-        backgroundColor: isUnlocked ? Colors.grey.shade300 : theme.colorScheme.primaryContainer,
-        child: Text(
-          name.isNotEmpty ? name[0] : '학',
-          style: TextStyle(
-            color: isUnlocked ? Colors.grey.shade600 : theme.colorScheme.primary,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
       // 1번째 줄 — 학원명(말줄임 없음) · 평점 숫자 · 후기수 · 과목
       // 아이콘(별 5개 등) 대신 텍스트로만 압축 표기해 학원명이 잘리지 않도록 공간을 확보한다.
       // 이름이 길어 한 줄에 다 안 들어가면 Wrap이 다음 줄로 넘겨 잘림을 방지한다.
