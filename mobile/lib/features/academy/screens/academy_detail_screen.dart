@@ -404,6 +404,31 @@ class _QuotaBanner extends StatelessWidget {
 
 // ── 후기 카드 ────────────────────────────────────────────────────
 
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  const _InfoChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 11, color: Colors.grey.shade600),
+          const SizedBox(width: 3),
+          Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+        ],
+      ),
+    );
+  }
+}
+
 class _ReviewCard extends StatelessWidget {
   final Map<String, dynamic> review;
   final int academyId;
@@ -424,6 +449,8 @@ class _ReviewCard extends StatelessWidget {
     final subjects = (review['subjects'] as List?)?.cast<String>() ?? [];
     final teacherStyles = (review['teacher_styles'] as List?)?.cast<String>() ?? [];
     final text = review['review_text'] as String? ?? '';
+    final homeworkLevel = review['homework_level'] as String? ?? '';
+    final scoreImprovement = review['score_improvement'] as String? ?? '';
     final schoolName = review['author_school_name'] as String?;
     final grade = review['author_grade'] as int?;
     final schoolInfo = isSeed
@@ -517,6 +544,18 @@ class _ReviewCard extends StatelessWidget {
             else if (isViewLimited)
               Text('후기를 작성하면 전체 내용을 볼 수 있어요.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontStyle: FontStyle.italic)),
+            // 숙제량·성적 향상 — 작성 시 입력한 항목을 숨김없이 컴팩트한 칩으로 노출
+            if (!isViewLimited && (homeworkLevel.isNotEmpty || scoreImprovement.isNotEmpty)) ...[
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  if (homeworkLevel.isNotEmpty) _InfoChip(icon: Icons.assignment_outlined, label: '숙제량 $homeworkLevel'),
+                  if (scoreImprovement.isNotEmpty) _InfoChip(icon: Icons.trending_up, label: scoreImprovement),
+                ],
+              ),
+            ],
           ],
         ),
       ),
