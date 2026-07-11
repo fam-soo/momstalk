@@ -459,8 +459,9 @@ class _ReviewCard extends StatelessWidget {
             if (schoolName != null && schoolName.isNotEmpty) schoolName,
             if (grade != null) '$grade학년',
           ].join(' ');
-    // 과목/선생님 스타일 태그를 1번째 줄에 함께 압축 표기 (숙제량·성적향상은 상세화면에서만)
-    final detailTags = [...subjects, ...teacherStyles];
+    // 과목 태그는 1번째 줄에 압축 표기. 선생님 스타일은 길어서 1줄에서 잘리기 쉬우므로
+    // 숙제량·성적향상과 함께 아래 칩 목록에 별도로 표시한다.
+    final detailTags = [...subjects];
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
@@ -544,13 +545,14 @@ class _ReviewCard extends StatelessWidget {
             else if (isViewLimited)
               Text('후기를 작성하면 전체 내용을 볼 수 있어요.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontStyle: FontStyle.italic)),
-            // 숙제량·성적 향상 — 작성 시 입력한 항목을 숨김없이 컴팩트한 칩으로 노출
-            if (!isViewLimited && (homeworkLevel.isNotEmpty || scoreImprovement.isNotEmpty)) ...[
+            // 선생님 스타일·숙제량·성적 향상 — 작성 시 입력한 항목을 숨김없이 컴팩트한 칩으로 노출
+            if (!isViewLimited && (teacherStyles.isNotEmpty || homeworkLevel.isNotEmpty || scoreImprovement.isNotEmpty)) ...[
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
                 runSpacing: 4,
                 children: [
+                  ...teacherStyles.map((s) => _InfoChip(icon: Icons.psychology_outlined, label: s)),
                   if (homeworkLevel.isNotEmpty) _InfoChip(icon: Icons.assignment_outlined, label: '숙제량 $homeworkLevel'),
                   if (scoreImprovement.isNotEmpty) _InfoChip(icon: Icons.trending_up, label: scoreImprovement),
                 ],
