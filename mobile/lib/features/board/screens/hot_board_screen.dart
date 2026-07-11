@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
-import '../../../core/notification_bell.dart';
 import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart' show PostCard;
 
@@ -65,7 +64,6 @@ class _HotBoardScreenState extends ConsumerState<HotBoardScreen> with AutomaticK
     });
     return Scaffold(
       appBar: AppBar(
-        leading: const NotificationBellButton(),
         centerTitle: true,
         title: const Text('🔥 인기'),
         actions: [
