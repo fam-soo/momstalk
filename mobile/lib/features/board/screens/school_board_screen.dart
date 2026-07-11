@@ -10,6 +10,7 @@ import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
 import '../../../core/kst_time.dart';
 import '../../../core/notification_bell.dart';
+import '../../../core/notification_prefs.dart';
 import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart';
 
@@ -398,6 +399,14 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
           leading: const NotificationBellButton(),
           title: appBarTitle,
           actions: [
+            // 학교 게시판은 탭이 학교/학년 둘이라, 현재 선택된 탭 기준으로
+            // 알림 버튼이 대상 게시판을 자동으로 바꿔가며 표시한다.
+            AnimatedBuilder(
+              animation: tc,
+              builder: (_, __) => tc.index == 1 && hasGrade
+                  ? const BoardNotifyButton(prefKey: 'notify_grade', label: '학년')
+                  : const BoardNotifyButton(prefKey: 'notify_school', label: '학교'),
+            ),
             IconButton(icon: const Icon(Icons.search), onPressed: () => context.push('/search')),
           ],
           bottom: PreferredSize(

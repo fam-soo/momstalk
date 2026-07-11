@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api_client.dart';
 import '../../../core/kst_time.dart';
 import '../../../core/notification_bell.dart';
+import '../../../core/notification_prefs.dart';
 import '../../../core/push_notifications.dart';
 import '../../../core/refresh_bus.dart';
 import '../../../core/router.dart';
@@ -630,76 +631,73 @@ class _PushSettingsCardState extends ConsumerState<_PushSettingsCard> with Widge
 // 게시판 종류별로 켜고 끌 수 있다.
 // ──────────────────────────────────────────────────────────────────
 
-class _BoardNotificationPrefsCard extends ConsumerStatefulWidget {
+class _BoardNotificationPrefsCard extends ConsumerWidget {
   const _BoardNotificationPrefsCard();
 
-  @override
-  ConsumerState<_BoardNotificationPrefsCard> createState() => _BoardNotificationPrefsCardState();
-}
-
-class _BoardNotificationPrefsCardState extends ConsumerState<_BoardNotificationPrefsCard> {
-  Map<String, dynamic>? _prefs;
-  bool _busyKey = false;
-
   static const _items = [
-    ('notify_region', '지역 게시판', '우리 동네에 새 글이 올라오면 알림', Icons.location_on_outlined),
-    ('notify_school', '학교 게시판', '우리 학교에 새 글이 올라오면 알림', Icons.school_outlined),
-    ('notify_grade', '학년 게시판', '같은 학년 게시판에 새 글이 올라오면 알림', Icons.groups_outlined),
-    ('notify_academy', '학원 후기', '우리 지역 학원에 새 후기가 올라오면 알림', Icons.storefront_outlined),
+    ('notify_region', '지역', Icons.location_on_outlined),
+    ('notify_school', '학교', Icons.school_outlined),
+    ('notify_grade', '학년', Icons.groups_outlined),
+    ('notify_academy', '학원', Icons.storefront_outlined),
   ];
 
   @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final dio = ref.read(dioProvider);
-      final resp = await dio.get('/notifications/prefs');
-      if (mounted) setState(() => _prefs = Map<String, dynamic>.from(resp.data as Map));
-    } catch (_) {}
-  }
-
-  Future<void> _toggle(String key, bool value) async {
-    setState(() { _prefs = {...?_prefs, key: value}; _busyKey = true; });
-    try {
-      final dio = ref.read(dioProvider);
-      final resp = await dio.patch('/notifications/prefs', data: {key: value});
-      if (mounted) setState(() => _prefs = Map<String, dynamic>.from(resp.data as Map));
-    } catch (e) {
-      // 실패 시 서버 상태를 다시 조회해 화면을 동기화
-      await _load();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('변경 실패: $e')));
-    } finally {
-      if (mounted) setState(() => _busyKey = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final prefs = ref.watch(notificationPrefsProvider);
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: Column(children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Row(children: [
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
             Icon(Icons.campaign_outlined, size: 16, color: Colors.grey.shade600),
             const SizedBox(width: 6),
             Text('게시판 새 글 알림', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
           ]),
-        ),
-        for (final (key, title, subtitle, icon) in _items)
-          SwitchListTile(
-            dense: true,
-            secondary: Icon(icon, size: 20),
-            title: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-            subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
-            value: _prefs?[key] as bool? ?? false,
-            onChanged: (_prefs == null || _busyKey) ? null : (v) => _toggle(key, v),
+          const SizedBox(height: 10),
+          // 게시판 종류별 상태를 한눈에 비교할 수 있도록 한 줄에 배치.
+          // 각 게시판 화면 상단의 알림 버튼과 상태를 공유(notificationPrefsProvider)해
+          // 어느 쪽에서 바꾸든 즉시 반영된다.
+          Row(
+            children: _items.map((item) {
+              final (key, label, icon) = item;
+              final on = prefs?[key] as bool? ?? false;
+              return Expanded(
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: prefs == null
+                      ? null
+                      : () => ref.read(notificationPrefsProvider.notifier).toggle(key),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: on
+                              ? Theme.of(context).colorScheme.primaryContainer
+                              : Colors.grey.shade100,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(icon, size: 18,
+                            color: on ? Theme.of(context).colorScheme.primary : Colors.grey.shade400),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(label, style: const TextStyle(fontSize: 11)),
+                      const SizedBox(height: 2),
+                      Text(on ? 'ON' : 'OFF',
+                          style: TextStyle(
+                            fontSize: 9, fontWeight: FontWeight.bold,
+                            color: on ? Theme.of(context).colorScheme.primary : Colors.grey.shade400,
+                          )),
+                    ]),
+                  ),
+                ),
+              );
+            }).toList(),
           ),
-      ]),
+        ]),
+      ),
     );
   }
 }
