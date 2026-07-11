@@ -34,6 +34,13 @@ jobs:
         working-directory: mobile
         run: flutter build web --release --base-href / --no-tree-shake-icons --dart-define=ENVIRONMENT=production
 
+      - name: Stamp build-id (강제 새로고침 안내용)
+        run: |
+          BUILD_ID="${{ github.sha }}"
+          echo "$BUILD_ID" > mobile/build/web/build-id.txt
+          sed -i "s|<meta name=\"build-id\" content=\"dev\">|<meta name=\"build-id\" content=\"${BUILD_ID}\">|" mobile/build/web/index.html
+          grep -o '<meta name="build-id"[^>]*>' mobile/build/web/index.html
+
       - name: Deploy to Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -44,5 +51,15 @@ jobs:
           vercel pull --yes --environment=production --token=$VERCEL_TOKEN
           mkdir -p .vercel/output/static
           cp -r mobile/build/web/. .vercel/output/static/
-          echo '{"version":3,"routes":[{"handle":"filesystem"},{"src":".*","dest":"/index.html"}]}' > .vercel/output/config.json
+          cat > .vercel/output/config.json << 'EOF'
+          {
+            "version": 3,
+            "routes": [
+              { "src": "/build-id.txt", "headers": { "Cache-Control": "no-store, must-revalidate" }, "continue": true },
+              { "src": "/index.html", "headers": { "Cache-Control": "no-store, must-revalidate" }, "continue": true },
+              { "handle": "filesystem" },
+              { "src": ".*", "dest": "/index.html" }
+            ]
+          }
+          EOF
           vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -27,6 +28,7 @@ import 'constants.dart';
 import 'push_notifications.dart';
 import 'push_target.dart';
 import 'refresh_bus.dart';
+import 'update_checker.dart';
 import '../features/admin/screens/admin_login_screen.dart';
 import '../features/admin/screens/admin_home_screen.dart';
 
@@ -155,14 +157,51 @@ class _MainShell extends ConsumerStatefulWidget {
   ConsumerState<_MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends ConsumerState<_MainShell> {
+class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObserver {
   bool _showPushBanner = false;
   bool _pushRequesting = false;
+  bool _showUpdateBanner = false;
+  String? _initialBuildId;
+  Timer? _updateCheckTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initPush();
+    _initUpdateCheck();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _updateCheckTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 탭을 다른 데 갔다가 돌아왔을 때(브라우저 탭 전환 등)도 확인 —
+    // 배포 직후부터 다음 정기 체크까지 기다리지 않아도 되게 함.
+    if (state == AppLifecycleState.resumed) _checkForUpdate();
+  }
+
+  /// Flutter Web은 브라우저/서비스워커 캐싱 때문에 배포해도 새로고침 전까지
+  /// 예전 화면이 계속 보일 수 있다 — 관리자 화면 버튼이 안 보인다는 리포트의
+  /// 원인이었다. 배포 시 CI가 새로 심는 build-id와 지금 로드된 페이지의
+  /// build-id를 주기적으로 비교해, 새 배포가 감지되면 새로고침을 안내한다.
+  void _initUpdateCheck() {
+    _initialBuildId = currentBuildId();
+    if (_initialBuildId == null) return; // 웹이 아니거나 메타 태그 없음 — 기능 비활성
+    _updateCheckTimer = Timer.periodic(const Duration(minutes: 15), (_) => _checkForUpdate());
+  }
+
+  Future<void> _checkForUpdate() async {
+    if (_initialBuildId == null || _showUpdateBanner) return;
+    final latest = await fetchLatestBuildId();
+    if (latest != null && latest != _initialBuildId && mounted) {
+      setState(() => _showUpdateBanner = true);
+    }
   }
 
   Future<void> _initPush() async {
@@ -212,6 +251,7 @@ class _MainShellState extends ConsumerState<_MainShell> {
     return Scaffold(
       body: Column(
         children: [
+          if (_showUpdateBanner) _UpdateAvailableBanner(onReload: reloadPage),
           if (_showPushBanner) _PushPermissionBanner(
             requesting: _pushRequesting,
             onEnable: _enablePush,
@@ -234,6 +274,47 @@ class _MainShellState extends ConsumerState<_MainShell> {
           NavigationDestination(icon: Icon(Icons.local_fire_department_outlined), selectedIcon: Icon(Icons.local_fire_department), label: '인기'),
           NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '내정보'),
         ],
+      ),
+    );
+  }
+}
+
+// ── 새 버전 배포 안내 배너 ────────────────────────────────────────
+// 캐싱 때문에 새로고침 전까지 예전 화면이 계속 보이는 문제 대응 —
+// _MainShellState._checkForUpdate()가 새 build-id를 감지하면 노출된다.
+// 무시하고 계속 쓸 수도 있지만(닫기 없음, 배포마다 계속 최신화 필요하니
+// 눈에 계속 띄게 둠), 새로고침 버튼을 누르면 바로 최신 빌드로 전환된다.
+class _UpdateAvailableBanner extends StatelessWidget {
+  final VoidCallback onReload;
+  const _UpdateAvailableBanner({required this.onReload});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.orange.shade600,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(children: [
+            const Icon(Icons.system_update_alt, size: 18, color: Colors.white),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('새 버전이 있어요! 새로고침하면 최신 기능을 바로 이용할 수 있어요.',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
+            ),
+            TextButton(
+              onPressed: onReload,
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.orange.shade700,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+              ),
+              child: const Text('새로고침', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+          ]),
+        ),
       ),
     );
   }

@@ -21,6 +21,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="description" content="학부모 전용 익명 커뮤니티 — MomsTalk">
 
+  <!-- 배포 시 CI(.github/workflows/deploy-web.yml)가 실제 커밋 SHA로 덮어씀.
+       core/update_checker.dart가 이 값과 서버의 build-id.txt를 비교해
+       새 배포를 감지하면 새로고침 안내 배너를 띄운다. -->
+  <meta name="build-id" content="dev">
+
   <!-- PWA / 홈화면 추가 -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
