@@ -709,43 +709,29 @@ class _AcademyTile extends StatelessWidget {
           ),
         ),
       ),
-      // 1번째 줄 — 학원명 + 별점·후기수·과목
-      title: Row(children: [
-        if (isUnlocked) ...[
-          Icon(Icons.visibility, size: 13, color: Colors.grey.shade500),
-          const SizedBox(width: 3),
-        ],
-        Flexible(
-          child: Text(name,
+      // 1번째 줄 — 학원명(말줄임 없음) · 평점 숫자 · 후기수 · 과목
+      // 아이콘(별 5개 등) 대신 텍스트로만 압축 표기해 학원명이 잘리지 않도록 공간을 확보한다.
+      // 이름이 길어 한 줄에 다 안 들어가면 Wrap이 다음 줄로 넘겨 잘림을 방지한다.
+      title: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 6,
+        runSpacing: 2,
+        children: [
+          Text(name,
               style: TextStyle(
                 fontWeight: FontWeight.w600,
                 fontSize: 15,
                 color: isUnlocked ? Colors.grey.shade500 : null,
-              ),
-              maxLines: 1, overflow: TextOverflow.ellipsis),
-        ),
-        const SizedBox(width: 6),
-        ...List.generate(5, (i) => Icon(
-          i < rating.round() ? Icons.star_rounded : Icons.star_outline_rounded,
-          size: 13,
-          color: Colors.amber.shade600,
-        )),
-        const SizedBox(width: 4),
-        Text(
-          rating > 0 ? rating.toStringAsFixed(1) : '-',
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(width: 4),
-        Text('후기 $userReviewCount', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-        if (subjects.isNotEmpty) ...[
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(subjects.join('·'),
-                style: TextStyle(fontSize: 12, color: theme.colorScheme.primary),
-                maxLines: 1, overflow: TextOverflow.ellipsis),
+              )),
+          Text(
+            rating > 0 ? rating.toStringAsFixed(1) : '-',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.amber.shade800),
           ),
+          Text('후기 $userReviewCount', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+          if (subjects.isNotEmpty)
+            Text(subjects.join('·'), style: TextStyle(fontSize: 12, color: theme.colorScheme.primary)),
         ],
-      ]),
+      ),
       // 2번째 줄 — 주소 + 공식/AI소개 배지
       subtitle: Row(
         children: [
