@@ -202,7 +202,10 @@ class PostCard extends StatefulWidget {
   final Map<String, dynamic> post;
   final VoidCallback onRefresh;
   final bool isAdmin;
-  const PostCard({super.key, required this.post, required this.onRefresh, this.isAdmin = false});
+  /// 인기 탭처럼 여러 게시판 글이 한 목록에 섞일 때만 넘기는 게시판 종류
+  /// 라벨(예: '지역'). null이면 표시하지 않는다.
+  final String? boardTypeLabel;
+  const PostCard({super.key, required this.post, required this.onRefresh, this.isAdmin = false, this.boardTypeLabel});
 
   @override
   State<PostCard> createState() => _PostCardState();
@@ -294,42 +297,73 @@ class _PostCardState extends State<PostCard> {
       final isPinned = post['is_pinned'] == true;
       final isHot = post['is_hot'] == true;
       final isNotice = post['is_notice'] == true;
-      final tags = (post['mention_tags'] as List<dynamic>? ?? []).cast<String>();
       final time = _relativeTime(post['created_at'] as String?);
 
+      // 1줄: 작성자·시간(+게시판 라벨) — 2줄: 뱃지+제목. 예전엔 아바타 아이콘
+      // (편집 기능 없음)·통계 줄·태그 줄까지 합쳐 4줄을 썼다. 통계(좋아요/
+      // 댓글/조회)는 1번째 줄 우측으로 옮기고 태그 표시는 뺐다.
       return InkWell(
         onTap: () => context.push('/board/${post['id']}'),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+          padding: const EdgeInsets.fromLTRB(16, 9, 12, 9),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
-                CircleAvatar(
-                  radius: 14,
-                  backgroundColor: Theme.of(ctx).colorScheme.primaryContainer,
-                  child: Icon(Icons.person, size: 14, color: Theme.of(ctx).colorScheme.primary),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  (post['author_display_name'] as String?)?.isNotEmpty == true
-                      ? post['author_display_name'] as String
-                      : (post['is_anonymous'] == true ? '익명' : '작성자'),
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                if (widget.boardTypeLabel != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    margin: const EdgeInsets.only(right: 6),
+                    decoration: BoxDecoration(
+                      color: Theme.of(ctx).colorScheme.secondaryContainer,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: Text(widget.boardTypeLabel!,
+                        style: TextStyle(fontSize: 10, color: Theme.of(ctx).colorScheme.onSecondaryContainer, fontWeight: FontWeight.w600)),
+                  ),
+                ],
+                Flexible(
+                  child: Text(
+                    (post['author_display_name'] as String?)?.isNotEmpty == true
+                        ? post['author_display_name'] as String
+                        : (post['is_anonymous'] == true ? '익명' : '작성자'),
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 if (widget.isAdmin) ...[
                   const SizedBox(width: 4),
                   _adminLocationLabel(ctx),
                 ],
-                const Text(' · ', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                Text(time, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                const Text(' · ', style: TextStyle(color: Colors.grey, fontSize: 11.5)),
+                Text(time, style: const TextStyle(fontSize: 11.5, color: Colors.grey)),
                 const Spacer(),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: () => _toggleLike(ref),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                      child: _Stat(
+                        icon: post['is_liked'] == true ? Icons.favorite : Icons.favorite_outline,
+                        value: post['like_count'] ?? 0,
+                        color: post['is_liked'] == true ? Colors.red : null,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _Stat(icon: Icons.chat_bubble_outline, value: post['comment_count'] ?? 0),
+                const SizedBox(width: 8),
+                _Stat(icon: Icons.remove_red_eye_outlined, value: post['view_count'] ?? 0),
                 GestureDetector(
                   onTap: () => _showOptions(ctx, ref),
-                  child: const Padding(padding: EdgeInsets.all(4), child: Icon(Icons.more_horiz, size: 18, color: Colors.grey)),
+                  child: const Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.more_horiz, size: 16, color: Colors.grey)),
                 ),
               ]),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Row(children: [
                 if (isNotice) Container(
                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
@@ -358,33 +392,7 @@ class _PostCardState extends State<PostCard> {
                   ),
                   child: Text('추천', style: TextStyle(fontSize: 10, color: Theme.of(ctx).colorScheme.primary, fontWeight: FontWeight.w700)),
                 ),
-                Expanded(child: Text(post['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15), maxLines: 2, overflow: TextOverflow.ellipsis)),
-              ]),
-              if (tags.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Wrap(spacing: 4, children: tags.map((t) => Text('@$t', style: TextStyle(fontSize: 11, color: Theme.of(ctx).colorScheme.primary))).toList()),
-              ],
-              const SizedBox(height: 10),
-              Row(children: [
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(4),
-                    onTap: () => _toggleLike(ref),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-                      child: _Stat(
-                        icon: post['is_liked'] == true ? Icons.favorite : Icons.favorite_outline,
-                        value: post['like_count'] ?? 0,
-                        color: post['is_liked'] == true ? Colors.red : null,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                _Stat(icon: Icons.chat_bubble_outline, value: post['comment_count'] ?? 0),
-                const SizedBox(width: 12),
-                _Stat(icon: Icons.remove_red_eye_outlined, value: post['view_count'] ?? 0),
+                Expanded(child: Text(post['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5), maxLines: 1, overflow: TextOverflow.ellipsis)),
               ]),
             ],
           ),

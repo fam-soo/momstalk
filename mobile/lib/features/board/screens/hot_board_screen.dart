@@ -102,23 +102,12 @@ class _HotBoardScreenState extends ConsumerState<HotBoardScreen> with AutomaticK
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (ctx, i) {
                           final post = _posts[i];
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(ctx).colorScheme.secondaryContainer,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(_boardTypeLabel(post['board_type'] as String? ?? ''),
-                                      style: TextStyle(fontSize: 10, color: Theme.of(ctx).colorScheme.onSecondaryContainer, fontWeight: FontWeight.w600)),
-                                ),
-                              ),
-                              PostCard(post: post, onRefresh: _load),
-                            ],
+                          // 게시판 라벨을 별도 줄로 얹으면 항목당 3줄이 되어버려서,
+                          // PostCard의 1번째 줄(작성자·시간) 앞에 함께 표시되도록 넘긴다.
+                          return PostCard(
+                            post: post,
+                            onRefresh: _load,
+                            boardTypeLabel: _boardTypeLabel(post['board_type'] as String? ?? ''),
                           );
                         },
                       ),
