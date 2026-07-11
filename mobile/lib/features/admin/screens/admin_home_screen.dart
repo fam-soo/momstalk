@@ -1399,6 +1399,10 @@ class _PostListPaneState extends ConsumerState<_PostListPane> with AutomaticKeep
       final dio = ref.read(adminDioProvider);
       await dio.post('/admin/posts/$id/${hide ? 'hide' : 'unhide'}');
       await _load();
+      // 관리자 화면 자체는 새로고침되지만, 이 신호가 없으면 이미 열려있는
+      // 사용자 게시판 탭(keep-alive로 상태 유지)은 블라인드 처리된 글이
+      // 그대로 보이는 등 계속 예전 목록을 보여줬다.
+      bumpBoardRefresh(ref);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('실패: $e')));
     }
@@ -1425,6 +1429,7 @@ class _PostListPaneState extends ConsumerState<_PostListPane> with AutomaticKeep
       final dio = ref.read(adminDioProvider);
       await dio.delete('/admin/posts/$id');
       await _load();
+      bumpBoardRefresh(ref);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('실패: $e')));
     }
@@ -1528,6 +1533,7 @@ class _CommentListPaneState extends ConsumerState<_CommentListPane> with Automat
       final dio = ref.read(adminDioProvider);
       await dio.post('/admin/comments/$id/${hide ? 'hide' : 'unhide'}');
       await _load();
+      bumpBoardRefresh(ref);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('실패: $e')));
     }
@@ -1554,6 +1560,7 @@ class _CommentListPaneState extends ConsumerState<_CommentListPane> with Automat
       final dio = ref.read(adminDioProvider);
       await dio.delete('/admin/comments/$id');
       await _load();
+      bumpBoardRefresh(ref);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('실패: $e')));
     }
@@ -1657,6 +1664,7 @@ class _ReviewListPaneState extends ConsumerState<_ReviewListPane> with Automatic
       final dio = ref.read(adminDioProvider);
       await dio.post('/admin/reviews/$id/${hide ? 'hide' : 'unhide'}');
       await _load();
+      bumpBoardRefresh(ref);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('실패: $e')));
     }
@@ -1683,6 +1691,7 @@ class _ReviewListPaneState extends ConsumerState<_ReviewListPane> with Automatic
       final dio = ref.read(adminDioProvider);
       await dio.delete('/admin/reviews/$id');
       await _load();
+      bumpBoardRefresh(ref);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('실패: $e')));
     }
@@ -1985,6 +1994,9 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
         _contentCtrl.clear();
         _schoolSearchCtrl.clear();
         setState(() { _targetRegion = null; _targetSchoolCode = null; _targetSchoolName = null; _schoolResults = []; });
+        // 이게 없으면 이미 열려있는 게시판 탭(keep-alive)에는 방금 쓴 공지가
+        // 최상단 고정으로 바로 안 뜨고 새로고침해야만 보였다.
+        bumpBoardRefresh(ref);
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('실패: $e')));

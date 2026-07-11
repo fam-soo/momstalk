@@ -670,6 +670,9 @@ class _NicknameDialogState extends ConsumerState<_NicknameDialog> {
     try {
       final dio = ref.read(dioProvider);
       await dio.patch('/auth/me/nickname', data: {'nickname': _ctrl.text.trim()});
+      // 닉네임(실명 표시) 게시글을 이미 열어둔 게시판 목록(keep-alive)에
+      // 예전 닉네임이 계속 보이던 문제 방지.
+      bumpBoardRefresh(ref);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('변경 실패: $e')));
@@ -763,6 +766,9 @@ class _ChildrenSectionState extends ConsumerState<_ChildrenSection> {
     try {
       final dio = ref.read(dioProvider);
       await dio.delete('/auth/me/children/$childId');
+      // 활성 자녀가 삭제되면 학교/학년 게시판의 범위 자체가 바뀔 수 있어
+      // _setActive와 동일하게 갱신 신호를 보낸다.
+      bumpBoardRefresh(ref);
       widget.onChanged();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
