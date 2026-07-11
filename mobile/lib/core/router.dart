@@ -167,6 +167,16 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
   String? _initialBuildId;
   Timer? _updateCheckTimer;
 
+  // 알림 배너 — 여러 알림이 짧은 시간에 연달아 오면 배너를 계속 새 내용으로
+  // 갈아치우기만 해서 앞의 알림을 놓치기 쉬웠다. 배너가 떠 있는 동안 도착한
+  // 건수를 세어, 1건이면 그 알림으로 바로 이동하는 기존 방식을 유지하고
+  // 2건 이상이면 "새 알림 N건" + "전체 보기"(알림함)로 전환해 화면을 계속
+  // 가리지 않으면서도 놓치는 알림이 없게 한다.
+  int _pendingNotifCount = 0;
+  String? _pendingNotifText;
+  String? _pendingNotifLocation;
+  Timer? _bannerDismissTimer;
+
   @override
   void initState() {
     super.initState();
@@ -179,6 +189,7 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _updateCheckTimer?.cancel();
+    _bannerDismissTimer?.cancel();
     super.dispose();
   }
 
@@ -226,31 +237,62 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
   /// 브라우저/기기 종류와 무관하게 항상 동작한다(OS 푸시와 별개로, 앱을
   /// 보고 있는 동안 도착한 알림을 놓치지 않게 하는 용도).
   void _showNotificationBanner({required String title, required String body, String? location}) {
+    _pendingNotifCount++;
+    if (_pendingNotifCount == 1) {
+      // 배너가 새로 뜨는(또는 직전에 완전히 닫혔던) 첫 알림일 때만 구체적인
+      // 제목/내용과 이동 위치를 기억해둔다 — 2건째부터는 "N건" 요약으로
+      // 바뀌므로 어차피 이 값은 쓰이지 않는다.
+      _pendingNotifText = body.isEmpty ? title : '$title — $body';
+      _pendingNotifLocation = location;
+    }
+    _renderNotificationBanner();
+    _bannerDismissTimer?.cancel();
+    _bannerDismissTimer = Timer(const Duration(seconds: 6), _dismissNotificationBanner);
+  }
+
+  void _renderNotificationBanner() {
     final messenger = ScaffoldMessenger.of(context);
+    final multiple = _pendingNotifCount > 1;
     messenger.clearMaterialBanners();
     messenger.showMaterialBanner(
       MaterialBanner(
         leading: const Icon(Icons.notifications_active, color: Color(0xFF4A90D9)),
-        content: Text(body.isEmpty ? title : '$title — $body', style: const TextStyle(fontSize: 13)),
+        content: Text(
+          multiple ? '새 알림이 $_pendingNotifCount건 있어요' : (_pendingNotifText ?? ''),
+          style: const TextStyle(fontSize: 13),
+        ),
         actions: [
-          if (location != null)
+          if (multiple)
             TextButton(
               onPressed: () {
-                messenger.hideCurrentMaterialBanner();
-                context.push(location);
+                _dismissNotificationBanner();
+                context.push('/notifications');
+              },
+              child: const Text('전체 보기'),
+            )
+          else if (_pendingNotifLocation != null)
+            TextButton(
+              onPressed: () {
+                _dismissNotificationBanner();
+                context.push(_pendingNotifLocation!);
               },
               child: const Text('보기'),
             ),
           TextButton(
-            onPressed: () => messenger.hideCurrentMaterialBanner(),
+            onPressed: _dismissNotificationBanner,
             child: const Text('닫기'),
           ),
         ],
       ),
     );
-    Future.delayed(const Duration(seconds: 6), () {
-      if (mounted) messenger.hideCurrentMaterialBanner();
-    });
+  }
+
+  void _dismissNotificationBanner() {
+    if (mounted) ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+    _pendingNotifCount = 0;
+    _pendingNotifText = null;
+    _pendingNotifLocation = null;
+    _bannerDismissTimer?.cancel();
   }
 
   Future<void> _enablePush() async {
