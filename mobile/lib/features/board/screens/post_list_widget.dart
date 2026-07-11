@@ -310,35 +310,42 @@ class _PostCardState extends State<PostCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(children: [
-                if (widget.boardTypeLabel != null) ...[
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    margin: const EdgeInsets.only(right: 6),
-                    decoration: BoxDecoration(
-                      color: Theme.of(ctx).colorScheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(3),
+                // 왼쪽: 작성자·시간 정보 — Expanded로 남는 공간을 모두 흡수시켜서
+                // 오른쪽 통계 묶음이 글 길이와 무관하게 항상 우측 끝에 붙도록 한다
+                // (Spacer만 쓰면 자식 위젯 조합에 따라 우측 정렬이 흔들리는 사례가 있었음).
+                Expanded(
+                  child: Row(children: [
+                    if (widget.boardTypeLabel != null) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        margin: const EdgeInsets.only(right: 6),
+                        decoration: BoxDecoration(
+                          color: Theme.of(ctx).colorScheme.secondaryContainer,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: Text(widget.boardTypeLabel!,
+                            style: TextStyle(fontSize: 10, color: Theme.of(ctx).colorScheme.onSecondaryContainer, fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                    Flexible(
+                      child: Text(
+                        (post['author_display_name'] as String?)?.isNotEmpty == true
+                            ? post['author_display_name'] as String
+                            : (post['is_anonymous'] == true ? '익명' : '작성자'),
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                    child: Text(widget.boardTypeLabel!,
-                        style: TextStyle(fontSize: 10, color: Theme.of(ctx).colorScheme.onSecondaryContainer, fontWeight: FontWeight.w600)),
-                  ),
-                ],
-                Flexible(
-                  child: Text(
-                    (post['author_display_name'] as String?)?.isNotEmpty == true
-                        ? post['author_display_name'] as String
-                        : (post['is_anonymous'] == true ? '익명' : '작성자'),
-                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                    if (widget.isAdmin) ...[
+                      const SizedBox(width: 4),
+                      _adminLocationLabel(ctx),
+                    ],
+                    const Text(' · ', style: TextStyle(color: Colors.grey, fontSize: 11.5)),
+                    Text(time, style: const TextStyle(fontSize: 11.5, color: Colors.grey)),
+                  ]),
                 ),
-                if (widget.isAdmin) ...[
-                  const SizedBox(width: 4),
-                  _adminLocationLabel(ctx),
-                ],
-                const Text(' · ', style: TextStyle(color: Colors.grey, fontSize: 11.5)),
-                Text(time, style: const TextStyle(fontSize: 11.5, color: Colors.grey)),
-                const Spacer(),
+                // 오른쪽: 좋아요·댓글·조회수·더보기 — 항상 우측 끝 정렬 고정
                 Material(
                   color: Colors.transparent,
                   child: InkWell(
@@ -364,43 +371,36 @@ class _PostCardState extends State<PostCard> {
                 ),
               ]),
               const SizedBox(height: 4),
-              // 제목은 항상 왼쪽에서 시작(들여쓰기 흔들림 없이 정렬), 공지/인기/추천
-              // 배지는 부가 정보이므로 오른쪽으로 배치.
+              // 공지/인기/추천 배지를 2번째 줄 맨 왼쪽에, 그 다음 제목을 배치.
               Row(children: [
+                if (isNotice) Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  margin: const EdgeInsets.only(right: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.redAccent.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: const Text('📌공지', style: TextStyle(fontSize: 10, color: Colors.redAccent, fontWeight: FontWeight.w700)),
+                ),
+                if (!isNotice && isHot) Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  margin: const EdgeInsets.only(right: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: const Text('🔥인기', style: TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.w700)),
+                ),
+                if (!isNotice && isPinned && !isHot) Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  margin: const EdgeInsets.only(right: 6),
+                  decoration: BoxDecoration(
+                    color: Theme.of(ctx).colorScheme.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Text('추천', style: TextStyle(fontSize: 10, color: Theme.of(ctx).colorScheme.primary, fontWeight: FontWeight.w700)),
+                ),
                 Expanded(child: Text(post['title'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                if (isNotice) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                    child: const Text('📌공지', style: TextStyle(fontSize: 10, color: Colors.redAccent, fontWeight: FontWeight.w700)),
-                  ),
-                ],
-                if (!isNotice && isHot) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                    child: const Text('🔥인기', style: TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.w700)),
-                  ),
-                ],
-                if (!isNotice && isPinned && !isHot) ...[
-                  const SizedBox(width: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: Theme.of(ctx).colorScheme.primary.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                    child: Text('추천', style: TextStyle(fontSize: 10, color: Theme.of(ctx).colorScheme.primary, fontWeight: FontWeight.w700)),
-                  ),
-                ],
               ]),
             ],
           ),
