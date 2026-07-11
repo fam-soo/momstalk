@@ -7,7 +7,8 @@ import '../../../core/api_client.dart';
 
 class AcademyReviewWriteScreen extends ConsumerStatefulWidget {
   final int academyId;
-  const AcademyReviewWriteScreen({super.key, required this.academyId});
+  final Map<String, dynamic>? editingReview;
+  const AcademyReviewWriteScreen({super.key, required this.academyId, this.editingReview});
 
   @override
   ConsumerState<AcademyReviewWriteScreen> createState() => _AcademyReviewWriteScreenState();
@@ -37,10 +38,22 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
   static const _scoreOptions = ['크게 올랐어요', '조금 올랐어요', '유지됐어요', '변화 없음', '오히려 내려갔어요'];
   static const _subjects = ['수학', '영어', '과학', '국어', '음악', '미술', '체육', '코딩', '기타'];
 
+  bool get _isEditing => widget.editingReview != null;
+
   @override
   void initState() {
     super.initState();
     _loadProfile();
+    final r = widget.editingReview;
+    if (r != null) {
+      _rating = (r['rating'] as num?)?.toInt() ?? 0;
+      _selectedSubjects.addAll((r['subjects'] as List?)?.cast<String>() ?? []);
+      _selectedTeacherStyles.addAll((r['teacher_styles'] as List?)?.cast<String>() ?? []);
+      _homeworkLevel = r['homework_level'] as String? ?? '';
+      _scoreImprovement = r['score_improvement'] as String? ?? '';
+      _nicknameType = (r['is_anonymous'] as bool? ?? true) ? 'anon' : 'nickname';
+      _textCtrl.text = r['review_text'] as String? ?? '';
+    }
   }
 
   @override
@@ -125,7 +138,7 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
     setState(() => _submitting = true);
     try {
       final dio = ref.read(dioProvider);
-      await dio.post('/academies/${widget.academyId}/reviews', data: {
+      final data = {
         'rating': _rating,
         'subjects': _selectedSubjects.toList(),
         'teacher_styles': _selectedTeacherStyles.toList(),
@@ -134,9 +147,16 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
         'review_text': _textCtrl.text.trim(),
         'nickname_type': _nicknameType,
         'is_anonymous': _nicknameType == 'anon',
-      });
+      };
+      if (_isEditing) {
+        final reviewId = widget.editingReview!['id'];
+        await dio.patch('/academies/${widget.academyId}/reviews/$reviewId', data: data);
+      } else {
+        await dio.post('/academies/${widget.academyId}/reviews', data: data);
+      }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('후기가 등록되었습니다.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_isEditing ? '후기가 수정되었습니다.' : '후기가 등록되었습니다.')));
         context.pop();
       }
     } on DioException catch (e) {
@@ -155,7 +175,7 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isAdmin ? '학원 정보 설정 (관리자)' : '후기 작성'),
+        title: Text(_isAdmin ? '학원 정보 설정 (관리자)' : (_isEditing ? '후기 수정' : '후기 작성')),
         actions: [
           TextButton(
             onPressed: _submitting ? null : (_isAdmin ? _submitAdmin : _submitReview),

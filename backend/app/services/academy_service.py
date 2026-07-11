@@ -397,6 +397,70 @@ async def create_review(
     )
 
 
+async def update_review(
+    academy_id: int,
+    review_id: int,
+    user: User,
+    req,
+    db: AsyncSession,
+) -> AcademyReviewResponse:
+    review = (await db.execute(
+        select(AcademyReview).where(AcademyReview.id == review_id, AcademyReview.academy_id == academy_id)
+    )).scalar_one_or_none()
+    if not review:
+        raise ValueError("후기를 찾을 수 없습니다.")
+    if review.is_seed:
+        raise PermissionError("이 후기는 수정할 수 없습니다.")
+    if review.author_id != user.id:
+        raise PermissionError("본인이 작성한 후기만 수정할 수 있습니다.")
+
+    check_profanity(req.review_text, "후기")
+
+    academy = (await db.execute(select(Academy).where(Academy.id == academy_id))).scalar_one_or_none()
+    if academy and academy.review_count > 0:
+        # 별점 변경분을 평균에 반영
+        current_avg = float(academy.avg_rating or 0)
+        total = current_avg * academy.review_count
+        total = total - review.rating + req.rating
+        academy.avg_rating = Decimal(str(round(total / academy.review_count, 2)))
+
+    review.subjects = req.subjects or []
+    review.teacher_styles = req.teacher_styles or []
+    review.homework_level = req.homework_level
+    review.score_improvement = req.score_improvement
+    review.review_text = req.review_text
+    review.rating = req.rating
+    review.nickname_type = req.nickname_type
+    review.is_anonymous = req.is_anonymous
+
+    await db.commit()
+    await db.refresh(review)
+
+    author_display = None
+    if not review.is_anonymous:
+        author_display = user.nickname
+
+    return AcademyReviewResponse(
+        id=review.id,
+        academy_id=review.academy_id,
+        subjects=review.subjects or [],
+        teacher_styles=review.teacher_styles or [],
+        homework_level=review.homework_level,
+        score_improvement=review.score_improvement,
+        review_text=review.review_text,
+        rating=review.rating,
+        nickname_type=review.nickname_type,
+        is_anonymous=review.is_anonymous,
+        is_own=True,
+        author_display_name=author_display,
+        author_school_name=user.school_name or None,
+        author_grade=user.grade,
+        report_count=review.report_count,
+        is_hidden=review.is_hidden,
+        created_at=review.created_at,
+    )
+
+
 def _academy_unlock_quota(user: User) -> Optional[int]:
     """사용자가 가림 처리 없이 전체 열람 가능한 "학원 개수" 반환. None = 무제한."""
     if user.is_admin:
@@ -498,8 +562,10 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
 
     out = []
     for review, author in rows:
+        is_own = bool(author and author.id == user.id)
         # 학원이 잠겨 있으면 기본 소개(seed) + 사용자 후기 모두 가림 처리
-        view_limited = not unlocked
+        # 단, 본인이 작성한 후기는 잠금 대상에서 제외 (본인 글을 본인이 못 보는 문제 방지)
+        view_limited = (not unlocked) and not is_own
 
         author_display = None
         school_name = None
@@ -523,6 +589,7 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
             nickname_type=review.nickname_type,
             is_anonymous=review.is_anonymous,
             is_view_limited=view_limited,
+            is_own=is_own,
             author_display_name=author_display,
             author_school_name=school_name,
             author_grade=grade,

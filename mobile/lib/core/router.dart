@@ -116,7 +116,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/academy/:id/review/write',
         parentNavigatorKey: _rootNavKey,
-        builder: (ctx, s) => AcademyReviewWriteScreen(academyId: int.parse(s.pathParameters['id']!)),
+        builder: (ctx, s) => AcademyReviewWriteScreen(
+          academyId: int.parse(s.pathParameters['id']!),
+          editingReview: s.extra as Map<String, dynamic>?,
+        ),
       ),
       GoRoute(
         path: '/academy/:id',

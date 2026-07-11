@@ -59,6 +59,10 @@ class AcademyReviewCreate(BaseModel):
         return v
 
 
+class AcademyReviewUpdate(AcademyReviewCreate):
+    pass
+
+
 class AcademyReviewResponse(BaseModel):
     id: int
     academy_id: int
@@ -72,6 +76,7 @@ class AcademyReviewResponse(BaseModel):
     is_anonymous: bool = True
     is_seed: bool = False
     is_view_limited: bool = False  # True이면 텍스트/상세 내용이 제거된 잠금 상태
+    is_own: bool = False  # 로그인한 유저 본인이 작성한 후기인지 여부
     author_display_name: Optional[str] = None
     author_school_name: Optional[str] = None
     author_grade: Optional[int] = None

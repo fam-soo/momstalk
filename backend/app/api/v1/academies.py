@@ -13,6 +13,7 @@ from app.schemas.academy import (
     AcademyReviewCreate,
     AcademyReviewResponse,
     AcademyReviewListResponse,
+    AcademyReviewUpdate,
     AcademyUnlockQuota,
 )
 from app.services import academy_service
@@ -147,6 +148,22 @@ async def create_review(
 ):
     try:
         return await academy_service.create_review(academy_id, user, req, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/{academy_id}/reviews/{review_id}", response_model=AcademyReviewResponse)
+async def update_review(
+    academy_id: int,
+    review_id: int,
+    req: AcademyReviewUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_service_db),
+):
+    try:
+        return await academy_service.update_review(academy_id, review_id, user, req, db)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

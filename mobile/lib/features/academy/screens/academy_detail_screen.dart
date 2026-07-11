@@ -237,7 +237,7 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                 Text('AI 요약 정보', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
               ]),
             ),
-            ..._seedReviews.map((r) => _ReviewCard(review: r)),
+            ..._seedReviews.map((r) => _ReviewCard(review: r, academyId: widget.academyId, onChanged: _load)),
             const Divider(height: 1),
           ],
 
@@ -309,7 +309,7 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
               ),
             )
           else ...[
-            ..._userReviews.map((r) => _ReviewCard(review: r)),
+            ..._userReviews.map((r) => _ReviewCard(review: r, academyId: widget.academyId, onChanged: _load)),
           ],
 
         ],
@@ -406,7 +406,9 @@ class _QuotaBanner extends StatelessWidget {
 
 class _ReviewCard extends StatelessWidget {
   final Map<String, dynamic> review;
-  const _ReviewCard({required this.review});
+  final int academyId;
+  final VoidCallback? onChanged;
+  const _ReviewCard({required this.review, required this.academyId, this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -414,6 +416,7 @@ class _ReviewCard extends StatelessWidget {
     final rating = (review['rating'] as num?)?.toInt() ?? 0;
     final isSeed = review['is_seed'] as bool? ?? false;
     final isViewLimited = review['is_view_limited'] as bool? ?? false;
+    final isOwn = review['is_own'] as bool? ?? false;
     final isAnon = review['is_anonymous'] as bool? ?? true;
     final authorName = isSeed
         ? '맘스톡'
@@ -489,15 +492,28 @@ class _ReviewCard extends StatelessWidget {
                     color: isViewLimited ? Colors.grey.shade300 : Colors.amber.shade600,
                   )),
                 ),
+                if (isOwn) ...[
+                  const SizedBox(width: 2),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(4),
+                    onTap: () => context
+                        .push('/academy/$academyId/review/write', extra: review)
+                        .then((_) => onChanged?.call()),
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: Icon(Icons.edit_outlined, size: 15, color: theme.colorScheme.primary),
+                    ),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 4),
-            // 2번째 줄 — 후기 본문 (한 줄로 축약)
+            // 후기 본문 — 잠금 상태만 한 줄 미리보기, 잠금 해제 시 전체 내용 표시(줄 수 제한 없음)
             if (text.isNotEmpty)
               Text(text,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13, color: isViewLimited ? Colors.grey.shade500 : null))
+                  maxLines: isViewLimited ? 1 : null,
+                  overflow: isViewLimited ? TextOverflow.ellipsis : null,
+                  style: TextStyle(fontSize: 13, height: 1.4, color: isViewLimited ? Colors.grey.shade500 : null))
             else if (isViewLimited)
               Text('후기를 작성하면 전체 내용을 볼 수 있어요.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade400, fontStyle: FontStyle.italic)),
