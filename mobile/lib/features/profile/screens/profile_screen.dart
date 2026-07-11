@@ -236,140 +236,98 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const SizedBox(height: 12),
         ],
 
-        // ── 기본 프로필 카드 ──────────────────────────────
+        // ── 프로필 통합 카드 ──────────────────────────────
+        // 예전엔 기본정보/학교변경/자녀관리/빠른실행이 카드 4개로 나뉘어
+        // 있어서 화면 절반을 차지했다. 편집 기능이 없는 아바타 아이콘도
+        // 자리만 차지하고, 학교 정보가 기본정보 카드와 변경 카드에 두 번
+        // 보였다 — 하나의 카드로 합치고 중복을 없앴다.
         Card(
+          clipBehavior: Clip.antiAlias,
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(14, 12, 10, 10),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(children: [
-                  const CircleAvatar(radius: 24, child: Icon(Icons.person, size: 24)),
-                  const SizedBox(width: 14),
-                  Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Text(_profile!['nickname'] ?? '닉네임 없음',
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        if (isAdmin) ...[
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                            decoration: BoxDecoration(color: const Color(0xFF4A90D9), borderRadius: BorderRadius.circular(4)),
-                            child: const Text('관리자', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ]),
-                      const SizedBox(height: 4),
-                      _TemperatureChip(
-                        celsius: (_profile!['temperature'] as num?)?.toDouble() ?? 36.5,
-                      ),
-                    ],
-                  )),
+                  Flexible(
+                    child: Text(_profile!['nickname'] ?? '닉네임 없음',
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis),
+                  ),
+                  if (isAdmin) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(color: const Color(0xFF4A90D9), borderRadius: BorderRadius.circular(4)),
+                      child: const Text('관리자', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  _TemperatureChip(celsius: (_profile!['temperature'] as num?)?.toDouble() ?? 36.5),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    tooltip: '닉네임 변경',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () async {
+                      await showDialog(context: context, builder: (_) => _NicknameDialog(nickname: _profile!['nickname'] ?? '', ref: ref));
+                      _load();
+                    },
+                  ),
                 ]),
                 if (!isAdmin) ...[
-                  const Divider(height: 16),
-                  _row(Icons.location_on_outlined, '지역',
-                      isMember ? (displayRegion ?? '-') : '미인증'),
-                  const SizedBox(height: 4),
-                  _row(Icons.school_outlined, '학교', () {
-                      if (!isMember) return '미인증';
-                      final name = displaySchool ?? '-';
-                      return displayGrade != null ? '$name ($displayGrade학년)' : name;
-                    }()),
-                ],
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        // ── 지역·학교·학년 변경 + 심사 상태 통합 카드 (관리자 제외) ──────
-        if (!isAdmin) ...[
-          Card(
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                ListTile(
-                  dense: true,
-                  visualDensity: VisualDensity.compact,
-                  leading: Icon(
-                    isPending
-                        ? Icons.hourglass_top_rounded
-                        : isMember
-                            ? Icons.edit_location_outlined
-                            : Icons.verified_outlined,
-                    color: isPending ? Colors.orange : null,
-                  ),
-                  title: Text(
-                    isMember ? '지역·학교·학년 변경' : '학부모 인증 (학교 선택)',
-                    style: isPending ? const TextStyle(color: Colors.orange) : null,
-                  ),
-                  subtitle: Text(
-                    isPending
-                        ? '심사 진행 중 — 탭하여 현황 확인'
-                        : isMember
-                            ? '월 1회 변경 가능'
-                            : '학교를 검색하여 인증을 시작하세요',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isPending ? Colors.orange.shade700 : Colors.grey,
+                  InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => _onTapSchoolChange(isPending, isMember),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(children: [
+                        Icon(
+                          isPending ? Icons.hourglass_top_rounded : (isMember ? Icons.school_outlined : Icons.verified_outlined),
+                          size: 16, color: isPending ? Colors.orange : Colors.grey.shade600,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            isPending
+                                ? '심사 진행 중 — 탭하여 현황 확인'
+                                : !isMember
+                                    ? '학부모 인증하기 (학교 선택)'
+                                    : '${displayRegion ?? '-'} · ${displaySchool ?? '-'}${displayGrade != null ? ' ($displayGrade학년)' : ''}',
+                            style: TextStyle(fontSize: 13, color: isPending ? Colors.orange.shade700 : null),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isPending)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: const Text('심사중', style: TextStyle(fontSize: 10, color: Colors.orange, fontWeight: FontWeight.w600)),
+                          )
+                        else
+                          Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade400),
+                      ]),
                     ),
                   ),
-                  trailing: isPending
-                      ? Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.orange.shade200),
-                          ),
-                          child: const Text('심사 중', style: TextStyle(fontSize: 11, color: Colors.orange, fontWeight: FontWeight.w600)),
-                        )
-                      : const Icon(Icons.chevron_right),
-                  onTap: () => _onTapSchoolChange(isPending, isMember),
-                ),
-                if (isPending) ...[
+                  if (isMember) ...[
+                    const Divider(height: 1),
+                    const SizedBox(height: 6),
+                    _ChildrenSection(profile: _profile!, onChanged: _load),
+                  ],
                   const Divider(height: 1),
-                  Container(
-                    color: Colors.orange.shade50,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    child: Row(children: [
-                      Icon(Icons.info_outline, size: 14, color: Colors.orange.shade700),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '알림장 캡처 검토 중입니다. 승인 시 푸시 알림으로 안내드립니다.',
-                          style: TextStyle(fontSize: 12, color: Colors.orange.shade700),
-                        ),
-                      ),
-                    ]),
-                  ),
                 ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // ── 자녀 관리 (정회원) ────────────────────────────
-          if (isMember) _ChildrenSection(profile: _profile!, onChanged: _load),
-          if (isMember) const SizedBox(height: 8),
-        ],
-
-        // ── 빠른 실행 버튼 행 ──────────────────────────────
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              children: [
-                _QuickAction(icon: Icons.bookmark_outline, label: '스크랩', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScrapListScreen()))),
-                _QuickAction(icon: Icons.badge_outlined, label: '닉네임', onTap: () async {
-                  await showDialog(context: context, builder: (_) => _NicknameDialog(nickname: _profile!['nickname'] ?? '', ref: ref));
-                  _load();
-                }),
-                if (isMember && !isAdmin)
-                  _QuickAction(icon: Icons.person_add_outlined, label: '친구초대', onTap: _generateInvite),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(children: [
+                    _QuickAction(icon: Icons.bookmark_outline, label: '스크랩', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScrapListScreen()))),
+                    if (isMember && !isAdmin)
+                      _QuickAction(icon: Icons.person_add_outlined, label: '친구초대', onTap: _generateInvite),
+                  ]),
+                ),
               ],
             ),
           ),
@@ -460,15 +418,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const SizedBox(height: 16),
       ],
     );
-  }
-
-  Widget _row(IconData icon, String label, String value) {
-    return Row(children: [
-      Icon(icon, size: 18, color: Colors.grey),
-      const SizedBox(width: 8),
-      Text('$label  ', style: const TextStyle(color: Colors.grey, fontSize: 13)),
-      Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
-    ]);
   }
 }
 
@@ -828,63 +777,60 @@ class _ChildrenSectionState extends ConsumerState<_ChildrenSection> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.child_care, size: 18, color: Colors.grey),
-                const SizedBox(width: 8),
-                const Text('자녀 관리', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                const Spacer(),
-                if (_children.length < 5)
-                  TextButton.icon(
-                    onPressed: _loading ? null : _addChild,
-                    icon: const Icon(Icons.add, size: 16),
-                    label: const Text('추가'),
-                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+    // 카드 껍데기 없이 상위(프로필 통합 카드) 안에 바로 얹히는 컴팩트한
+    // 섹션 — 자녀가 1명뿐이어도 "추가" 동선은 항상 보여준다.
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.child_care, size: 15, color: Colors.grey.shade600),
+              const SizedBox(width: 6),
+              Text('자녀', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Colors.grey.shade700)),
+              const SizedBox(width: 4),
+              Text('(선택 시 전환 · 길게 눌러 삭제)', style: TextStyle(fontSize: 10, color: Colors.grey.shade400)),
+              const Spacer(),
+              if (_children.length < 5)
+                TextButton.icon(
+                  onPressed: _loading ? null : _addChild,
+                  icon: const Icon(Icons.add, size: 14),
+                  label: const Text('추가', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 6)),
+                ),
+            ],
+          ),
+          if (_children.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text('등록된 자녀가 없습니다.', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
+            )
+          else
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: _children.map<Widget>((child) {
+                final id = child['id'] as int;
+                final isActive = id == _activeChildId;
+                final schoolName = child['school_name'] as String? ?? '';
+                final grade = child['grade'] as int?;
+                final schoolType = _schoolTypeLabel(child['school_type'] as String?);
+                final label = '$schoolName ${grade != null ? "$grade학년" : ""}($schoolType)';
+                return GestureDetector(
+                  onLongPress: () => _deleteChild(id, label),
+                  child: FilterChip(
+                    label: Text(label, style: const TextStyle(fontSize: 12)),
+                    selected: isActive,
+                    selectedColor: theme.colorScheme.primaryContainer,
+                    checkmarkColor: theme.colorScheme.primary,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => _setActive(id),
                   ),
-              ],
+                );
+              }).toList(),
             ),
-            if (_children.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text('등록된 자녀가 없습니다.', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
-              )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: _children.map<Widget>((child) {
-                  final id = child['id'] as int;
-                  final isActive = id == _activeChildId;
-                  final schoolName = child['school_name'] as String? ?? '';
-                  final grade = child['grade'] as int?;
-                  final schoolType = _schoolTypeLabel(child['school_type'] as String?);
-                  final label = '$schoolName ${grade != null ? "$grade학년" : ""}($schoolType)';
-                  return GestureDetector(
-                    onLongPress: () => _deleteChild(id, label),
-                    child: FilterChip(
-                      label: Text(label, style: const TextStyle(fontSize: 12)),
-                      selected: isActive,
-                      selectedColor: theme.colorScheme.primaryContainer,
-                      checkmarkColor: theme.colorScheme.primary,
-                      onSelected: (_) => _setActive(id),
-                    ),
-                  );
-                }).toList(),
-              ),
-            if (_children.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text('선택된 자녀의 학교 게시판이 활성화됩니다. 길게 눌러 삭제.',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
-              ),
-          ],
-        ),
+        ],
       ),
     );
   }
