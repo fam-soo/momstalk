@@ -11,6 +11,7 @@ import httpx
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.security import make_anon_id, create_access_token, create_refresh_token
 from app.models.service_models import User
@@ -50,22 +51,32 @@ async def kakao_login(
     raw_kakao_id = profile["kakao_id"]
 
     if not user:
-        user = User(
-            anon_id=anon_id,
-            kakao_id=raw_kakao_id,
-            nickname=_random_nickname(),
-            # school 정보는 이후 단계(캡처/초대)에서 채움
-            school_code="__pending__",
-            school_name="",
-            grade=1,
-            school_type="",
-            social_provider="kakao",
-            member_grade="lurker",
-            auth_pending=False,
-        )
-        service_db.add(user)
-        await service_db.commit()
-        await service_db.refresh(user)
+        # 카카오 버튼 연타, 느린 네트워크로 인한 클라이언트 재시도, 여러 탭에서
+        # 동시 로그인 등으로 같은 anon_id에 대해 두 요청이 동시에 들어오면
+        # 두 번째 INSERT가 UNIQUE 제약(anon_id)을 위반해 처리되지 않은
+        # IntegrityError → 500으로 로그인 자체가 실패했다. dev_lurker_login과
+        # 동일하게 방금 다른 요청이 만든 행을 다시 조회해 그대로 로그인 처리한다.
+        try:
+            user = User(
+                anon_id=anon_id,
+                kakao_id=raw_kakao_id,
+                nickname=_random_nickname(),
+                # school 정보는 이후 단계(캡처/초대)에서 채움
+                school_code="__pending__",
+                school_name="",
+                grade=1,
+                school_type="",
+                social_provider="kakao",
+                member_grade="lurker",
+                auth_pending=False,
+            )
+            service_db.add(user)
+            await service_db.commit()
+            await service_db.refresh(user)
+        except IntegrityError:
+            await service_db.rollback()
+            result = await service_db.execute(select(User).where(User.anon_id == anon_id))
+            user = result.scalar_one()
     else:
         # 기존 유저 — 소셜 프로바이더·kakao_id 업데이트
         if not user.social_provider:

@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,6 +6,7 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
+import '../../../core/kakao_login_helper.dart';
 import '../../../core/router.dart';
 
 /// 초대 링크(/invite/{token}) 진입 화면.
@@ -80,9 +82,37 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
       _wasAlreadyMember = (meResp.data['member_grade'] as String?) == 'member';
       setState(() { _isLoggedIn = true; _loggingIn = false; });
       await _join();
+    } on DioException catch (e) {
+      // login_screen.dart의 계정 상태(403 정지/차단)·요청 제한(429) 처리와
+      // 동일하게 맞춤 — 예전엔 이 화면만 raw DioException.toString()을 그대로
+      // 스낵바에 보여줘서 초대 링크로 가입하는 사람에게 유독 알아보기 어려운
+      // 오류 문구가 노출됐다.
+      if (mounted) {
+        setState(() => _loggingIn = false);
+        final statusCode = e.response?.statusCode;
+        if (statusCode == 403) {
+          final detail = e.response?.data?['detail'] as String? ?? '가입이 제한된 계정입니다.';
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('로그인 불가'),
+              content: Text(detail),
+              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('확인'))],
+            ),
+          );
+        } else if (statusCode == 429) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('잠시 후 다시 시도해주세요. (요청 횟수 초과)')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('로그인에 실패했습니다. 잠시 후 다시 시도해주세요.')),
+          );
+        }
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('로그인 실패: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mapKakaoSdkError(e.toString()))));
         setState(() => _loggingIn = false);
       }
     }

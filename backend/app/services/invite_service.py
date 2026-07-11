@@ -77,10 +77,21 @@ async def use_invite(token: str, user: User, grade: int, class_num: int | None, 
     was_member = user.member_grade == "member"
     link = await validate_invite(token, db, user=user)
 
-    # 기존 정회원이 아닌 경우에만 링크 소모 (신규/lurker 가입용)
+    # 기존 정회원이 아닌 경우에만 링크 소모 (신규/lurker 가입용).
+    # validate_invite에서 used_by를 확인한 시점과 여기서 실제로 값을 쓰는
+    # 시점 사이에 간격이 있어, 같은 링크를 두 사람이 거의 동시에(예: 한 링크를
+    # 전달받은 두 학부모가 동시에 가입 버튼을 누름) 열면 둘 다 "아직 미사용"
+    # 상태를 보고 통과해 링크 하나로 두 명이 정회원이 될 수 있었다.
+    # WHERE used_by IS NULL 조건의 원자적 UPDATE로 선점해, 늦게 도착한 요청은
+    # rowcount=0으로 감지해 실패 처리한다.
     if not was_member:
-        link.used_by = user.id
-        link.used_at = datetime.utcnow()
+        result = await db.execute(
+            InviteLink.__table__.update()
+            .where(InviteLink.token == token, InviteLink.used_by.is_(None))
+            .values(used_by=user.id, used_at=datetime.utcnow())
+        )
+        if result.rowcount == 0:
+            raise ValueError("이미 사용된 초대 링크입니다.")
 
     # 같은 school_code의 자녀가 이미 있으면 학년만 업데이트, 없으면 추가
     result = await db.execute(

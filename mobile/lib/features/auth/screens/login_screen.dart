@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api_client.dart' show dioProvider, tokenStorageProvider;
 import '../../../core/constants.dart';
+import '../../../core/kakao_login_helper.dart';
 import '../../../core/saved_accounts.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -75,16 +76,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _showKakaoError(String err) {
-    String msg;
-    if (err.contains('cancel') || err.contains('Cancel')) {
-      msg = '카카오 로그인이 취소되었습니다.';
-    } else if (err.contains('network') || err.contains('Network') || err.contains('SocketException')) {
-      msg = '네트워크 연결을 확인해주세요.';
-    } else {
-      msg = '카카오 로그인에 실패했습니다. 잠시 후 다시 시도해주세요.';
-    }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), duration: const Duration(seconds: 5)),
+      SnackBar(content: Text(mapKakaoSdkError(err)), duration: const Duration(seconds: 5)),
     );
   }
 
