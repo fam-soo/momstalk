@@ -8,6 +8,7 @@ import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
 import '../../../core/kakao_login_helper.dart';
 import '../../../core/router.dart';
+import '../../../core/saved_accounts.dart';
 
 /// 초대 링크(/invite/{token}) 진입 화면.
 /// 비로그인 상태라면 카카오 로그인 후 바로 가입 처리.
@@ -68,11 +69,12 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
       if (!kIsWeb && await isKakaoTalkInstalled()) {
         kakaoToken = await UserApi.instance.loginWithKakaoTalk();
       } else {
-        // login_screen.dart와 동일한 이유로 selectAccount 대신 login 사용 —
-        // 카카오 "간편 로그인" 목록엔 계정이 일부만 보이거나 원하는 계정이
-        // 안 보일 수 있어, 매번 로그인 화면에서 명확히 계정을 선택하게 한다.
+        // login_screen.dart와 동일한 정책: 이 기기에서 처음 로그인하는 경우에만
+        // Prompt.login으로 계정 선택 화면을 강제하고, 그 외에는 prompts를 생략해
+        // 기존 세션을 재사용(2단계 인증 재요구 방지)한다.
+        final hasLoggedInBefore = await SavedAccountsStorage.hasLoggedInBefore();
         kakaoToken = await UserApi.instance.loginWithKakaoAccount(
-          prompts: [Prompt.login],
+          prompts: hasLoggedInBefore ? null : [Prompt.login],
         );
       }
       final dio = ref.read(dioProvider);
@@ -80,6 +82,7 @@ class _InviteJoinScreenState extends ConsumerState<InviteJoinScreen> {
       final storage = ref.read(tokenStorageProvider);
       await storage.write(AppConstants.tokenKey, resp.data['access_token'] as String);
       await storage.write(AppConstants.refreshTokenKey, resp.data['refresh_token'] as String);
+      await SavedAccountsStorage.markLoggedIn();
 
       final meResp = await dio.get('/auth/me');
       _wasAlreadyMember = (meResp.data['member_grade'] as String?) == 'member';

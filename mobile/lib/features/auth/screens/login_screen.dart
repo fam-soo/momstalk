@@ -31,17 +31,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     _checkReturningUser();
   }
 
-  /// 예전에 로그인한 적 있는 기기인지만 확인 (약관 동의 UI 생략 여부 판단용).
-  /// 특정 계정을 미리 선택하지 않는다 — 로그아웃 후 재로그인 시에는 항상
-  /// 카카오 계정 선택 화면에서 직접 계정을 고르도록 한다 (닉네임 목록 사용 안 함).
+  /// 이 기기에서 로그인한 적 있는지 확인 (약관 동의 UI 생략 + 카카오 로그인
+  /// prompts 분기 판단용). 특정 계정을 기억하거나 닉네임으로 미리 선택하지는
+  /// 않는다 — 어떤 계정으로 로그인할지는 항상 카카오 화면에서 직접 고른다.
   Future<void> _checkReturningUser() async {
     final hasLoggedIn = await SavedAccountsStorage.hasLoggedInBefore();
     if (mounted) setState(() => _hasLoggedInBefore = hasLoggedIn);
   }
 
-  /// 카카오 로그인. 항상 카카오 자체 계정 선택 화면을 띄운다 — 기기에
-  /// 여러 카카오 계정이 로그인된 적 있어도 우리 앱이 닉네임으로 특정 계정을
-  /// 추측하지 않고, 사용자가 카카오 화면에서 직접 계정을 선택하게 한다.
+  /// 카카오 로그인.
+  /// - 이 기기에서 처음 로그인하는 경우: 카카오 자체 계정 선택 화면(Prompt.login)을
+  ///   띄워 사용자가 명확히 계정을 고르게 한다 (여러 계정 중 일부만 보이는 문제 방지).
+  /// - 이미 로그인해본 적 있는 기기: prompts를 생략해 카카오가 기존 세션을
+  ///   재사용하도록 한다 — Prompt.login은 "사용자 재인증"을 강제하는 옵션이라
+  ///   매번 2단계 인증까지 새로 요구되는 문제가 있었음.
   Future<void> _kakaoLogin() async {
     if (!_hasLoggedInBefore) {
       if (!_agreed) {
@@ -63,14 +66,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (!kIsWeb && await isKakaoTalkInstalled()) {
         token = await UserApi.instance.loginWithKakaoTalk();
       } else {
-        // Prompt.selectAccount는 카카오의 "간편 로그인" 위젯을 띄우는데, 이건
-        // 브라우저 세션에 최근 남아있는 계정 일부만 보여줄 뿐이라 사용자가
-        // 여러 카카오 계정을 쓰는 경우 원하는 계정이 목록에 아예 없거나
-        // "이 계정으로 로그인되는 건가?" 헷갈리는 문제가 있었다. Prompt.login으로
-        // 매번 카카오 로그인 화면 자체를 새로 띄워, 어떤 계정으로 로그인할지
-        // 직접 아이디/비번(또는 계정 전환)을 눌러 명확히 선택하게 한다.
         token = await UserApi.instance.loginWithKakaoAccount(
-          prompts: [Prompt.login],
+          prompts: _hasLoggedInBefore ? null : [Prompt.login],
         );
       }
       await _authenticateWithBackend(token);
