@@ -598,7 +598,9 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
 
   PreferredSizeWidget _buildNormalAppBar(ThemeData theme) {
     return AppBar(
-      leading: _isAdmin ? const NotificationBellButton() : null,
+      leading: _isAdmin
+          ? const NotificationBellButton()
+          : const UnifiedNotifyButton(prefKey: 'notify_academy', label: '학원'),
       title: Text(
         _isAdmin
             ? '전지역 학원 후기'
@@ -607,9 +609,8 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                 : (_userRegion.isNotEmpty ? '$_userRegion 학원 후기' : '학원 후기'),
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
-      centerTitle: false,
+      centerTitle: true,
       actions: [
-        if (!_isAdmin) const UnifiedNotifyButton(prefKey: 'notify_academy', label: '학원'),
         IconButton(
           icon: const Icon(Icons.search),
           tooltip: '학원명 검색',

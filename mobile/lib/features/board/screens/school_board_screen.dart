@@ -319,6 +319,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       return Scaffold(
         appBar: AppBar(
           leading: const NotificationBellButton(),
+          centerTitle: true,
           title: const Text('학교 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
         ),
         body: Center(
@@ -374,6 +375,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
         return Scaffold(
           appBar: AppBar(
             leading: const NotificationBellButton(),
+            centerTitle: true,
             title: appBarTitle,
             actions: [
               IconButton(
@@ -396,16 +398,17 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
 
       return Scaffold(
         appBar: AppBar(
+          // 학교 게시판은 탭이 학교/학년 둘이라, 현재 선택된 탭 기준으로
+          // 알림 버튼이 대상 게시판을 자동으로 바꿔가며 표시한다.
+          leading: AnimatedBuilder(
+            animation: tc,
+            builder: (_, __) => tc.index == 1 && hasGrade
+                ? const UnifiedNotifyButton(prefKey: 'notify_grade', label: '학년')
+                : const UnifiedNotifyButton(prefKey: 'notify_school', label: '학교'),
+          ),
+          centerTitle: true,
           title: appBarTitle,
           actions: [
-            // 학교 게시판은 탭이 학교/학년 둘이라, 현재 선택된 탭 기준으로
-            // 알림 버튼이 대상 게시판을 자동으로 바꿔가며 표시한다.
-            AnimatedBuilder(
-              animation: tc,
-              builder: (_, __) => tc.index == 1 && hasGrade
-                  ? const UnifiedNotifyButton(prefKey: 'notify_grade', label: '학년')
-                  : const UnifiedNotifyButton(prefKey: 'notify_school', label: '학교'),
-            ),
             IconButton(icon: const Icon(Icons.search), onPressed: () => context.push('/search')),
           ],
           bottom: PreferredSize(
@@ -483,6 +486,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       return Scaffold(
         appBar: AppBar(
           leading: const NotificationBellButton(),
+          centerTitle: true,
           title: const Text('학교 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
           actions: [
             TextButton(
@@ -504,6 +508,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
     return Scaffold(
       appBar: AppBar(
         leading: const NotificationBellButton(),
+        centerTitle: true,
         title: const Text('학교 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           TextButton(

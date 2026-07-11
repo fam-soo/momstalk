@@ -89,13 +89,14 @@ class Notification(Base):
 
 
 class NotificationPreference(Base):
-    """게시판 종류별 "새 글 알림" on/off. 기존 알림(내 글 댓글/DM/인증결과)과는
-    별개로, 즐겨찾기한 게시판(지역/학교/학년/학원)에 새 글이 올라올 때마다
-    알림을 받을지 유저가 게시판 종류별로 직접 켜고 끌 수 있게 한다.
-    다자녀라도 자녀별로 나누지 않고 종류별 스위치 하나로 단순화."""
+    """알림 종류별 on/off. 게시판(지역/학교/학년/학원) 새 글 알림은 기본
+    꺼짐(opt-in)이지만, 내 글에 달린 댓글 알림(notify_comment)은 기존부터
+    항상 발송되던 기능이라 default=True(opt-out)로 둬 기존 사용자의 동작을
+    바꾸지 않는다. 다자녀라도 자녀별로 나누지 않고 종류별 스위치 하나로 단순화."""
     __tablename__ = "notification_prefs"
 
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    notify_comment = Column(Boolean, default=True, nullable=False, server_default="true")
     notify_region = Column(Boolean, default=False, nullable=False, server_default="false")
     notify_school = Column(Boolean, default=False, nullable=False, server_default="false")
     notify_grade = Column(Boolean, default=False, nullable=False, server_default="false")

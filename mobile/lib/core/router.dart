@@ -214,15 +214,39 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
       final title = msg.notification?.title ?? 'MomsTalk';
       final body = msg.notification?.body ?? '';
       final location = pushTargetLocation(msg.data);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(body.isEmpty ? title : '$title — $body'),
-          duration: const Duration(seconds: 4),
-          action: location == null
-              ? null
-              : SnackBarAction(label: '보기', onPressed: () => context.push(location)),
-        ),
-      );
+      _showNotificationBanner(title: title, body: body, location: location);
+    });
+  }
+
+  /// 알림함으로 가는 상시 버튼 대신, 알림이 실제로 도착한 순간에만 화면
+  /// 상단에 배너로 보여준다 — Flutter 자체 위젯(MaterialBanner)이라
+  /// 브라우저/기기 종류와 무관하게 항상 동작한다(OS 푸시와 별개로, 앱을
+  /// 보고 있는 동안 도착한 알림을 놓치지 않게 하는 용도).
+  void _showNotificationBanner({required String title, required String body, String? location}) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearMaterialBanners();
+    messenger.showMaterialBanner(
+      MaterialBanner(
+        leading: const Icon(Icons.notifications_active, color: Color(0xFF4A90D9)),
+        content: Text(body.isEmpty ? title : '$title — $body', style: const TextStyle(fontSize: 13)),
+        actions: [
+          if (location != null)
+            TextButton(
+              onPressed: () {
+                messenger.hideCurrentMaterialBanner();
+                context.push(location);
+              },
+              child: const Text('보기'),
+            ),
+          TextButton(
+            onPressed: () => messenger.hideCurrentMaterialBanner(),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
+    Future.delayed(const Duration(seconds: 6), () {
+      if (mounted) messenger.hideCurrentMaterialBanner();
     });
   }
 

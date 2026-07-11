@@ -156,19 +156,18 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
     if (_isMember) {
       return Scaffold(
         appBar: AppBar(
+          leading: const UnifiedNotifyButton(prefKey: 'notify_region', label: '지역'),
+          centerTitle: true,
           title: Text(_region.isNotEmpty ? '$_region 게시판' : '지역 게시판',
               style: const TextStyle(fontWeight: FontWeight.bold)),
           actions: [
-            const UnifiedNotifyButton(prefKey: 'notify_region', label: '지역'),
             IconButton(icon: const Icon(Icons.search), onPressed: () => context.push('/search')),
           ],
         ),
-        body: Column(
-          children: [
-            if (_notices.isNotEmpty) _NoticeBar(notices: _notices),
-            const Expanded(child: PostListWidget(boardType: 'region')),
-          ],
-        ),
+        // 공지는 PostListWidget 안에서 게시글 목록 최상단에 이미 고정
+        // 표시된다(📌공지 배지). 예전엔 여기 별도 배너 바까지 있어서 같은
+        // 공지가 배너(접힌 줄+펼친 줄)와 피드 카드로 최대 3중 중복 노출됐다.
+        body: const PostListWidget(boardType: 'region'),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => context.push('/board/write?board_type=region'),
           icon: const Icon(Icons.edit_outlined),
@@ -182,6 +181,7 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
       return Scaffold(
         appBar: AppBar(
           leading: const NotificationBellButton(),
+          centerTitle: true,
           title: const Text('지역 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
         ),
         body: _LurkerGate(onVerify: () => context.go('/auth/pending')),
@@ -192,6 +192,7 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: const NotificationBellButton(),
+        centerTitle: true,
         title: const Text('지역 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           TextButton(
@@ -310,96 +311,6 @@ class _PreviewBoard extends StatelessWidget {
                 ),
         ),
       ],
-    );
-  }
-}
-
-// ── 공지 상단 고정 바 ─────────────────────────────────────────────
-
-class _NoticeBar extends StatefulWidget {
-  final List<Map<String, dynamic>> notices;
-  const _NoticeBar({required this.notices});
-
-  @override
-  State<_NoticeBar> createState() => _NoticeBarState();
-}
-
-class _NoticeBarState extends State<_NoticeBar> {
-  bool _expanded = false;
-
-  void _showDetail(BuildContext ctx, Map<String, dynamic> notice) {
-    showDialog<void>(
-      context: ctx,
-      builder: (_) => AlertDialog(
-        title: Row(children: [
-          const Icon(Icons.campaign_outlined, color: Color(0xFF4A90D9)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(notice['title'] as String? ?? '공지사항',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-          ),
-        ]),
-        content: SingleChildScrollView(
-          child: Text(notice['content'] as String? ?? '',
-              style: const TextStyle(height: 1.6, fontSize: 14)),
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(_), child: const Text('닫기'))],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    const primary = Color(0xFF4A90D9);
-    return Material(
-      color: primary.withOpacity(0.08),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Row(children: [
-                const Icon(Icons.campaign_outlined, size: 16, color: Color(0xFF4A90D9)),
-                const SizedBox(width: 8),
-                const Text('공지', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF4A90D9))),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    widget.notices.first['title'] as String? ?? '',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 18, color: Colors.grey),
-              ]),
-            ),
-          ),
-          if (_expanded)
-            ...widget.notices.map((n) => InkWell(
-              onTap: () => _showDetail(context, n),
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: primary.withOpacity(0.15))),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: Row(children: [
-                  const SizedBox(width: 24),
-                  const Icon(Icons.article_outlined, size: 14, color: Color(0xFF4A90D9)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(n['title'] as String? ?? '',
-                        style: const TextStyle(fontSize: 13),
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
-                  ),
-                  const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
-                ]),
-              ),
-            )),
-          Divider(height: 1, color: primary.withOpacity(0.2)),
-        ],
-      ),
     );
   }
 }

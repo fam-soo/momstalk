@@ -66,6 +66,7 @@ class _HotBoardScreenState extends ConsumerState<HotBoardScreen> with AutomaticK
     return Scaffold(
       appBar: AppBar(
         leading: const NotificationBellButton(),
+        centerTitle: true,
         title: const Text('🔥 인기'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),

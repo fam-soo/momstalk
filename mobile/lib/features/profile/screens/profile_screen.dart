@@ -8,7 +8,6 @@ import 'package:kakao_flutter_sdk_share/kakao_flutter_sdk_share.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/api_client.dart';
 import '../../../core/kst_time.dart';
-import '../../../core/notification_bell.dart';
 import '../../../core/notification_prefs.dart';
 import '../../../core/push_notifications.dart';
 import '../../../core/refresh_bus.dart';
@@ -192,7 +191,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     });
     return Scaffold(
       appBar: AppBar(
-        leading: const NotificationBellButton(),
         title: const Text('내 정보'),
       ),
       body: _loading
@@ -523,6 +521,7 @@ class _NotificationSettingsCardState extends ConsumerState<_NotificationSettings
   bool _pushBusy = false;
 
   static const _boardItems = [
+    ('notify_comment', '댓글', Icons.chat_bubble_outline),
     ('notify_region', '지역', Icons.location_on_outlined),
     ('notify_school', '학교', Icons.school_outlined),
     ('notify_grade', '학년', Icons.groups_outlined),
@@ -574,6 +573,9 @@ class _NotificationSettingsCardState extends ConsumerState<_NotificationSettings
         );
       }
     }
+    // "전체" 스위치는 나머지 세부 알림(댓글/지역/학교/학년/학원)도 같은
+    // 값으로 함께 맞춘다 — 개별 조정은 그 이후에 따로 할 수 있다.
+    await ref.read(notificationPrefsProvider.notifier).setAll(turnOn);
     await _refreshPush();
     if (mounted) setState(() => _pushBusy = false);
   }
@@ -598,7 +600,15 @@ class _NotificationSettingsCardState extends ConsumerState<_NotificationSettings
           Row(children: [
             Icon(Icons.campaign_outlined, size: 16, color: Colors.grey.shade600),
             const SizedBox(width: 6),
-            Text('알림 설정', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+            Expanded(
+              child: Text('알림 설정', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+            ),
+            TextButton.icon(
+              onPressed: () => context.push('/notifications'),
+              icon: const Icon(Icons.inbox_outlined, size: 15),
+              label: const Text('알림함', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 6)),
+            ),
           ]),
           const SizedBox(height: 2),
           Text('전체를 꺼두면 새 댓글·좋아요·게시판 알림 모두 오지 않아요. 게시판별로는 새 글 알림만 따로 켤 수 있어요.',

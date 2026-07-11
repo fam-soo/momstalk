@@ -34,6 +34,23 @@ class NotificationPrefsNotifier extends StateNotifier<Map<String, dynamic>?> {
       return current;
     }
   }
+
+  /// 내정보의 "전체" 알림 스위치용 — 모든 세부 알림(댓글/지역/학교/학년/학원)을
+  /// 한 번에 같은 값으로 맞춘다. 전체를 끄면 나머지도 다 꺼지고, 전체를 켜면
+  /// 나머지도 다 켜진다(개별 조정은 그 이후에 따로 가능).
+  static const _allKeys = ['notify_comment', 'notify_region', 'notify_school', 'notify_grade', 'notify_academy'];
+
+  Future<void> setAll(bool value) async {
+    final previous = state;
+    state = {for (final k in _allKeys) k: value}; // optimistic
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.patch('/notifications/prefs', data: {for (final k in _allKeys) k: value});
+      state = Map<String, dynamic>.from(resp.data as Map);
+    } catch (_) {
+      state = previous; // 실패 시 롤백
+    }
+  }
 }
 
 final notificationPrefsProvider =

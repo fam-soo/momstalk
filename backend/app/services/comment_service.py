@@ -62,15 +62,18 @@ async def create_comment(
         created_at=comment.created_at,
     )
 
-    # 게시글 작성자에게 푸시 알림 (자기 글에 단 댓글은 제외)
+    # 게시글 작성자에게 푸시 알림 (자기 글에 단 댓글은 제외, notify_comment 꺼둔 경우도 제외)
     if post_obj and post_obj.author_id != user.id:
-        label = anon_labels.get(user.id, "익명") if comment.is_anonymous else (user.nickname or "누군가")
-        await notify_user(
-            db, post_obj.author_id, "comment",
-            title="새 댓글이 달렸어요",
-            body=f"{label}: {comment.content[:50]}",
-            data={"type": "comment", "post_id": str(post_id)},
-        )
+        from app.services.notification_service import get_prefs
+        author_prefs = await get_prefs(db, post_obj.author_id)
+        if author_prefs.notify_comment:
+            label = anon_labels.get(user.id, "익명") if comment.is_anonymous else (user.nickname or "누군가")
+            await notify_user(
+                db, post_obj.author_id, "comment",
+                title="새 댓글이 달렸어요",
+                body=f"{label}: {comment.content[:50]}",
+                data={"type": "comment", "post_id": str(post_id)},
+            )
 
     return response
 

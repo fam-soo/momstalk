@@ -60,6 +60,7 @@ async def mark_all_read(
 
 def _prefs_dict(pref) -> dict:
     return {
+        "notify_comment": pref.notify_comment,
         "notify_region": pref.notify_region,
         "notify_school": pref.notify_school,
         "notify_grade": pref.notify_grade,
@@ -72,11 +73,12 @@ async def get_notification_prefs(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """지역/학교/학년/학원 게시판 "새 글 알림" 종류별 on/off 현황."""
+    """댓글 알림 + 지역/학교/학년/학원 게시판 "새 글 알림" 종류별 on/off 현황."""
     return _prefs_dict(await notification_service.get_prefs(db, user.id))
 
 
 class NotificationPrefsUpdate(BaseModel):
+    notify_comment: Optional[bool] = None
     notify_region: Optional[bool] = None
     notify_school: Optional[bool] = None
     notify_grade: Optional[bool] = None
