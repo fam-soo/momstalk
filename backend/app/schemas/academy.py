@@ -23,6 +23,7 @@ class AcademyResponse(BaseModel):
     user_review_count: int = 0     # 사용자 후기만 (seed 제외)
     has_seed: bool = False         # AI 요약 정보(seed) 보유 여부
     avg_rating: Optional[float] = None
+    is_unlocked: bool = False      # 로그인한 유저가 이 학원 후기를 이미 열람(해금)했는지 여부
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 

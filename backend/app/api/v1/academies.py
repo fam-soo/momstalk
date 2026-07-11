@@ -66,6 +66,7 @@ async def search_academies(
         school_level=school_level,
         reviewer_school=reviewer_school,
         reviewer_grades=grade_list,
+        user=user,
     )
 
 

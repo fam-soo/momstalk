@@ -690,22 +690,38 @@ class _AcademyTile extends StatelessWidget {
     final isB2b = academy['is_b2b'] as bool? ?? false;
     final name = academy['name'] as String? ?? '';
     final address = academy['address'] as String? ?? '';
+    // 이미 열람(해금)한 학원은 음영 처리해 안 읽은 학원과 구분한다.
+    // 해금 후에는 계속 전체 열람 가능하므로, 실수로 다시 클릭하는 걸 막기 위한 표시일 뿐
+    // 클릭 자체는 그대로 허용한다 — 쿼터가 무제한으로 풀려도 이 표시는 유지됨.
+    final isUnlocked = academy['is_unlocked'] as bool? ?? false;
 
     return ListTile(
       onTap: () => context.push('/academy/${academy['id']}'),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      tileColor: isUnlocked ? Colors.grey.shade100 : null,
       leading: CircleAvatar(
-        backgroundColor: theme.colorScheme.primaryContainer,
+        backgroundColor: isUnlocked ? Colors.grey.shade300 : theme.colorScheme.primaryContainer,
         child: Text(
           name.isNotEmpty ? name[0] : '학',
-          style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: isUnlocked ? Colors.grey.shade600 : theme.colorScheme.primary,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
       // 1번째 줄 — 학원명 + 별점·후기수·과목
       title: Row(children: [
+        if (isUnlocked) ...[
+          Icon(Icons.visibility, size: 13, color: Colors.grey.shade500),
+          const SizedBox(width: 3),
+        ],
         Flexible(
           child: Text(name,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+                color: isUnlocked ? Colors.grey.shade500 : null,
+              ),
               maxLines: 1, overflow: TextOverflow.ellipsis),
         ),
         const SizedBox(width: 6),

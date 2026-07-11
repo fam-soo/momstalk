@@ -161,6 +161,7 @@ async def search_academies(
     school_level: Optional[str] = None,      # 초등|중등|고등
     reviewer_school: Optional[str] = None,   # 후기 작성자 아이의 학교명
     reviewer_grades: Optional[list[int]] = None,  # 후기 작성자 아이의 학년(들)
+    user: Optional[User] = None,             # 로그인 유저 — 학원별 열람(해금) 여부 표기용
 ) -> list[AcademyResponse]:
     """DB 우선 검색 → 결과 없으면 NEIS API 조회 후 DB 캐싱."""
     filters = []
@@ -295,10 +296,22 @@ async def search_academies(
         )
         academies = [(a, urc, sc) for a, urc, sc in result2.all()]
 
+    unlocked_ids: set[int] = set()
+    if user is not None:
+        academy_ids = [a.id for a, _, _ in academies]
+        if academy_ids:
+            unlocked_ids = set((await db.execute(
+                select(AcademyReviewUnlock.academy_id).where(
+                    AcademyReviewUnlock.user_id == user.id,
+                    AcademyReviewUnlock.academy_id.in_(academy_ids),
+                )
+            )).scalars().all())
+
     return [
         AcademyResponse.model_validate(a).model_copy(update={
             "user_review_count": urc or 0,
             "has_seed": (sc or 0) > 0,
+            "is_unlocked": a.id in unlocked_ids,
         })
         for a, urc, sc in academies
     ]
@@ -501,8 +514,6 @@ async def _resolve_academy_access(user: User, academy_id: int, db: AsyncSession)
     해금 기록을 남긴다. 한 번 해금된 학원은 이후 계속 전체 열람 가능.
     """
     quota = _academy_unlock_quota(user)
-    if quota is None:
-        return True, 0, None
 
     existing = (await db.execute(
         select(AcademyReviewUnlock).where(
@@ -510,6 +521,15 @@ async def _resolve_academy_access(user: User, academy_id: int, db: AsyncSession)
             AcademyReviewUnlock.academy_id == academy_id,
         )
     )).scalar_one_or_none()
+
+    if quota is None:
+        # 무제한 열람 등급이어도 "이 학원을 열람했다"는 기록은 남겨서
+        # 목록 화면에서 열람/미열람 구분(음영 처리)에 계속 활용한다.
+        if not existing:
+            db.add(AcademyReviewUnlock(user_id=user.id, academy_id=academy_id))
+            await db.commit()
+        return True, 0, None
+
     count = await _unlocked_academy_count(user.id, db)
     if existing:
         return True, count, quota
