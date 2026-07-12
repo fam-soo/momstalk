@@ -2,4 +2,4 @@ String? currentBuildId() => null;
 
 Future<String?> fetchLatestBuildId() async => null;
 
-void reloadPage() {}
+Future<void> reloadPage() async {}

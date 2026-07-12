@@ -30,7 +30,6 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   // 사용자 프로필 (필터 기본값 제공용)
   String _userRegion = '';
   String _userSchoolName = '';
-  int _userGrade = 0;
   bool _isAdmin = false;
   int _userReviewCount = 0;
   String _memberGrade = '';
@@ -98,13 +97,11 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
           final adminFlag = p['is_admin'] as bool? ?? false;
           region = adminFlag ? '' : (r.isNotEmpty ? r : '양천구');
           final schoolName = p['school_name'] as String? ?? '';
-          final grade = p['grade'] as int? ?? 0;
           final reviewCount = p['academy_review_count'] as int? ?? 0;
           final memberGrade = p['member_grade'] as String? ?? '';
           if (mounted) {
             setState(() {
               _userSchoolName = schoolName;
-              _userGrade = grade;
               _isAdmin = adminFlag;
               _userReviewCount = reviewCount;
               _memberGrade = memberGrade;

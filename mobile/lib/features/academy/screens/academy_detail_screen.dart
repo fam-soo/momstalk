@@ -54,7 +54,6 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
   List<Map<String, dynamic>> _seedReviews = [];
   List<Map<String, dynamic>> _userReviews = [];
   bool _loading = true;
-  bool _kakaoLoading = false;
   bool _reviewsLocked = false;  // 로그인 미인증
   int _totalReviews = 0;
   bool _academyLocked = false;   // 이 학원의 후기(기본 소개 + 사용자 후기) 전체 가림 처리 여부
@@ -132,42 +131,6 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
       }
     } finally {
       if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _openKakaoMap() async {
-    setState(() => _kakaoLoading = true);
-    try {
-      final dio = ref.read(dioProvider);
-      final resp = await dio.get('/academies/${widget.academyId}/kakao-place');
-      final data = resp.data as Map<String, dynamic>;
-      final placeUrl = data['place_url'] as String?;
-      final found = data['found'] as bool? ?? false;
-      if (!mounted) return;
-      if (!found || placeUrl == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('카카오맵에서 해당 학원을 찾을 수 없습니다.')),
-        );
-        return;
-      }
-      final uri = Uri.parse(placeUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('카카오맵을 열 수 없습니다.')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('오류: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _kakaoLoading = false);
     }
   }
 
