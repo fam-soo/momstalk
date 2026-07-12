@@ -60,6 +60,10 @@ class UserChild(Base):
     # 학원 맞춤 추천용 — 아이 학습 성향 태그(["칭찬에_약해요", "외향적이에요"])와 현재 성적대
     student_traits = Column(JSONB, nullable=True)
     score_level = Column(String(20), nullable=True)
+    # 가입 시 입력 — 학습 목표(복수 선택): ["선행", "심화", "내신", "수능", "경시", "영재"]
+    learning_goals = Column(JSONB, nullable=True)
+    # 과목별 선행 수준/성적 — {"수학": {"선행수준": "1학기 선행", "성적": "상"}, "영어": {...}}
+    subject_levels = Column(JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -447,6 +451,12 @@ class Academy(Base):
     founded_year = Column(Integer, nullable=True)
     business_hours = Column(String(200), nullable=True)
     shuttle_bus = Column(Boolean, nullable=True)
+    # 커리큘럼 방향(복수): ["선행", "심화", "내신", "수능", "경시", "영재"]
+    # 수업 스타일(복수): ["강의형", "질문형", "토론형", "소수정예"]
+    # 강남엄마 홈 탭에는 이 두 항목이 구조화되어 노출되지 않아 스크래핑으로는
+    # 채워지지 않는다 — 관리자 태깅 또는 후기 집계로 채울 예정(Phase 2).
+    curriculum_focus = Column(JSONB, nullable=True)
+    class_style = Column(JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -464,6 +474,12 @@ class AcademyReview(Base):
     # 학원 맞춤 추천용 — 후기 작성 시점 기준 수강생 성향/성적대
     student_traits = Column(JSONB, nullable=True)
     score_level = Column(String(20), nullable=True)
+    # 선생님 피드백 주기: "일간"|"주간"|"월간"|"분기"|"반기"
+    feedback_frequency = Column(String(20), nullable=True)
+    # 다니기 전/후 진도·성적 변화 — {"before": "...", "after": "..."}
+    score_change = Column(JSONB, nullable=True)
+    # 비슷한 성향의 아이에게 추천하는지 (추천/비추천)
+    recommend_to_similar = Column(Boolean, nullable=True)
     review_text = Column(Text, nullable=False)
     rating = Column(SmallInteger, nullable=False)
     nickname_type = Column(String(10), nullable=False, server_default="anon")
