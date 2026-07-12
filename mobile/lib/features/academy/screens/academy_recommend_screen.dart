@@ -386,7 +386,7 @@ class _MatchCard extends StatelessWidget {
                     child: Text(address, style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                         maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
-                if (reasons.isNotEmpty) ...[
+                if (!isFallback && reasons.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   ...reasons.take(2).map((r) => Padding(
                     padding: const EdgeInsets.only(top: 2),
