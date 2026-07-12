@@ -725,27 +725,35 @@ async def recommend_academies(user: User, req: RecommendationRequest, db: AsyncS
         return RecommendationResponse(results=[])
 
     academy_ids = [a.id for a in academies]
+    # 실제 사용자 후기뿐 아니라 seed 후기(오늘학교 스크래핑을 AI가 요약한 것 —
+    # summarize_reviews.py가 teacher_styles/homework_level/rating을 이미 채워둠)도
+    # 매칭 신호로 활용한다. 다만 "리뷰가 적어 추정치" 신뢰도 캡은 실제 사용자
+    # 후기 수(real_count) 기준으로 판단해 seed만 있는 학원을 과신하지 않는다.
     review_rows = (await db.execute(
         select(AcademyReview).where(
             AcademyReview.academy_id.in_(academy_ids),
             AcademyReview.is_hidden.isnot(True),
-            AcademyReview.is_seed.isnot(True),
         )
     )).scalars().all()
 
     stats_by_academy: dict[int, dict] = {}
     for r in review_rows:
         s = stats_by_academy.setdefault(r.academy_id, {
-            "count": 0, "ratings": [], "homework_levels": [], "teacher_styles": [],
+            "count": 0, "real_count": 0, "seed_count": 0,
+            "ratings": [], "homework_levels": [], "teacher_styles": [],
         })
         s["count"] += 1
+        if r.is_seed:
+            s["seed_count"] += 1
+        else:
+            s["real_count"] += 1
         s["ratings"].append(r.rating)
         if r.homework_level:
             s["homework_levels"].append(r.homework_level)
         if r.teacher_styles:
             s["teacher_styles"].extend(r.teacher_styles)
 
-    empty_stats = {"count": 0, "ratings": [], "homework_levels": [], "teacher_styles": []}
+    empty_stats = {"count": 0, "real_count": 0, "seed_count": 0, "ratings": [], "homework_levels": [], "teacher_styles": []}
     results: list[AcademyMatchResult] = []
 
     for a in academies:
@@ -838,6 +846,11 @@ async def recommend_academies(user: User, req: RecommendationRequest, db: AsyncS
         if stats["count"] == 0:
             final = min(final, 60)
             reasons.append("아직 후기가 적어 추정치예요")
+        elif stats["real_count"] == 0:
+            # 실제 사용자 후기는 없고 AI 요약(seed) 후기만 있는 경우 —
+            # 신호는 있지만 우리 서비스 사용자 검증은 아직 안 된 상태라 완전 신뢰는 캡.
+            final = min(final, 80)
+            reasons.append("AI 요약 후기 기반 추정치예요")
         final = max(0, min(100, final))
 
         if final < 30:
