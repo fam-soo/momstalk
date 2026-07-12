@@ -680,6 +680,13 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       ),
       centerTitle: true,
       actions: [
+        if (!_isAdmin)
+          TextButton.icon(
+            onPressed: () => context.push('/academy/recommend'),
+            icon: const Icon(Icons.auto_awesome, size: 16),
+            label: const Text('추천받기'),
+            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+          ),
         IconButton(
           icon: const Icon(Icons.search),
           tooltip: '학원명 검색',

@@ -29,6 +29,12 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
   final Set<String> _adminSubjects = {};
   bool _submitting = false;
 
+  // 학원 추천 매칭용 — 후기 작성 시점 기준 수강생 성향/성적대 (선택 입력)
+  final Set<String> _studentTraits = {};  // 최대 2개
+  String _scoreLevel = '';
+  String _feedbackFrequency = '';
+  bool? _recommendToSimilar;
+
   static const _teacherStyleOptions = [
     '꼼꼼해요', '친절해요', '엄격해요', '열정적이에요', '설명이 쉬워요',
     '재미있어요', '칭찬을 잘해요', '질문에 잘 답해줘요', '학생 맞춤형이에요',
@@ -37,6 +43,12 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
   static const _homeworkOptions = ['없음', '적음', '보통', '많음', '매우 많음'];
   static const _scoreOptions = ['크게 올랐어요', '조금 올랐어요', '유지됐어요', '변화 없음', '오히려 내려갔어요'];
   static const _subjects = ['수학', '영어', '과학', '국어', '음악', '미술', '체육', '코딩', '기타'];
+  static const _studentTraitOptions = [
+    '자기주도형', '가끔관리필요', '밀착관리필요', '칭찬에_약해요', '승부욕이_강해요',
+    '내향적이에요', '외향적이에요', '꼼꼼해요', '감성적이에요', '논리적이에요',
+  ];
+  static const _scoreLevelOptions = ['최상위권', '상위권', '중위권', '기초가_필요해요'];
+  static const _feedbackFrequencyOptions = ['일간', '주간', '월간', '분기', '반기'];
 
   bool get _isEditing => widget.editingReview != null;
 
@@ -51,6 +63,10 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
       _selectedTeacherStyles.addAll((r['teacher_styles'] as List?)?.cast<String>() ?? []);
       _homeworkLevel = r['homework_level'] as String? ?? '';
       _scoreImprovement = r['score_improvement'] as String? ?? '';
+      _studentTraits.addAll((r['student_traits'] as List?)?.cast<String>() ?? []);
+      _scoreLevel = r['score_level'] as String? ?? '';
+      _feedbackFrequency = r['feedback_frequency'] as String? ?? '';
+      _recommendToSimilar = r['recommend_to_similar'] as bool?;
       _nicknameType = (r['is_anonymous'] as bool? ?? true) ? 'anon' : 'nickname';
       _textCtrl.text = r['review_text'] as String? ?? '';
     }
@@ -144,6 +160,10 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
         'teacher_styles': _selectedTeacherStyles.toList(),
         'homework_level': _homeworkLevel,
         'score_improvement': _scoreImprovement,
+        'student_traits': _studentTraits.toList(),
+        'score_level': _scoreLevel.isEmpty ? null : _scoreLevel,
+        'feedback_frequency': _feedbackFrequency.isEmpty ? null : _feedbackFrequency,
+        'recommend_to_similar': _recommendToSimilar,
         'review_text': _textCtrl.text.trim(),
         'nickname_type': _nicknameType,
         'is_anonymous': _nicknameType == 'anon',
@@ -378,6 +398,66 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
           selected: _scoreImprovement,
           onSelect: (v) => setState(() => _scoreImprovement = _scoreImprovement == v ? '' : v),
         ),
+        const SizedBox(height: 20),
+
+        // ── 학원 추천 매칭용 (선택 입력) ─────────────────────
+        Row(children: [
+          _SectionTitle('수강생 성향'),
+          const SizedBox(width: 6),
+          Text('(선택, 최대 2개, 추천 매칭에 활용돼요)', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+        ]),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6, runSpacing: 4,
+          children: _studentTraitOptions.map((t) {
+            final selected = _studentTraits.contains(t);
+            final maxReached = _studentTraits.length >= 2 && !selected;
+            return FilterChip(
+              label: Text(t),
+              selected: selected,
+              onSelected: maxReached ? null : (_) => setState(() {
+                selected ? _studentTraits.remove(t) : _studentTraits.add(t);
+              }),
+              visualDensity: VisualDensity.compact,
+              disabledColor: Colors.grey.shade100,
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 16),
+
+        _SectionTitle('수강 당시 성적대 (선택)'),
+        const SizedBox(height: 8),
+        _ChipSelector(
+          options: _scoreLevelOptions,
+          selected: _scoreLevel,
+          onSelect: (v) => setState(() => _scoreLevel = _scoreLevel == v ? '' : v),
+        ),
+        const SizedBox(height: 16),
+
+        _SectionTitle('선생님 피드백 주기 (선택)'),
+        const SizedBox(height: 8),
+        _ChipSelector(
+          options: _feedbackFrequencyOptions,
+          selected: _feedbackFrequency,
+          onSelect: (v) => setState(() => _feedbackFrequency = _feedbackFrequency == v ? '' : v),
+        ),
+        const SizedBox(height: 16),
+
+        _SectionTitle('비슷한 성향의 아이에게 추천하시겠어요? (선택)'),
+        const SizedBox(height: 8),
+        Row(children: [
+          ChoiceChip(
+            label: const Text('추천해요'),
+            selected: _recommendToSimilar == true,
+            onSelected: (_) => setState(() => _recommendToSimilar = _recommendToSimilar == true ? null : true),
+          ),
+          const SizedBox(width: 8),
+          ChoiceChip(
+            label: const Text('비추천해요'),
+            selected: _recommendToSimilar == false,
+            onSelected: (_) => setState(() => _recommendToSimilar = _recommendToSimilar == false ? null : false),
+          ),
+        ]),
         const SizedBox(height: 20),
 
         _SectionTitle('상세 후기 (10자 이상)'),

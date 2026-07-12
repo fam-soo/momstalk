@@ -23,6 +23,7 @@ import '../features/legal/screens/privacy_screen.dart';
 import '../features/academy/screens/academy_screen.dart';
 import '../features/academy/screens/academy_detail_screen.dart';
 import '../features/academy/screens/academy_review_write_screen.dart';
+import '../features/academy/screens/academy_recommend_screen.dart';
 import 'api_client.dart' show tokenStorageProvider;
 import 'constants.dart';
 import 'push_notifications.dart';
@@ -113,6 +114,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/search', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const SearchScreen()),
 
       // ── 학원 후기 (Shell 밖) ───────────────────────────
+      GoRoute(
+        path: '/academy/recommend',
+        parentNavigatorKey: _rootNavKey,
+        builder: (ctx, s) => const AcademyRecommendScreen(),
+      ),
       GoRoute(
         path: '/academy/:id/review/write',
         parentNavigatorKey: _rootNavKey,

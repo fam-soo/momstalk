@@ -1,4 +1,5 @@
 import json
+from collections import Counter
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
@@ -16,7 +17,10 @@ from app.schemas.academy import (
     AcademyResponse,
     AcademyReviewListResponse,
     AcademyUnlockQuota,
+    AcademyMatchResult,
     QuotaInfo,
+    RecommendationRequest,
+    RecommendationResponse,
 )
 from app.services import neis_service
 
@@ -354,6 +358,11 @@ async def create_review(
         teacher_styles=req.teacher_styles or [],
         homework_level=req.homework_level,
         score_improvement=req.score_improvement,
+        student_traits=req.student_traits or [],
+        score_level=req.score_level,
+        feedback_frequency=req.feedback_frequency,
+        score_change=req.score_change,
+        recommend_to_similar=req.recommend_to_similar,
         review_text=req.review_text,
         rating=req.rating,
         nickname_type=req.nickname_type,
@@ -397,6 +406,11 @@ async def create_review(
         teacher_styles=review.teacher_styles or [],
         homework_level=review.homework_level,
         score_improvement=review.score_improvement,
+        student_traits=review.student_traits or [],
+        score_level=review.score_level,
+        feedback_frequency=review.feedback_frequency,
+        score_change=review.score_change,
+        recommend_to_similar=review.recommend_to_similar,
         review_text=review.review_text,
         rating=review.rating,
         nickname_type=review.nickname_type,
@@ -441,6 +455,11 @@ async def update_review(
     review.teacher_styles = req.teacher_styles or []
     review.homework_level = req.homework_level
     review.score_improvement = req.score_improvement
+    review.student_traits = req.student_traits or []
+    review.score_level = req.score_level
+    review.feedback_frequency = req.feedback_frequency
+    review.score_change = req.score_change
+    review.recommend_to_similar = req.recommend_to_similar
     review.review_text = req.review_text
     review.rating = req.rating
     review.nickname_type = req.nickname_type
@@ -460,6 +479,11 @@ async def update_review(
         teacher_styles=review.teacher_styles or [],
         homework_level=review.homework_level,
         score_improvement=review.score_improvement,
+        student_traits=review.student_traits or [],
+        score_level=review.score_level,
+        feedback_frequency=review.feedback_frequency,
+        score_change=review.score_change,
+        recommend_to_similar=review.recommend_to_similar,
         review_text=review.review_text,
         rating=review.rating,
         nickname_type=review.nickname_type,
@@ -604,6 +628,11 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
             teacher_styles=[] if view_limited else (review.teacher_styles or []),
             homework_level=None if view_limited else review.homework_level,
             score_improvement=None if view_limited else review.score_improvement,
+            student_traits=[] if view_limited else (review.student_traits or []),
+            score_level=None if view_limited else review.score_level,
+            feedback_frequency=None if view_limited else review.feedback_frequency,
+            score_change=None if view_limited else review.score_change,
+            recommend_to_similar=None if view_limited else review.recommend_to_similar,
             review_text=_preview_text(review.review_text) if view_limited else review.review_text,
             rating=review.rating,  # 별점은 항상 표시
             nickname_type=review.nickname_type,
@@ -630,3 +659,198 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
             user_review_count=count,
         ),
     )
+
+
+# ── 학원 추천받기 (규칙 기반 매칭) ─────────────────────────────
+#
+# 학습 목표/성향/수준을 5단계 설문으로 입력받아 학원별 매칭 점수(0~100%)를
+# 계산한다. 후기 쪽 성향 태그(student_traits)나 학원 쪽 커리큘럼 태그
+# (curriculum_focus)가 아직 거의 안 채워진 초기 단계를 전제로, "있는 신호만
+# 가중 평균"하는 방식을 쓴다 — 신호가 없는 항목은 감점 없이 분모에서 빠진다.
+# 데이터가 쌓일수록 자동으로 더 정교해진다.
+
+_HOMEWORK_ORDER = ["없음", "적음", "보통", "많음", "매우 많음"]
+_HOMEWORK_TOLERANCE_TO_LEVEL = {
+    "30분": "적음", "60분": "보통", "90분": "많음", "120분": "매우 많음", "상관없음": None,
+}
+_MANAGEMENT_STYLE_HINTS: dict[str, list[str]] = {
+    "자기주도형": ["학생 맞춤형이에요", "이해 중심으로 가르쳐요"],
+    "가끔관리필요": ["숙제 피드백이 빨라요", "질문에 잘 답해줘요"],
+    "밀착관리필요": ["숙제 피드백이 빨라요", "꼼꼼해요"],
+}
+_DESIRED_STYLE_HINTS: dict[str, list[str]] = {
+    "자유로운 분위기": ["재미있어요", "친절해요"],
+    "적당한 관리": ["학생 맞춤형이에요", "친절해요"],
+    "철저한 관리": ["엄격해요", "숙제 피드백이 빨라요", "꼼꼼해요"],
+}
+_GOAL_TEACHER_STYLE_HINTS: dict[str, list[str]] = {
+    "꼼꼼한 관리": ["꼼꼼해요", "숙제 피드백이 빨라요"],
+    "아이와 잘 맞는 선생님": ["학생 맞춤형이에요", "친절해요"],
+    "즐겁게 다니는 분위기": ["재미있어요", "친절해요"],
+    "공부 습관": ["숙제 피드백이 빨라요", "반복 학습을 강조해요"],
+}
+
+
+def _constraint_excludes(constraint: str, academy: Academy, stats: dict) -> bool:
+    """제약 조건 중 "명확히 어긋나면 목록에서 아예 제외"할 강한 조건만 하드 필터링."""
+    if constraint == "경쟁이 심한 곳은 부담돼요":
+        return bool(set(academy.curriculum_focus or []) & {"경시", "영재"})
+    if constraint == "아이를 혼내는 분위기는 싫어요":
+        return "엄격해요" in set(stats["teacher_styles"])
+    if constraint == "너무 큰 학원은 부담돼요":
+        return bool(academy.avg_class_capacity and float(academy.avg_class_capacity) > 30)
+    if constraint == "숙제가 너무 많은 곳은 싫어요" and stats["homework_levels"]:
+        common = Counter(stats["homework_levels"]).most_common(1)[0][0]
+        return common == "매우 많음"
+    return False
+
+
+async def recommend_academies(user: User, req: RecommendationRequest, db: AsyncSession) -> RecommendationResponse:
+    region = req.region or (user.active_child.region if user.active_child else None) or user.region or ""
+
+    filters = []
+    if region:
+        filters.append(Academy.region.ilike(f"%{region}%"))
+    subject_filters = []
+    for s in req.subjects:
+        kws = _SUBJECT_KEYWORDS.get(s, [s])
+        subject_filters.append(sa.or_(
+            Academy.subjects.op("@>")(sa.type_coerce(json.dumps([s]), PGJSONB)),
+            *[Academy.name.ilike(f"%{kw}%") for kw in kws],
+        ))
+    filters.append(sa.or_(*subject_filters))
+
+    academies = (await db.execute(select(Academy).where(*filters).limit(300))).scalars().all()
+    if not academies:
+        return RecommendationResponse(results=[])
+
+    academy_ids = [a.id for a in academies]
+    review_rows = (await db.execute(
+        select(AcademyReview).where(
+            AcademyReview.academy_id.in_(academy_ids),
+            AcademyReview.is_hidden.isnot(True),
+            AcademyReview.is_seed.isnot(True),
+        )
+    )).scalars().all()
+
+    stats_by_academy: dict[int, dict] = {}
+    for r in review_rows:
+        s = stats_by_academy.setdefault(r.academy_id, {
+            "count": 0, "ratings": [], "homework_levels": [], "teacher_styles": [],
+        })
+        s["count"] += 1
+        s["ratings"].append(r.rating)
+        if r.homework_level:
+            s["homework_levels"].append(r.homework_level)
+        if r.teacher_styles:
+            s["teacher_styles"].extend(r.teacher_styles)
+
+    empty_stats = {"count": 0, "ratings": [], "homework_levels": [], "teacher_styles": []}
+    results: list[AcademyMatchResult] = []
+
+    for a in academies:
+        stats = stats_by_academy.get(a.id, empty_stats)
+        teacher_style_set = set(stats["teacher_styles"])
+        curriculum = set(a.curriculum_focus or [])
+
+        if any(_constraint_excludes(c, a, stats) for c in req.constraints):
+            continue
+
+        score = 0.0
+        weight_used = 0.0
+        reasons: list[str] = []
+
+        # 1) 수준(선행/심화/내신 등) 매칭 — 25%
+        level_scores = []
+        for subj in req.subjects:
+            wanted = (req.subject_levels.get(subj) or {}).get("수준", "")
+            if not wanted or not curriculum:
+                continue
+            if "선행" in wanted and "선행" in curriculum:
+                level_scores.append(1.0)
+            elif wanted == "학교 수준" and "내신" in curriculum:
+                level_scores.append(0.8)
+            elif curriculum:
+                level_scores.append(0.4)
+        if level_scores:
+            comp = sum(level_scores) / len(level_scores)
+            score += comp * 25
+            weight_used += 25
+            if comp >= 0.7:
+                reasons.append("선택하신 학습 방향과 커리큘럼이 잘 맞아요")
+
+        # 2) 숙제량 허용치와의 거리 — 15%
+        if req.homework_tolerance and req.homework_tolerance != "상관없음" and stats["homework_levels"]:
+            target = _HOMEWORK_TOLERANCE_TO_LEVEL.get(req.homework_tolerance)
+            common = Counter(stats["homework_levels"]).most_common(1)[0][0]
+            if target in _HOMEWORK_ORDER and common in _HOMEWORK_ORDER:
+                dist = abs(_HOMEWORK_ORDER.index(target) - _HOMEWORK_ORDER.index(common))
+                comp = max(0.0, 1 - dist / 4)
+                score += comp * 15
+                weight_used += 15
+                if comp >= 0.75:
+                    reasons.append("숙제량이 원하시는 수준과 비슷해요")
+
+        # 3) 성향(관리 필요도/원하는 학원 스타일) - teacher_styles 매칭 — 25%
+        trait_hits = trait_total = 0
+        if req.management_need:
+            trait_total += 1
+            if teacher_style_set & set(_MANAGEMENT_STYLE_HINTS.get(req.management_need, [])):
+                trait_hits += 1
+        if req.desired_style:
+            trait_total += 1
+            if teacher_style_set & set(_DESIRED_STYLE_HINTS.get(req.desired_style, [])):
+                trait_hits += 1
+        if trait_total:
+            comp = trait_hits / trait_total
+            score += comp * 25
+            weight_used += 25
+            if comp > 0:
+                reasons.append("선생님 스타일이 원하시는 성향과 맞아요")
+
+        # 4) 이번에 기대하는 목표(최대 3개) 반영 — 20%
+        if req.goals:
+            goal_hits = 0
+            avg_rating = sum(stats["ratings"]) / len(stats["ratings"]) if stats["ratings"] else 0
+            for g in req.goals:
+                if g == "성적 향상" and avg_rating >= 4.0:
+                    goal_hits += 1
+                elif g == "선행 진도" and "선행" in curriculum:
+                    goal_hits += 1
+                elif teacher_style_set & set(_GOAL_TEACHER_STYLE_HINTS.get(g, [])):
+                    goal_hits += 1
+            comp = goal_hits / len(req.goals)
+            score += comp * 20
+            weight_used += 20
+            if comp >= 0.5:
+                reasons.append("설정하신 목표와 관련된 후기가 있어요")
+
+        # 5) 평점 — 15% (신호가 거의 없을 때도 최소한의 근거가 되도록)
+        if stats["ratings"]:
+            avg_rating = sum(stats["ratings"]) / len(stats["ratings"])
+            comp = avg_rating / 5
+            score += comp * 15
+            weight_used += 15
+            if avg_rating >= 4.2:
+                reasons.append(f"후기 평점이 높아요 ({avg_rating:.1f}점)")
+
+        final = round(score / weight_used * 100) if weight_used else 20
+        if stats["count"] == 0:
+            final = min(final, 60)
+            reasons.append("아직 후기가 적어 추정치예요")
+        final = max(0, min(100, final))
+
+        if final < 30:
+            continue  # 완전 무관으로 판단 — 결과에서 제외
+
+        results.append(AcademyMatchResult(
+            academy=AcademyResponse.model_validate(a).model_copy(update={
+                "user_review_count": stats["count"],
+                "avg_rating": (sum(stats["ratings"]) / len(stats["ratings"])) if stats["ratings"] else (float(a.avg_rating) if a.avg_rating else None),
+            }),
+            match_score=final,
+            match_reasons=reasons,
+        ))
+
+    results.sort(key=lambda r: r.match_score, reverse=True)
+    return RecommendationResponse(results=results[:30])

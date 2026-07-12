@@ -34,6 +34,12 @@ class AcademyReviewCreate(BaseModel):
     teacher_styles: Optional[list[str]] = None  # 다중 선생님 스타일 (최대 3)
     homework_level: Optional[str] = None
     score_improvement: Optional[str] = None
+    # 학원 추천 매칭용 — 후기 작성 시점 기준 수강생 성향/성적대
+    student_traits: Optional[list[str]] = None
+    score_level: Optional[str] = None
+    feedback_frequency: Optional[str] = None  # 일간|주간|월간|분기|반기
+    score_change: Optional[dict] = None       # {"before": "...", "after": "..."}
+    recommend_to_similar: Optional[bool] = None
     review_text: str
     nickname_type: str = "anon"
     is_anonymous: bool = True
@@ -71,6 +77,11 @@ class AcademyReviewResponse(BaseModel):
     teacher_styles: Optional[list[str]] = None
     homework_level: Optional[str] = None
     score_improvement: Optional[str] = None
+    student_traits: Optional[list[str]] = None
+    score_level: Optional[str] = None
+    feedback_frequency: Optional[str] = None
+    score_change: Optional[dict] = None
+    recommend_to_similar: Optional[bool] = None
     review_text: str
     rating: int
     nickname_type: str = "anon"
@@ -108,3 +119,33 @@ class AcademyUnlockQuota(BaseModel):
     unlocked_academy_limit: Optional[int] = None
     next_unlock_at: int
     user_review_count: int
+
+
+class RecommendationRequest(BaseModel):
+    """학원 추천받기 5단계 설문."""
+    subjects: list[str]                              # 1단계 (필수, 1개 이상)
+    subject_levels: dict[str, dict[str, str]] = {}    # 2단계 — {"수학": {"수준": "...", "성적": "..."}}
+    homework_tolerance: Optional[str] = None          # 3단계 — "30분"|"60분"|"90분"|"120분"|"상관없음"
+    management_need: Optional[str] = None             # 3단계 — "자기주도형"|"가끔관리필요"|"밀착관리필요"
+    desired_style: Optional[str] = None                # 3단계 — "자유로운 분위기"|"적당한 관리"|"철저한 관리"
+    goals: list[str] = []                              # 4단계 (최대 3)
+    constraints: list[str] = []                        # 4단계 (최대 3)
+    note: Optional[str] = None                          # 5단계 (선택, 저장 안 함 — 표시만)
+    region: Optional[str] = None
+
+    @field_validator("subjects")
+    @classmethod
+    def check_subjects(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("과목을 1개 이상 선택해주세요.")
+        return v
+
+
+class AcademyMatchResult(BaseModel):
+    academy: AcademyResponse
+    match_score: int                    # 0~100
+    match_reasons: list[str] = []       # 매칭 근거 짧은 설명
+
+
+class RecommendationResponse(BaseModel):
+    results: list[AcademyMatchResult]

@@ -15,6 +15,8 @@ from app.schemas.academy import (
     AcademyReviewListResponse,
     AcademyReviewUpdate,
     AcademyUnlockQuota,
+    RecommendationRequest,
+    RecommendationResponse,
 )
 from app.services import academy_service
 
@@ -28,6 +30,21 @@ async def get_review_quota(
 ):
     """후기 게시판 상단 배너용 — 가림 처리 없이 열람 가능한 학원 개수 현황."""
     return await academy_service.get_unlock_quota_summary(user, db)
+
+
+@router.post("/recommendations", response_model=RecommendationResponse)
+async def recommend_academies(
+    req: RecommendationRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """학원 추천받기 — 5단계 설문 기반 규칙 매칭. 완전 무관한 학원은 결과에서 제외."""
+    await RateLimit.academy_search(request)
+    try:
+        return await academy_service.recommend_academies(user, req, db)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("", response_model=list[AcademyResponse])

@@ -64,6 +64,8 @@ class UserChild(Base):
     learning_goals = Column(JSONB, nullable=True)
     # 과목별 선행 수준/성적 — {"수학": {"선행수준": "1학기 선행", "성적": "상"}, "영어": {...}}
     subject_levels = Column(JSONB, nullable=True)
+    # 학원 추천받기 설문 3단계 — 숙제 허용치: "30분"|"60분"|"90분"|"120분"|"상관없음"
+    homework_tolerance = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
