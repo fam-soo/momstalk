@@ -7,6 +7,18 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api_client.dart';
 
+/// 수업당 평균 정원을 10/20/30/50/100명 단위 구간으로 표시 — 원본 숫자는
+/// DB에 그대로 저장돼 있고(academies.avg_class_capacity), 구간 기준은
+/// 여기서만 바꾸면 재수집 없이 라벨링을 조정할 수 있다.
+String _capacityBucketLabel(double avgCapacity) {
+  if (avgCapacity <= 10) return '10명 이하';
+  if (avgCapacity <= 20) return '20명 이하';
+  if (avgCapacity <= 30) return '30명 이하';
+  if (avgCapacity <= 50) return '50명 이하';
+  if (avgCapacity <= 100) return '100명 이하';
+  return '100명 초과';
+}
+
 class AcademyDetailScreen extends ConsumerStatefulWidget {
   final int academyId;
   const AcademyDetailScreen({super.key, required this.academyId});
@@ -149,9 +161,10 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
     final reviewCount = _academy!['review_count'] as int? ?? 0;
     final subjects = (_academy!['subjects'] as List?)?.cast<String>() ?? [];
     final isB2b = _academy!['is_b2b'] as bool? ?? false;
-    final foundedYear = _academy!['founded_year'] as int?;
     final businessHours = _academy!['business_hours'] as String?;
     final shuttleBus = _academy!['shuttle_bus'] as bool?;
+    final avgClassCapacity = (_academy!['avg_class_capacity'] as num?)?.toDouble();
+    final avgTuition = (_academy!['avg_tuition_10k_won'] as num?)?.toDouble();
 
     return Scaffold(
       appBar: AppBar(
@@ -233,14 +246,6 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                     )).toList(),
                   ),
                 ],
-                if (foundedYear != null) ...[
-                  const SizedBox(height: 6),
-                  Row(children: [
-                    Icon(Icons.event_outlined, size: 14, color: Colors.grey.shade600),
-                    const SizedBox(width: 4),
-                    Text('$foundedYear년 설립', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
-                  ]),
-                ],
                 if (businessHours != null && businessHours.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -250,12 +255,28 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                         style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700, height: 1.4))),
                   ]),
                 ],
-                if (shuttleBus == true) ...[
+                if (shuttleBus != null) ...[
                   const SizedBox(height: 6),
                   Row(children: [
                     Icon(Icons.directions_bus_outlined, size: 14, color: Colors.grey.shade600),
                     const SizedBox(width: 4),
-                    Text('셔틀버스 운행', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
+                    Text(shuttleBus ? '셔틀버스 있음' : '셔틀버스 없음', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
+                  ]),
+                ],
+                if (avgClassCapacity != null) ...[
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Icon(Icons.groups_outlined, size: 14, color: Colors.grey.shade600),
+                    const SizedBox(width: 4),
+                    Text('정원 ${_capacityBucketLabel(avgClassCapacity)}', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
+                  ]),
+                ],
+                if (avgTuition != null) ...[
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Icon(Icons.payments_outlined, size: 14, color: Colors.grey.shade600),
+                    const SizedBox(width: 4),
+                    Text('학원비 평균 ${avgTuition.toStringAsFixed(0)}만원', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
                   ]),
                 ],
               ],

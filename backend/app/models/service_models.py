@@ -450,6 +450,7 @@ class Academy(Base):
     # 대/중/소 같은 버킷 라벨은 저장하지 않고 조회 시점에 이 숫자로부터 계산한다
     # (기준을 나중에 바꿔도 재수집 없이 라벨링만 다시 하면 되도록).
     avg_class_capacity = Column(Numeric(5, 1), nullable=True)
+    avg_tuition_10k_won = Column(Numeric(6, 1), nullable=True)  # 학원비 평균(만원)
     founded_year = Column(Integer, nullable=True)
     business_hours = Column(String(200), nullable=True)
     shuttle_bus = Column(Boolean, nullable=True)
