@@ -38,9 +38,9 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   int? _unlockedAcademyLimit;   // null = 무제한
   int _nextUnlockAt = 1;
 
-  // 학원 추천용 학습 목표 — 가입 시엔 선택이지만 학원 검색 시엔 필수로 요구한다.
-  int? _activeChildId;
-  List<String> _learningGoals = [];
+  // 학습 목표 — 예전엔 최초 진입 시 한 번만 물어보고 고정했는데, 검색마다
+  // 바뀔 수 있는 조건이라 매번 선택하는 필터로 옮겼다.
+  final Set<String> _selectedGoals = {};
   static const _learningGoalOptions = ['선행', '심화', '내신', '수능', '경시', '영재'];
 
   List<Map<String, dynamic>> _results = [];
@@ -63,7 +63,8 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       _selectedLevel.isNotEmpty ||
       _reviewerSchool.isNotEmpty ||
       _reviewerGrades.isNotEmpty ||
-      _selectedRegions.isNotEmpty;
+      _selectedRegions.isNotEmpty ||
+      _selectedGoals.isNotEmpty;
 
   // 실제 검색에 사용할 지역 목록 (기본 + 추가 선택)
   Set<String> get _activeRegions {
@@ -100,8 +101,6 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
           final grade = p['grade'] as int? ?? 0;
           final reviewCount = p['academy_review_count'] as int? ?? 0;
           final memberGrade = p['member_grade'] as String? ?? '';
-          final activeChildId = p['active_child_id'] as int?;
-          final learningGoals = (p['learning_goals'] as List?)?.cast<String>() ?? [];
           if (mounted) {
             setState(() {
               _userSchoolName = schoolName;
@@ -109,8 +108,6 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
               _isAdmin = adminFlag;
               _userReviewCount = reviewCount;
               _memberGrade = memberGrade;
-              _activeChildId = activeChildId;
-              _learningGoals = learningGoals;
             });
           }
         } catch (_) {}
@@ -128,72 +125,9 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       }
       if (region.isEmpty) region = '양천구';
       if (mounted) setState(() => _userRegion = region);
-      await _ensureLearningGoals();
       await _search(regionOverride: region);
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
-    }
-  }
-
-  /// 학원 검색 진입 전 학습 목표(선행/심화/내신/수능/경시/영재) 입력을 강제한다.
-  /// 가입 시엔 선택 입력이지만, 이 화면에서만큼은 추천 매칭에 필요해 필수로 요구한다.
-  /// 관리자·활성 자녀가 없는 계정(lurker 등)은 게이팅 대상에서 제외한다.
-  Future<void> _ensureLearningGoals() async {
-    if (_isAdmin || _activeChildId == null || _learningGoals.isNotEmpty) return;
-    if (!mounted) return;
-
-    final selected = <String>{};
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isDismissible: false,
-      enableDrag: false,
-      isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20, right: 20, top: 20,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-          ),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('학원 검색을 위해 학습 목표를 선택해주세요', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            Text('선택하신 목표는 학원 추천 매칭에 활용됩니다 (복수 선택 가능)',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8, runSpacing: 8,
-              children: _learningGoalOptions.map((g) {
-                final sel = selected.contains(g);
-                return FilterChip(
-                  label: Text(g),
-                  selected: sel,
-                  onSelected: (_) => setSheet(() => sel ? selected.remove(g) : selected.add(g)),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: selected.isEmpty ? null : () => Navigator.pop(ctx, true),
-                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
-                child: const Text('확인'),
-              ),
-            ),
-          ]),
-        );
-      }),
-    );
-
-    if (saved != true || selected.isEmpty) return;
-    try {
-      final dio = ref.read(dioProvider);
-      await dio.patch('/auth/me/children/$_activeChildId/learning-goals', data: {
-        'learning_goals': selected.toList(),
-      });
-      if (mounted) setState(() => _learningGoals = selected.toList());
-    } catch (_) {
-      // 저장 실패해도 검색 자체는 막지 않는다 — 다음 진입 시 다시 물어봄
     }
   }
 
@@ -214,6 +148,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       if (_selectedLevel.isNotEmpty) params['school_level'] = _selectedLevel;
       if (_reviewerSchool.isNotEmpty) params['reviewer_school'] = _reviewerSchool;
       if (_reviewerGrades.isNotEmpty) params['reviewer_grades'] = _reviewerGrades.join(',');
+      if (_selectedGoals.isNotEmpty) params['learning_goals'] = _selectedGoals.join(',');
 
       final resp = await dio.get('/academies', queryParameters: params);
       final list = resp.data as List;
@@ -253,6 +188,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
     var tempSchool = _reviewerSchool; // 기본값 빈칸 (자녀 학교 버튼으로 선택)
     final tempGrades = Set<int>.from(_reviewerGrades);
     final tempRegions = Set<String>.from(_selectedRegions);
+    final tempGoals = Set<String>.from(_selectedGoals);
     final schoolCtrl = TextEditingController(text: tempSchool);
 
     await showModalBottomSheet(
@@ -295,6 +231,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                           tempLevel = '';
                           tempGrades.clear();
                           tempRegions.clear();
+                          tempGoals.clear();
                           schoolCtrl.clear();
                         });
                       },
@@ -403,6 +340,28 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                       const Divider(),
                       const SizedBox(height: 12),
 
+                      // ── 학습 목표 (복수 선택) ────────────
+                      const Text('학습 목표', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: _learningGoalOptions.map((g) {
+                          final sel = tempGoals.contains(g);
+                          return FilterChip(
+                            label: Text(g),
+                            selected: sel,
+                            onSelected: (_) => setBS(() {
+                              sel ? tempGoals.remove(g) : tempGoals.add(g);
+                            }),
+                            visualDensity: VisualDensity.compact,
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 12),
+
                       // ── 후기 작성자 아이 정보 ────────────
                       const Text('후기 작성자 아이 정보', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 4),
@@ -495,12 +454,13 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                             _reviewerSchool = school;
                             _reviewerGrades..clear()..addAll(tempGrades);
                             _selectedRegions..clear()..addAll(tempRegions);
+                            _selectedGoals..clear()..addAll(tempGoals);
                           });
                           _search();
                         },
                         style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
                         child: Text(
-                          _buildFilterLabel(tempSubjects, tempLevel, schoolCtrl.text.trim(), tempGrades, tempRegions),
+                          _buildFilterLabel(tempSubjects, tempLevel, schoolCtrl.text.trim(), tempGrades, tempRegions, tempGoals),
                         ),
                       ),
                     ),
@@ -515,13 +475,14 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
     schoolCtrl.dispose();
   }
 
-  String _buildFilterLabel(Set<String> subjects, String level, String school, Set<int> grades, [Set<String>? regions]) {
+  String _buildFilterLabel(Set<String> subjects, String level, String school, Set<int> grades, [Set<String>? regions, Set<String>? goals]) {
     final parts = <String>[
       if ((regions ?? {}).isNotEmpty) '지역 ${(regions ?? {}).length}개 추가',
       if (subjects.isNotEmpty) '과목 ${subjects.length}개',
       if (level.isNotEmpty) level,
       if (school.isNotEmpty) school,
       if (grades.isNotEmpty) '${grades.toList()..sort()}학년'.replaceAll('[', '').replaceAll(']', ''),
+      if ((goals ?? {}).isNotEmpty) '목표 ${(goals ?? {}).join(', ')}',
     ];
     return parts.isEmpty ? '전체 조회' : '필터 적용 (${parts.join(', ')})';
   }
@@ -557,6 +518,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                         if (_selectedLevel.isNotEmpty) '학교급: $_selectedLevel',
                         if (_reviewerSchool.isNotEmpty) '학교: $_reviewerSchool',
                         if (_reviewerGrades.isNotEmpty) '${(_reviewerGrades.toList()..sort()).join('·')}학년',
+                        if (_selectedGoals.isNotEmpty) '목표: ${_selectedGoals.join(', ')}',
                       ].join(' · '),
                       style: TextStyle(fontSize: 12, color: theme.colorScheme.primary, fontWeight: FontWeight.w500),
                       overflow: TextOverflow.ellipsis,
@@ -571,6 +533,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                         _reviewerSchool = '';
                         _reviewerGrades.clear();
                         _selectedRegions.clear();
+                        _selectedGoals.clear();
                       });
                       _search();
                     },

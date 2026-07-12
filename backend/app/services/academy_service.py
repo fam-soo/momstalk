@@ -165,6 +165,7 @@ async def search_academies(
     school_level: Optional[str] = None,      # 초등|중등|고등
     reviewer_school: Optional[str] = None,   # 후기 작성자 아이의 학교명
     reviewer_grades: Optional[list[int]] = None,  # 후기 작성자 아이의 학년(들)
+    learning_goals: Optional[list[str]] = None,  # 학습 목표 필터 (선행/심화/내신/수능/경시/영재)
     user: Optional[User] = None,             # 로그인 유저 — 학원별 열람(해금) 여부 표기용
 ) -> list[AcademyResponse]:
     """DB 우선 검색 → 결과 없으면 NEIS API 조회 후 DB 캐싱."""
@@ -199,6 +200,12 @@ async def search_academies(
         level_map = {"초등": "초등학교", "중등": "중학교", "고등": "고등학교"}
         mapped = level_map.get(school_level, school_level)
         filters.append(Academy.school_type.ilike(f"%{mapped}%"))
+    if learning_goals:
+        # 선택한 학습 목표 중 하나라도 커리큘럼에 포함되면 표시 (OR 조건)
+        filters.append(sa.or_(*[
+            Academy.curriculum_focus.op("@>")(sa.type_coerce(json.dumps([g]), PGJSONB))
+            for g in learning_goals
+        ]))
 
     # 후기 작성자 아이 정보 필터 (학교명 / 학년)
     # → 해당 조건의 학부모가 후기를 남긴 학원만 표시
@@ -858,6 +865,15 @@ async def recommend_academies(user: User, req: RecommendationRequest, db: AsyncS
             weight_used += 20
             if comp >= 0.5:
                 reasons.append("설정하신 목표와 관련된 후기가 있어요")
+
+        # 4-1) 학습 목표(선행/심화/내신/수능/경시/영재) — 15%
+        if req.learning_goals and curriculum:
+            goal_hits = len(set(req.learning_goals) & curriculum)
+            comp = goal_hits / len(req.learning_goals)
+            score += comp * 15
+            weight_used += 15
+            if comp > 0:
+                reasons.append("선택하신 학습 목표와 커리큘럼이 맞아요")
 
         # 5) 평점 — 15% (신호가 거의 없을 때도 최소한의 근거가 되도록)
         if stats["ratings"]:

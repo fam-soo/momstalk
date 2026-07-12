@@ -58,6 +58,7 @@ async def search_academies(
     school_level: Optional[str] = Query(None),        # 초등|중등|고등
     reviewer_school: Optional[str] = Query(None),     # 후기 작성자 아이 학교명
     reviewer_grades: Optional[str] = Query(None),     # 후기 작성자 아이 학년 콤마 구분 "1,2,3"
+    learning_goals: Optional[str] = Query(None),      # 학습 목표 콤마 구분 "선행,심화"
     user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_service_db),
 ):
@@ -76,6 +77,10 @@ async def search_academies(
     if region:
         region_list = [r.strip() for r in region.split(",") if r.strip()]
 
+    goal_list: Optional[list[str]] = None
+    if learning_goals:
+        goal_list = [g.strip() for g in learning_goals.split(",") if g.strip()]
+
     return await academy_service.search_academies(
         db,
         name=name,
@@ -84,6 +89,7 @@ async def search_academies(
         school_level=school_level,
         reviewer_school=reviewer_school,
         reviewer_grades=grade_list,
+        learning_goals=goal_list,
         user=user,
     )
 

@@ -150,6 +150,7 @@ class RecommendationRequest(BaseModel):
     desired_style: Optional[str] = None                # 3단계 — "자유로운 분위기"|"적당한 관리"|"철저한 관리"
     goals: list[str] = []                              # 4단계 (최대 3)
     constraints: list[str] = []                        # 4단계 (최대 3)
+    learning_goals: list[str] = []                      # 학습 목표 (선행/심화/내신/수능/경시/영재)
     note: Optional[str] = None                          # 5단계 (선택, 저장 안 함 — 표시만)
     region: Optional[str] = None
 

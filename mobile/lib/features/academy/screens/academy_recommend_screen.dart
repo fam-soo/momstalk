@@ -46,8 +46,10 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
   // 4단계
   final Set<String> _goals = {};
   final Set<String> _constraints = {};
+  final Set<String> _learningGoals = {};
   static const _goalOptions = ['성적 향상', '꼼꼼한 관리', '선행 진도', '공부 습관', '아이와 잘 맞는 선생님', '즐겁게 다니는 분위기'];
   static const _constraintOptions = ['숙제가 너무 많은 곳은 싫어요', '아이를 혼내는 분위기는 싫어요', '너무 큰 학원은 부담돼요', '경쟁이 심한 곳은 부담돼요'];
+  static const _learningGoalOptions = ['선행', '심화', '내신', '수능', '경시', '영재'];
 
   // 5단계
   final _noteCtrl = TextEditingController();
@@ -86,6 +88,7 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
         'desired_style': _desiredStyle,
         'goals': _goals.toList(),
         'constraints': _constraints.toList(),
+        'learning_goals': _learningGoals.toList(),
         'note': _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
       });
       final data = resp.data as Map<String, dynamic>;
@@ -238,6 +241,16 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
 
   Widget _stepGoals() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('학습 목표를 선택해주세요', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 12),
+      Wrap(spacing: 6, runSpacing: 6, children: _learningGoalOptions.map((g) {
+        final sel = _learningGoals.contains(g);
+        return FilterChip(
+          label: Text(g), selected: sel,
+          onSelected: (_) => setState(() => sel ? _learningGoals.remove(g) : _learningGoals.add(g)),
+        );
+      }).toList()),
+      const SizedBox(height: 24),
       const Text('이번 학원에서 기대하는 것은? (최대 3개)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
       const SizedBox(height: 12),
       Wrap(spacing: 6, runSpacing: 6, children: _goalOptions.map((g) {

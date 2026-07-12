@@ -45,7 +45,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   /// - 이미 로그인해본 적 있는 기기: prompts를 생략해 카카오가 기존 세션을
   ///   재사용하도록 한다 — Prompt.login은 "사용자 재인증"을 강제하는 옵션이라
   ///   매번 2단계 인증까지 새로 요구되는 문제가 있었음.
-  Future<void> _kakaoLogin() async {
+  /// - [forceAccountSelect]가 true면(여러 계정을 쓰는 사용자가 다른 계정으로
+  ///   전환하려는 경우) 기기 재방문 여부와 무관하게 Prompt.login을 강제해
+  ///   카카오 계정 선택 화면을 띄운다 — 그동안은 버튼 라벨만 "계정 선택"이라고
+  ///   되어 있고 실제로는 기존 세션을 그대로 재사용해 동일 계정으로만 재로그인
+  ///   되던 문제가 있었다.
+  Future<void> _kakaoLogin({bool forceAccountSelect = false}) async {
     if (!_hasLoggedInBefore) {
       if (!_agreed) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -63,11 +68,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _loading = true);
     try {
       OAuthToken token;
-      if (!kIsWeb && await isKakaoTalkInstalled()) {
+      if (!forceAccountSelect && !kIsWeb && await isKakaoTalkInstalled()) {
         token = await UserApi.instance.loginWithKakaoTalk();
       } else {
         token = await UserApi.instance.loginWithKakaoAccount(
-          prompts: _hasLoggedInBefore ? null : [Prompt.login],
+          prompts: (forceAccountSelect || !_hasLoggedInBefore) ? [Prompt.login] : null,
         );
       }
       await _authenticateWithBackend(token);
@@ -238,7 +243,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                             const SizedBox(width: 8),
                             Text(
-                              _hasLoggedInBefore ? '카카오 계정 선택하여 로그인' : '카카오로 시작하기',
+                              _hasLoggedInBefore ? '카카오로 로그인' : '카카오로 시작하기',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
@@ -252,6 +257,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                     ),
 
+              if (_hasLoggedInBefore && !_loading) ...[
+                const SizedBox(height: 10),
+                Center(
+                  child: TextButton(
+                    onPressed: () => _kakaoLogin(forceAccountSelect: true),
+                    child: const Text('다른 카카오 계정으로 로그인', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               if (AppConstants.devMode && !_loading)
                 TextButton(
