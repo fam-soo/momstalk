@@ -38,6 +38,11 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   int? _unlockedAcademyLimit;   // null = 무제한
   int _nextUnlockAt = 1;
 
+  // 학원 추천용 학습 목표 — 가입 시엔 선택이지만 학원 검색 시엔 필수로 요구한다.
+  int? _activeChildId;
+  List<String> _learningGoals = [];
+  static const _learningGoalOptions = ['선행', '심화', '내신', '수능', '경시', '영재'];
+
   List<Map<String, dynamic>> _results = [];
   bool _loading = true;
   bool _searched = false;
@@ -95,6 +100,8 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
           final grade = p['grade'] as int? ?? 0;
           final reviewCount = p['academy_review_count'] as int? ?? 0;
           final memberGrade = p['member_grade'] as String? ?? '';
+          final activeChildId = p['active_child_id'] as int?;
+          final learningGoals = (p['learning_goals'] as List?)?.cast<String>() ?? [];
           if (mounted) {
             setState(() {
               _userSchoolName = schoolName;
@@ -102,6 +109,8 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
               _isAdmin = adminFlag;
               _userReviewCount = reviewCount;
               _memberGrade = memberGrade;
+              _activeChildId = activeChildId;
+              _learningGoals = learningGoals;
             });
           }
         } catch (_) {}
@@ -119,9 +128,72 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       }
       if (region.isEmpty) region = '양천구';
       if (mounted) setState(() => _userRegion = region);
+      await _ensureLearningGoals();
       await _search(regionOverride: region);
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
+    }
+  }
+
+  /// 학원 검색 진입 전 학습 목표(선행/심화/내신/수능/경시/영재) 입력을 강제한다.
+  /// 가입 시엔 선택 입력이지만, 이 화면에서만큼은 추천 매칭에 필요해 필수로 요구한다.
+  /// 관리자·활성 자녀가 없는 계정(lurker 등)은 게이팅 대상에서 제외한다.
+  Future<void> _ensureLearningGoals() async {
+    if (_isAdmin || _activeChildId == null || _learningGoals.isNotEmpty) return;
+    if (!mounted) return;
+
+    final selected = <String>{};
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20, right: 20, top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('학원 검색을 위해 학습 목표를 선택해주세요', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            Text('선택하신 목표는 학원 추천 매칭에 활용됩니다 (복수 선택 가능)',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8, runSpacing: 8,
+              children: _learningGoalOptions.map((g) {
+                final sel = selected.contains(g);
+                return FilterChip(
+                  label: Text(g),
+                  selected: sel,
+                  onSelected: (_) => setSheet(() => sel ? selected.remove(g) : selected.add(g)),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: selected.isEmpty ? null : () => Navigator.pop(ctx, true),
+                style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+                child: const Text('확인'),
+              ),
+            ),
+          ]),
+        );
+      }),
+    );
+
+    if (saved != true || selected.isEmpty) return;
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.patch('/auth/me/children/$_activeChildId/learning-goals', data: {
+        'learning_goals': selected.toList(),
+      });
+      if (mounted) setState(() => _learningGoals = selected.toList());
+    } catch (_) {
+      // 저장 실패해도 검색 자체는 막지 않는다 — 다음 진입 시 다시 물어봄
     }
   }
 

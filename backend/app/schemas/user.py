@@ -11,8 +11,21 @@ class ChildProfile(BaseModel):
     class_num: Optional[int] = None
     school_type: Optional[str] = None
     region: Optional[str] = None
+    # 학원 추천용 — 가입 시엔 선택 입력, 학원 검색 시 필수로 요구됨(프론트에서 게이팅)
+    learning_goals: Optional[list[str]] = None
 
     model_config = {"from_attributes": True}
+
+
+class LearningGoalsUpdate(BaseModel):
+    learning_goals: list[str]
+
+    @field_validator("learning_goals")
+    @classmethod
+    def check_not_empty(cls, v: list[str]) -> list[str]:
+        if not v:
+            raise ValueError("학습 목표를 1개 이상 선택해주세요.")
+        return v
 
 
 class UserProfile(BaseModel):
@@ -35,6 +48,7 @@ class UserProfile(BaseModel):
     children: list[ChildProfile] = []
     active_child_id: Optional[int] = None
     academy_review_count: int = 0
+    learning_goals: Optional[list[str]] = None
 
     model_config = {"from_attributes": True}
 

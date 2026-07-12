@@ -27,7 +27,7 @@ from app.schemas.auth import (
     VerifySmsRequest,
     VerifySmsResponse,
 )
-from app.schemas.user import UpdateNicknameRequest, UpdateProfileRequest, UserProfile, AddChildRequest, ChildProfile
+from app.schemas.user import UpdateNicknameRequest, UpdateProfileRequest, UserProfile, AddChildRequest, ChildProfile, LearningGoalsUpdate
 from app.services import auth_service, sms_service
 from app.services import social_auth_service, capture_service, invite_service
 
@@ -194,6 +194,7 @@ def _user_profile_with_active_child(user: User) -> UserProfile:
         profile.school_name = active.school_name or profile.school_name
         profile.grade = active.grade or profile.grade
         profile.school_type = active.school_type or profile.school_type
+        profile.learning_goals = active.learning_goals or profile.learning_goals
     return profile
 
 
@@ -569,6 +570,27 @@ async def update_child(
     if req.region:
         child.region = req.region
 
+    await db.commit()
+    await db.refresh(child)
+    return child
+
+
+@router.patch("/me/children/{child_id}/learning-goals", response_model=ChildProfile)
+async def update_learning_goals(
+    child_id: int,
+    req: LearningGoalsUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """학원 추천용 학습 목표(선행/심화/내신/수능/경시/영재) 설정.
+
+    가입 시엔 선택 입력이지만, 학원 검색 화면 진입 시 프론트에서 이 값이
+    비어있으면 입력을 요구한다(academy_screen.dart _ensureLearningGoals 참고)."""
+    child = next((c for c in user.children if c.id == child_id), None)
+    if not child:
+        raise HTTPException(status_code=404, detail="자녀 정보를 찾을 수 없습니다.")
+
+    child.learning_goals = req.learning_goals
     await db.commit()
     await db.refresh(child)
     return child
