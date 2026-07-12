@@ -677,20 +677,31 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                 ? '${_activeRegions.length}개 지역 학원 후기'
                 : (_userRegion.isNotEmpty ? '$_userRegion 학원 후기' : '학원 후기'),
         style: const TextStyle(fontWeight: FontWeight.bold),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       centerTitle: true,
+      titleSpacing: 0,
       actions: [
         if (!_isAdmin)
           TextButton.icon(
             onPressed: () => context.push('/academy/recommend'),
-            icon: const Icon(Icons.auto_awesome, size: 16),
-            label: const Text('추천받기'),
-            style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+            icon: const Icon(Icons.auto_awesome, size: 14),
+            label: const Text('추천'),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
           ),
         IconButton(
           icon: const Icon(Icons.search),
           tooltip: '학원명 검색',
           onPressed: _openSearch,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          constraints: const BoxConstraints(),
+          visualDensity: VisualDensity.compact,
         ),
         Stack(
           children: [
@@ -698,6 +709,9 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
               icon: const Icon(Icons.tune),
               tooltip: '필터',
               onPressed: _openFilter,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              constraints: const BoxConstraints(),
+              visualDensity: VisualDensity.compact,
             ),
             if (_hasFilter)
               Positioned(

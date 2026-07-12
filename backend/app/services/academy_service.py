@@ -853,4 +853,30 @@ async def recommend_academies(user: User, req: RecommendationRequest, db: AsyncS
         ))
 
     results.sort(key=lambda r: r.match_score, reverse=True)
-    return RecommendationResponse(results=results[:30])
+
+    if results:
+        return RecommendationResponse(results=results[:30])
+
+    # 조건에 맞는 학원이 하나도 없을 때 — 완전히 빈 화면 대신, 과목만 일치하는
+    # 학원을 평점순으로 참고용으로 보여준다("매칭은 안 됐지만 후기 참고해서
+    # 직접 골라보시라"는 의도). match_score는 실제 매칭도가 아니라 참고 순위.
+    fallback = []
+    for a in academies:
+        stats = stats_by_academy.get(a.id, empty_stats)
+        avg_rating = (sum(stats["ratings"]) / len(stats["ratings"])) if stats["ratings"] else (float(a.avg_rating) if a.avg_rating else 0.0)
+        fallback.append((avg_rating, stats["count"], a, stats))
+
+    fallback.sort(key=lambda t: (t[0], t[1]), reverse=True)
+
+    fallback_results = [
+        AcademyMatchResult(
+            academy=AcademyResponse.model_validate(a).model_copy(update={
+                "user_review_count": stats["count"],
+                "avg_rating": avg_rating if avg_rating else None,
+            }),
+            match_score=0,
+            match_reasons=["조건에 정확히 맞는 학원은 없지만, 같은 과목 학원 중 평점이 높아요"] if avg_rating else ["조건에 정확히 맞는 학원은 없지만, 같은 과목을 가르쳐요"],
+        )
+        for avg_rating, _count, a, stats in fallback[:30]
+    ]
+    return RecommendationResponse(results=fallback_results, is_fallback=True)

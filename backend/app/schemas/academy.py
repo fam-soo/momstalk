@@ -149,3 +149,6 @@ class AcademyMatchResult(BaseModel):
 
 class RecommendationResponse(BaseModel):
     results: list[AcademyMatchResult]
+    # True면 조건에 딱 맞는 학원이 없어서, 과목만 일치하는 학원을 평점순으로
+    # 대신 보여주는 상태 — match_score는 참고용 순위일 뿐 실제 매칭도가 아님
+    is_fallback: bool = False

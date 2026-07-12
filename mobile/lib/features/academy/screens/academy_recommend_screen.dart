@@ -19,6 +19,7 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
   int _step = 0;
   bool _loading = false;
   List<Map<String, dynamic>>? _results;
+  bool _isFallback = false;
 
   // 1단계
   final Set<String> _subjects = {};
@@ -89,7 +90,8 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
       });
       final data = resp.data as Map<String, dynamic>;
       final list = (data['results'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      if (mounted) setState(() { _results = list; _step = 5; });
+      final isFallback = data['is_fallback'] as bool? ?? false;
+      if (mounted) setState(() { _results = list; _isFallback = isFallback; _step = 5; });
     } on DioException catch (e) {
       if (mounted) {
         final detail = e.response?.data is Map ? e.response?.data['detail'] as String? : null;
@@ -296,18 +298,44 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
         ),
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.all(12),
-      itemCount: results.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (_, i) => _MatchCard(match: results[i]),
-    );
+    return Column(children: [
+      if (_isFallback)
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.amber.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.amber.shade200),
+          ),
+          child: Row(children: [
+            Icon(Icons.info_outline, size: 16, color: Colors.amber.shade800),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '조건에 딱 맞는 학원은 없었어요. 같은 과목을 가르치는 학원을 평점 높은 순으로 보여드릴게요 — 아래 후기를 참고해서 직접 골라보세요.',
+                style: TextStyle(fontSize: 12.5, color: Colors.amber.shade900, height: 1.4),
+              ),
+            ),
+          ]),
+        ),
+      Expanded(
+        child: ListView.separated(
+          padding: const EdgeInsets.all(12),
+          itemCount: results.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (_, i) => _MatchCard(match: results[i], isFallback: _isFallback),
+        ),
+      ),
+    ]);
   }
 }
 
 class _MatchCard extends StatelessWidget {
   final Map<String, dynamic> match;
-  const _MatchCard({required this.match});
+  final bool isFallback;
+  const _MatchCard({required this.match, this.isFallback = false});
 
   @override
   Widget build(BuildContext context) {
@@ -318,6 +346,7 @@ class _MatchCard extends StatelessWidget {
     final name = academy['name'] as String? ?? '';
     final address = academy['address'] as String? ?? '';
 
+    final rating = (academy['avg_rating'] as num?)?.toDouble();
     final scoreColor = score >= 80
         ? Colors.green.shade600
         : score >= 50
@@ -331,11 +360,21 @@ class _MatchCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // 폴백(조건 매칭 없음) 모드에서는 의미 없는 "0%" 대신 별점을 보여준다.
             Container(
               width: 52, height: 52,
-              decoration: BoxDecoration(color: scoreColor.withOpacity(0.12), shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: (isFallback ? Colors.amber.shade700 : scoreColor).withOpacity(0.12),
+                shape: BoxShape.circle,
+              ),
               alignment: Alignment.center,
-              child: Text('$score%', style: TextStyle(fontWeight: FontWeight.bold, color: scoreColor, fontSize: 13)),
+              child: isFallback
+                  ? Column(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.star_rounded, size: 16, color: Colors.amber.shade700),
+                      Text(rating != null ? rating.toStringAsFixed(1) : '-',
+                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber.shade800, fontSize: 12)),
+                    ])
+                  : Text('$score%', style: TextStyle(fontWeight: FontWeight.bold, color: scoreColor, fontSize: 13)),
             ),
             const SizedBox(width: 12),
             Expanded(
