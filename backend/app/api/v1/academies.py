@@ -14,6 +14,7 @@ from app.schemas.academy import (
     AcademyReviewResponse,
     AcademyReviewListResponse,
     AcademyReviewUpdate,
+    AcademyInfoUpdate,
     AcademyUnlockQuota,
     RecommendationRequest,
     RecommendationResponse,
@@ -99,6 +100,22 @@ async def get_academy(
     if not academy:
         raise HTTPException(status_code=404, detail="학원을 찾을 수 없습니다.")
     return academy
+
+
+@router.patch("/{academy_id}/info", response_model=AcademyResponse)
+async def update_academy_info(
+    academy_id: int,
+    req: AcademyInfoUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """정회원이 후기 작성 시점에 학원 기본 정보(과목/영업시간/셔틀버스/정원/학원비)를
+    확인하고 틀린 부분을 고칠 수 있도록 하는 크라우드소싱 보정. 관리자 전용
+    /subjects 엔드포인트와 달리 일반 회원도 호출 가능."""
+    try:
+        return await academy_service.update_academy_info(academy_id, req, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @router.get("/{academy_id}/kakao-place")

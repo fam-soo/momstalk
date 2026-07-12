@@ -24,6 +24,12 @@ class AcademyResponse(BaseModel):
     has_seed: bool = False         # AI 요약 정보(seed) 보유 여부
     avg_rating: Optional[float] = None
     is_unlocked: bool = False      # 로그인한 유저가 이 학원 후기를 이미 열람(해금)했는지 여부
+    # 강남엄마 스크래핑으로 보강된 필드 — DB 모델엔 있었지만 이 스키마에 빠져 있어
+    # API 응답에서 계속 잘려나가던 버그가 있었다(화면에 절대 안 뜨는 원인이었음)
+    avg_class_capacity: Optional[float] = None
+    avg_tuition_10k_won: Optional[float] = None
+    business_hours: Optional[str] = None
+    shuttle_bus: Optional[bool] = None
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 
@@ -119,6 +125,16 @@ class AcademyUnlockQuota(BaseModel):
     unlocked_academy_limit: Optional[int] = None
     next_unlock_at: int
     user_review_count: int
+
+
+class AcademyInfoUpdate(BaseModel):
+    """후기 작성 시점에 사용자가 확인/수정하는 학원 기본 정보(선택 입력).
+    보낸 필드만 반영 — 값을 지우고 싶으면 빈 문자열/빈 배열 등 명시적으로 보내야 한다."""
+    subjects: Optional[list[str]] = None
+    business_hours: Optional[str] = None
+    shuttle_bus: Optional[bool] = None
+    avg_class_capacity: Optional[float] = None
+    avg_tuition_10k_won: Optional[float] = None
 
 
 class RecommendationRequest(BaseModel):

@@ -339,6 +339,30 @@ async def get_academy(academy_id: int, db: AsyncSession) -> Optional[AcademyResp
     return AcademyResponse.model_validate(academy)
 
 
+async def update_academy_info(academy_id: int, req, db: AsyncSession) -> AcademyResponse:
+    """일반 사용자(후기 작성 시)가 학원 기본 정보를 확인/수정 — 관리자 전용
+    patch_subjects()와 달리 정회원 누구나 호출 가능. 보낸 필드만 덮어쓴다
+    (None은 "변경 안 함"으로 취급 — 값을 지우려면 별도 관리자 기능 필요)."""
+    academy = (await db.execute(select(Academy).where(Academy.id == academy_id))).scalar_one_or_none()
+    if not academy:
+        raise ValueError("학원을 찾을 수 없습니다.")
+
+    if req.subjects is not None:
+        academy.subjects = req.subjects
+    if req.business_hours is not None:
+        academy.business_hours = req.business_hours
+    if req.shuttle_bus is not None:
+        academy.shuttle_bus = req.shuttle_bus
+    if req.avg_class_capacity is not None:
+        academy.avg_class_capacity = req.avg_class_capacity
+    if req.avg_tuition_10k_won is not None:
+        academy.avg_tuition_10k_won = req.avg_tuition_10k_won
+
+    await db.commit()
+    await db.refresh(academy)
+    return AcademyResponse.model_validate(academy)
+
+
 async def create_review(
     academy_id: int,
     user: User,

@@ -35,6 +35,14 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
   String _feedbackFrequency = '';
   bool? _recommendToSimilar;
 
+  // 학원 기본 정보 확인/수정 (선택 입력) — 시드/스크래핑 데이터를 사용자가
+  // 직접 보고 맞으면 그대로, 틀리면 고쳐서 크라우드소싱으로 정확도를 높인다.
+  final _businessHoursCtrl = TextEditingController();
+  final _tuitionCtrl = TextEditingController();
+  bool? _shuttleBus;
+  double? _avgClassCapacity;
+  static const _capacityOptions = [10.0, 20.0, 30.0, 50.0, 100.0];
+
   static const _teacherStyleOptions = [
     '꼼꼼해요', '친절해요', '엄격해요', '열정적이에요', '설명이 쉬워요',
     '재미있어요', '칭찬을 잘해요', '질문에 잘 답해줘요', '학생 맞춤형이에요',
@@ -56,6 +64,7 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
   void initState() {
     super.initState();
     _loadProfile();
+    _loadAcademyInfo();
     final r = widget.editingReview;
     if (r != null) {
       _rating = (r['rating'] as num?)?.toInt() ?? 0;
@@ -76,6 +85,8 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
   void dispose() {
     _textCtrl.dispose();
     _adminReviewCtrl.dispose();
+    _businessHoursCtrl.dispose();
+    _tuitionCtrl.dispose();
     super.dispose();
   }
 
@@ -91,6 +102,42 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
         });
       }
     } catch (_) {}
+  }
+
+  Future<void> _loadAcademyInfo() async {
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.get('/academies/${widget.academyId}');
+      final a = resp.data as Map<String, dynamic>;
+      if (mounted) {
+        setState(() {
+          _businessHoursCtrl.text = a['business_hours'] as String? ?? '';
+          _shuttleBus = a['shuttle_bus'] as bool?;
+          _avgClassCapacity = (a['avg_class_capacity'] as num?)?.toDouble();
+          final tuition = (a['avg_tuition_10k_won'] as num?)?.toDouble();
+          if (tuition != null) _tuitionCtrl.text = tuition.toStringAsFixed(0);
+        });
+      }
+    } catch (_) {}
+  }
+
+  /// 사용자가 학원 정보 확인/수정 섹션을 건드렸는지와 무관하게, 현재 화면에
+  /// 표시된 값을 그대로 서버에 반영한다(확인만 해도 최신 상태로 굳혀지는 효과).
+  Future<void> _submitAcademyInfoIfChanged() async {
+    try {
+      final dio = ref.read(dioProvider);
+      final hours = _businessHoursCtrl.text.trim();
+      final tuition = double.tryParse(_tuitionCtrl.text.trim());
+      final data = <String, dynamic>{};
+      if (hours.isNotEmpty) data['business_hours'] = hours;
+      if (_shuttleBus != null) data['shuttle_bus'] = _shuttleBus;
+      if (_avgClassCapacity != null) data['avg_class_capacity'] = _avgClassCapacity;
+      if (tuition != null) data['avg_tuition_10k_won'] = tuition;
+      if (data.isEmpty) return;
+      await dio.patch('/academies/${widget.academyId}/info', data: data);
+    } catch (_) {
+      // 학원 정보 보정은 부가 기능이라 실패해도 후기 작성 자체를 막지 않는다.
+    }
   }
 
   // 관리자: 과목 PATCH + 선택적으로 별점 리뷰 POST
@@ -174,6 +221,7 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
       } else {
         await dio.post('/academies/${widget.academyId}/reviews', data: data);
       }
+      await _submitAcademyInfoIfChanged();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(_isEditing ? '후기가 수정되었습니다.' : '후기가 등록되었습니다.')));
@@ -458,6 +506,66 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
             onSelected: (_) => setState(() => _recommendToSimilar = _recommendToSimilar == false ? null : false),
           ),
         ]),
+        const SizedBox(height: 24),
+        const Divider(),
+        const SizedBox(height: 16),
+
+        // ── 학원 기본 정보 확인/수정 (선택) ───────────────────
+        Row(children: [
+          _SectionTitle('학원 정보 확인'),
+          const SizedBox(width: 6),
+          Text('(맞으면 그대로, 틀리면 고쳐주세요)', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+        ]),
+        const SizedBox(height: 10),
+        Text('영업시간', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        const SizedBox(height: 4),
+        TextField(
+          controller: _businessHoursCtrl,
+          decoration: InputDecoration(
+            hintText: '예) 월-금 14:00-22:00',
+            isDense: true,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text('셔틀버스', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        const SizedBox(height: 4),
+        Wrap(spacing: 6, children: [
+          ChoiceChip(
+            label: const Text('있음'),
+            selected: _shuttleBus == true,
+            onSelected: (_) => setState(() => _shuttleBus = _shuttleBus == true ? null : true),
+          ),
+          ChoiceChip(
+            label: const Text('없음'),
+            selected: _shuttleBus == false,
+            onSelected: (_) => setState(() => _shuttleBus = _shuttleBus == false ? null : false),
+          ),
+        ]),
+        const SizedBox(height: 14),
+        Text('수업당 정원', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        const SizedBox(height: 4),
+        Wrap(spacing: 6, children: _capacityOptions.map((c) {
+          final selected = _avgClassCapacity == c;
+          return ChoiceChip(
+            label: Text('${c.toInt()}명'),
+            selected: selected,
+            onSelected: (_) => setState(() => _avgClassCapacity = selected ? null : c),
+          );
+        }).toList()),
+        const SizedBox(height: 14),
+        Text('학원비 평균 (만원)', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        const SizedBox(height: 4),
+        TextField(
+          controller: _tuitionCtrl,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            hintText: '예) 33',
+            suffixText: '만원',
+            isDense: true,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        ),
         const SizedBox(height: 20),
 
         _SectionTitle('상세 후기 (10자 이상)'),

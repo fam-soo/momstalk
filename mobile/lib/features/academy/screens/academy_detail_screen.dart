@@ -19,6 +19,21 @@ String _capacityBucketLabel(double avgCapacity) {
   return '100명 초과';
 }
 
+/// 접기/펼치기 토글을 보여줄지 판단 — 접을 내용이 아예 없으면 토글 자체를 숨긴다.
+bool _hasExtraAcademyInfo(
+  List<String> subjects,
+  String? businessHours,
+  bool? shuttleBus,
+  double? avgClassCapacity,
+  double? avgTuition,
+) {
+  return subjects.isNotEmpty ||
+      (businessHours != null && businessHours.isNotEmpty) ||
+      shuttleBus != null ||
+      avgClassCapacity != null ||
+      avgTuition != null;
+}
+
 class AcademyDetailScreen extends ConsumerStatefulWidget {
   final int academyId;
   const AcademyDetailScreen({super.key, required this.academyId});
@@ -41,6 +56,7 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
   int? _unlockedAcademyLimit;    // null = 무제한
   int _nextUnlockAt = 1;
   int _userReviewCount = 0;
+  bool _infoExpanded = true;  // 학원 기본정보 접기/펼치기 — 기본은 펼침
 
   @override
   void initState() {
@@ -231,53 +247,69 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                   const SizedBox(width: 6),
                   Text('후기 $reviewCount개', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                ]),
-                if (subjects.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6, runSpacing: 4,
-                    children: subjects.map((s) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(4),
+                  if (_hasExtraAcademyInfo(subjects, businessHours, shuttleBus, avgClassCapacity, avgTuition)) ...[
+                    const Spacer(),
+                    InkWell(
+                      onTap: () => setState(() => _infoExpanded = !_infoExpanded),
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Text(_infoExpanded ? '접기' : '더보기', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                          Icon(_infoExpanded ? Icons.expand_less : Icons.expand_more, size: 16, color: Colors.grey.shade600),
+                        ]),
                       ),
-                      child: Text(s, style: TextStyle(fontSize: 11.5, color: theme.colorScheme.primary)),
-                    )).toList(),
-                  ),
-                ],
-                if (businessHours != null && businessHours.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Icon(Icons.schedule_outlined, size: 14, color: Colors.grey.shade600),
-                    const SizedBox(width: 4),
-                    Expanded(child: Text(businessHours.replaceAll(' / ', '\n'),
-                        style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700, height: 1.4))),
-                  ]),
-                ],
-                if (shuttleBus != null) ...[
-                  const SizedBox(height: 6),
-                  Row(children: [
-                    Icon(Icons.directions_bus_outlined, size: 14, color: Colors.grey.shade600),
-                    const SizedBox(width: 4),
-                    Text(shuttleBus ? '셔틀버스 있음' : '셔틀버스 없음', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
-                  ]),
-                ],
-                if (avgClassCapacity != null) ...[
-                  const SizedBox(height: 6),
-                  Row(children: [
-                    Icon(Icons.groups_outlined, size: 14, color: Colors.grey.shade600),
-                    const SizedBox(width: 4),
-                    Text('정원 ${_capacityBucketLabel(avgClassCapacity)}', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
-                  ]),
-                ],
-                if (avgTuition != null) ...[
-                  const SizedBox(height: 6),
-                  Row(children: [
-                    Icon(Icons.payments_outlined, size: 14, color: Colors.grey.shade600),
-                    const SizedBox(width: 4),
-                    Text('학원비 평균 ${avgTuition.toStringAsFixed(0)}만원', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
-                  ]),
+                    ),
+                  ],
+                ]),
+                if (_infoExpanded) ...[
+                  if (subjects.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6, runSpacing: 4,
+                      children: subjects.map((s) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(s, style: TextStyle(fontSize: 11.5, color: theme.colorScheme.primary)),
+                      )).toList(),
+                    ),
+                  ],
+                  if (businessHours != null && businessHours.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Icon(Icons.schedule_outlined, size: 14, color: Colors.grey.shade600),
+                      const SizedBox(width: 4),
+                      Expanded(child: Text(businessHours.replaceAll(' / ', '\n'),
+                          style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700, height: 1.4))),
+                    ]),
+                  ],
+                  if (shuttleBus != null) ...[
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      Icon(Icons.directions_bus_outlined, size: 14, color: Colors.grey.shade600),
+                      const SizedBox(width: 4),
+                      Text(shuttleBus ? '셔틀버스 있음' : '셔틀버스 없음', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
+                    ]),
+                  ],
+                  if (avgClassCapacity != null) ...[
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      Icon(Icons.groups_outlined, size: 14, color: Colors.grey.shade600),
+                      const SizedBox(width: 4),
+                      Text('정원 ${_capacityBucketLabel(avgClassCapacity)}', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
+                    ]),
+                  ],
+                  if (avgTuition != null) ...[
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      Icon(Icons.payments_outlined, size: 14, color: Colors.grey.shade600),
+                      const SizedBox(width: 4),
+                      Text('학원비 평균 ${avgTuition.toStringAsFixed(0)}만원', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
+                    ]),
+                  ],
                 ],
               ],
             ),
