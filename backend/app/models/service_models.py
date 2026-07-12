@@ -455,11 +455,13 @@ class Academy(Base):
     business_hours = Column(String(200), nullable=True)
     shuttle_bus = Column(Boolean, nullable=True)
     # 커리큘럼 방향(복수): ["선행", "심화", "내신", "수능", "경시", "영재"]
-    # 수업 스타일(복수): ["강의형", "질문형", "토론형", "소수정예"]
-    # 강남엄마 홈 탭에는 이 두 항목이 구조화되어 노출되지 않아 스크래핑으로는
-    # 채워지지 않는다 — 관리자 태깅 또는 후기 집계로 채울 예정(Phase 2).
+    # 수업 스타일(복수): ["강의형", "질문형", "토론형", "소수정예", "레벨테스트", "수준별", "온라인강의", "자체교재"]
+    # 오늘학교(scripts/scrape_onaul.py)의 "수업 및 반편성 정보"에서 매핑되어 채워짐.
     curriculum_focus = Column(JSONB, nullable=True)
     class_style = Column(JSONB, nullable=True)
+    # 시설(복수, 오늘학교 "시설 및 편의사항"에서 채워짐 — 변별력 낮은 항목은 제외):
+    # ["자습실 제공", "설명회 진행", "스터디 모임 있음"] (셔틀버스는 shuttle_bus로 별도 저장)
+    facilities = Column(JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

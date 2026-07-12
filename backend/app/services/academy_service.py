@@ -357,6 +357,8 @@ async def update_academy_info(academy_id: int, req, db: AsyncSession) -> Academy
         academy.avg_class_capacity = req.avg_class_capacity
     if req.avg_tuition_10k_won is not None:
         academy.avg_tuition_10k_won = req.avg_tuition_10k_won
+    if req.facilities is not None:
+        academy.facilities = req.facilities
 
     await db.commit()
     await db.refresh(academy)

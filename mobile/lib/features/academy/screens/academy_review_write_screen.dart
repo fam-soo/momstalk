@@ -41,7 +41,9 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
   final _tuitionCtrl = TextEditingController();
   bool? _shuttleBus;
   double? _avgClassCapacity;
+  final Set<String> _facilities = {};
   static const _capacityOptions = [10.0, 20.0, 30.0, 50.0, 100.0];
+  static const _facilityOptions = ['셔틀버스 운행', '설명회 진행', '자습실 제공', '스터디 모임 있음'];
 
   static const _teacherStyleOptions = [
     '꼼꼼해요', '친절해요', '엄격해요', '열정적이에요', '설명이 쉬워요',
@@ -116,6 +118,7 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
           _avgClassCapacity = (a['avg_class_capacity'] as num?)?.toDouble();
           final tuition = (a['avg_tuition_10k_won'] as num?)?.toDouble();
           if (tuition != null) _tuitionCtrl.text = tuition.toStringAsFixed(0);
+          _facilities.addAll((a['facilities'] as List?)?.cast<String>() ?? []);
         });
       }
     } catch (_) {}
@@ -133,6 +136,7 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
       if (_shuttleBus != null) data['shuttle_bus'] = _shuttleBus;
       if (_avgClassCapacity != null) data['avg_class_capacity'] = _avgClassCapacity;
       if (tuition != null) data['avg_tuition_10k_won'] = tuition;
+      if (_facilities.isNotEmpty) data['facilities'] = _facilities.toList();
       if (data.isEmpty) return;
       await dio.patch('/academies/${widget.academyId}/info', data: data);
     } catch (_) {
@@ -566,6 +570,20 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
           ),
         ),
+        const SizedBox(height: 14),
+        Text('시설/편의', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        const SizedBox(height: 4),
+        Wrap(spacing: 6, runSpacing: 4, children: _facilityOptions.map((f) {
+          final selected = _facilities.contains(f);
+          return FilterChip(
+            label: Text(f),
+            selected: selected,
+            onSelected: (_) => setState(() {
+              selected ? _facilities.remove(f) : _facilities.add(f);
+            }),
+            visualDensity: VisualDensity.compact,
+          );
+        }).toList()),
         const SizedBox(height: 20),
 
         _SectionTitle('상세 후기 (10자 이상)'),

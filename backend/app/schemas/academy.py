@@ -30,6 +30,9 @@ class AcademyResponse(BaseModel):
     avg_tuition_10k_won: Optional[float] = None
     business_hours: Optional[str] = None
     shuttle_bus: Optional[bool] = None
+    curriculum_focus: Optional[list[str]] = None
+    class_style: Optional[list[str]] = None
+    facilities: Optional[list[str]] = None
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 
@@ -135,6 +138,7 @@ class AcademyInfoUpdate(BaseModel):
     shuttle_bus: Optional[bool] = None
     avg_class_capacity: Optional[float] = None
     avg_tuition_10k_won: Optional[float] = None
+    facilities: Optional[list[str]] = None
 
 
 class RecommendationRequest(BaseModel):

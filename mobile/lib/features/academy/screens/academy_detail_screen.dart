@@ -25,13 +25,19 @@ bool _hasExtraAcademyInfo(
   String? businessHours,
   bool? shuttleBus,
   double? avgClassCapacity,
-  double? avgTuition,
-) {
+  double? avgTuition, [
+  List<String> facilities = const [],
+  List<String> curriculumFocus = const [],
+  List<String> classStyle = const [],
+]) {
   return subjects.isNotEmpty ||
       (businessHours != null && businessHours.isNotEmpty) ||
       shuttleBus != null ||
       avgClassCapacity != null ||
-      avgTuition != null;
+      avgTuition != null ||
+      facilities.isNotEmpty ||
+      curriculumFocus.isNotEmpty ||
+      classStyle.isNotEmpty;
 }
 
 class AcademyDetailScreen extends ConsumerStatefulWidget {
@@ -181,6 +187,9 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
     final shuttleBus = _academy!['shuttle_bus'] as bool?;
     final avgClassCapacity = (_academy!['avg_class_capacity'] as num?)?.toDouble();
     final avgTuition = (_academy!['avg_tuition_10k_won'] as num?)?.toDouble();
+    final facilities = (_academy!['facilities'] as List?)?.cast<String>() ?? [];
+    final curriculumFocus = (_academy!['curriculum_focus'] as List?)?.cast<String>() ?? [];
+    final classStyle = (_academy!['class_style'] as List?)?.cast<String>() ?? [];
 
     return Scaffold(
       appBar: AppBar(
@@ -247,7 +256,7 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                   const SizedBox(width: 6),
                   Text('후기 $reviewCount개', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                  if (_hasExtraAcademyInfo(subjects, businessHours, shuttleBus, avgClassCapacity, avgTuition)) ...[
+                  if (_hasExtraAcademyInfo(subjects, businessHours, shuttleBus, avgClassCapacity, avgTuition, facilities, curriculumFocus, classStyle)) ...[
                     const Spacer(),
                     InkWell(
                       onTap: () => setState(() => _infoExpanded = !_infoExpanded),
@@ -309,6 +318,29 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                       const SizedBox(width: 4),
                       Text('학원비 평균 ${avgTuition.toStringAsFixed(0)}만원', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
                     ]),
+                  ],
+                  if (facilities.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Icon(Icons.check_circle_outline, size: 14, color: Colors.grey.shade600),
+                      const SizedBox(width: 4),
+                      Expanded(child: Text(facilities.join(' · '),
+                          style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700))),
+                    ]),
+                  ],
+                  if (curriculumFocus.isNotEmpty || classStyle.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6, runSpacing: 4,
+                      children: [...curriculumFocus, ...classStyle].map((s) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text('#$s', style: TextStyle(fontSize: 11.5, color: Colors.purple.shade700)),
+                      )).toList(),
+                    ),
                   ],
                 ],
               ],
