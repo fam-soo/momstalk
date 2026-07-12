@@ -440,10 +440,13 @@ class Academy(Base):
     b2b_expires_at = Column(DateTime, nullable=True)
     review_count = Column(Integer, default=0)
     avg_rating = Column(Numeric(3, 2), nullable=True)
-    # 강남엄마 스크래핑(scripts/scrape_gangmom.py, 리뷰 제외)으로 보강 — 수업 정원 기준 버킷
-    class_size = Column(String(20), nullable=True)   # "1:1" | "소수정예" | "중형" | "대형"
+    # 강남엄마 스크래핑(scripts/scrape_gangmom.py, 리뷰 제외)으로 보강 — 수업당 평균 정원(명).
+    # 대/중/소 같은 버킷 라벨은 저장하지 않고 조회 시점에 이 숫자로부터 계산한다
+    # (기준을 나중에 바꿔도 재수집 없이 라벨링만 다시 하면 되도록).
+    avg_class_capacity = Column(Numeric(5, 1), nullable=True)
     founded_year = Column(Integer, nullable=True)
-    business_hours = Column(String(100), nullable=True)
+    business_hours = Column(String(200), nullable=True)
+    shuttle_bus = Column(Boolean, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
