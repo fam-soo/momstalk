@@ -149,6 +149,9 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
     final reviewCount = _academy!['review_count'] as int? ?? 0;
     final subjects = (_academy!['subjects'] as List?)?.cast<String>() ?? [];
     final isB2b = _academy!['is_b2b'] as bool? ?? false;
+    final foundedYear = _academy!['founded_year'] as int?;
+    final businessHours = _academy!['business_hours'] as String?;
+    final shuttleBus = _academy!['shuttle_bus'] as bool?;
 
     return Scaffold(
       appBar: AppBar(
@@ -203,6 +206,9 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                   ),
                 ],
                 const SizedBox(height: 8),
+                // 별점/후기수는 항상 한 줄 — 나머지 항목(과목/설립/영업시간/셔틀버스)은
+                // 값이 있을 때만 각자 줄을 차지한다(예전엔 전부 한 줄에 이어붙여서
+                // 정제 안 된 값이 섞이면 그대로 노출되던 문제가 있었음).
                 Row(children: [
                   ...List.generate(5, (i) => Icon(
                     i < rating.round() ? Icons.star_rounded : Icons.star_outline_rounded,
@@ -212,13 +218,46 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                   const SizedBox(width: 6),
                   Text('후기 $reviewCount개', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                  if (subjects.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(subjects.join(' · '),
-                      style: TextStyle(fontSize: 12, color: theme.colorScheme.primary),
-                      maxLines: 1, overflow: TextOverflow.ellipsis)),
-                  ],
                 ]),
+                if (subjects.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6, runSpacing: 4,
+                    children: subjects.map((s) => Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(s, style: TextStyle(fontSize: 11.5, color: theme.colorScheme.primary)),
+                    )).toList(),
+                  ),
+                ],
+                if (foundedYear != null) ...[
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Icon(Icons.event_outlined, size: 14, color: Colors.grey.shade600),
+                    const SizedBox(width: 4),
+                    Text('$foundedYear년 설립', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
+                  ]),
+                ],
+                if (businessHours != null && businessHours.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Icon(Icons.schedule_outlined, size: 14, color: Colors.grey.shade600),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text(businessHours.replaceAll(' / ', '\n'),
+                        style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700, height: 1.4))),
+                  ]),
+                ],
+                if (shuttleBus == true) ...[
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Icon(Icons.directions_bus_outlined, size: 14, color: Colors.grey.shade600),
+                    const SizedBox(width: 4),
+                    Text('셔틀버스 운행', style: TextStyle(fontSize: 12.5, color: Colors.grey.shade700)),
+                  ]),
+                ],
               ],
             ),
           ),
