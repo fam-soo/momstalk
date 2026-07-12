@@ -180,7 +180,11 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
 
     final theme = Theme.of(context);
     final rating = (_academy!['avg_rating'] as num?)?.toDouble() ?? 0.0;
-    final reviewCount = _academy!['review_count'] as int? ?? 0;
+    // review_count는 AI 요약(seed) 후기까지 포함된 수치라 아래 "후기" 목록에
+    // 실제로 보이는 사용자 후기 개수와 어긋나 헷갈릴 수 있다(예: seed만 1건
+    // 있어도 "후기 1개"로 보이는데 정작 목록엔 "아직 후기가 없습니다"만 뜸) —
+    // 상단 표시는 user_review_count(사용자 작성분만)로 목록과 맞춘다.
+    final reviewCount = _academy!['user_review_count'] as int? ?? 0;
     final subjects = (_academy!['subjects'] as List?)?.cast<String>() ?? [];
     final isB2b = _academy!['is_b2b'] as bool? ?? false;
     final businessHours = _academy!['business_hours'] as String?;
@@ -488,7 +492,7 @@ class _QuotaBanner extends StatelessWidget {
     // 잠김 — 이 학원의 후기(기본 소개 + 사용자 후기)가 가림 처리됨
     final limitLabel = '이 학원 후기 가림 처리됨 (열람 가능 학원 $unlockedCount/$unlockedLimit곳)';
     final unlockMsg = nextUnlockAt > 0
-        ? '후기 $nextUnlockAt건 더 작성하면 열람 가능한 학원 수가 늘어나요 (위 \'후기 작성\' 버튼 이용)'
+        ? '후기 $nextUnlockAt건 더 작성하면 열람 가능한 학원 수가 늘어나요 (아래 \'후기 작성\' 버튼 이용)'
         : '';
 
     return Container(
