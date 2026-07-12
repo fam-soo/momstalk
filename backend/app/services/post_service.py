@@ -19,10 +19,27 @@ REPORT_AUTO_HIDE_THRESHOLD = 5
 ANON_ALLOWED_BOARDS = {"school", "free", "region"}
 
 
+def _resolve_nickname_snapshot(nickname_type: str, is_anonymous: bool, author: User) -> str | None:
+    """작성 시점에 고정해서 저장할 닉네임 계산 (익명이면 저장 안 함)."""
+    if nickname_type == "certified":
+        return author.certified_nickname or author.nickname
+    if not is_anonymous:
+        return author.nickname
+    return None
+
+
 def _author_display_name(post_or_comment, author: User) -> str | None:
-    """nickname_type에 따른 표시용 닉네임 반환. 관리자 작성 글은 항상 '관리자' 표시."""
+    """표시용 닉네임 반환. 관리자 작성 글은 항상 '관리자' 표시.
+
+    작성 시점에 저장해둔 nickname_snapshot을 우선 사용해 이후 유저가 닉네임을
+    바꿔도 과거 글의 표시명은 그대로 유지되게 한다. 스냅샷이 없는 과거 데이터
+    (마이그레이션 이전에 작성된 행 중 백필이 안 된 경우)만 현재 닉네임으로 대체한다.
+    """
     if author.is_admin:
         return "관리자"
+    snapshot = getattr(post_or_comment, "nickname_snapshot", None)
+    if snapshot:
+        return snapshot
     nickname_type = getattr(post_or_comment, "nickname_type", "anon")
     if nickname_type == "certified":
         return author.certified_nickname or author.nickname
@@ -84,6 +101,7 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
         content=req.content,
         is_anonymous=req.is_anonymous,
         nickname_type=req.nickname_type,
+        nickname_snapshot=_resolve_nickname_snapshot(req.nickname_type, req.is_anonymous, user),
         mention_tags=req.mention_tags or None,
     )
     db.add(post)

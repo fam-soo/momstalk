@@ -399,6 +399,7 @@ async def create_review(
         review_text=req.review_text,
         rating=req.rating,
         nickname_type=req.nickname_type,
+        nickname_snapshot=None if req.is_anonymous else user.nickname,
         is_anonymous=req.is_anonymous,
     )
     db.add(review)
@@ -430,7 +431,7 @@ async def create_review(
 
     author_display = None
     if not review.is_anonymous:
-        author_display = user.nickname
+        author_display = review.nickname_snapshot or user.nickname
 
     return AcademyReviewResponse(
         id=review.id,
@@ -497,13 +498,17 @@ async def update_review(
     review.rating = req.rating
     review.nickname_type = req.nickname_type
     review.is_anonymous = req.is_anonymous
+    # 익명 → 실명으로 바뀌는 시점에만 스냅샷을 새로 채운다 — 이미 스냅샷이
+    # 있으면(원래도 실명 후기였던 경우) 최초 작성 시점 닉네임을 그대로 유지.
+    if not review.is_anonymous and not review.nickname_snapshot:
+        review.nickname_snapshot = user.nickname
 
     await db.commit()
     await db.refresh(review)
 
     author_display = None
     if not review.is_anonymous:
-        author_display = user.nickname
+        author_display = review.nickname_snapshot or user.nickname
 
     return AcademyReviewResponse(
         id=review.id,
@@ -649,7 +654,7 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
         grade = None
         if author and not view_limited:
             if not review.is_anonymous:
-                author_display = author.nickname
+                author_display = review.nickname_snapshot or author.nickname
             active = author.active_child
             school_name = (active.school_name if active else None) or author.school_name
             grade = (active.grade if active else None) or author.grade

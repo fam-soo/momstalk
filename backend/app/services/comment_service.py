@@ -6,7 +6,7 @@ from app.models.service_models import Block, Comment, Like, Post, User
 from app.schemas.comment import CommentCreate, CommentResponse
 from app.services import temperature_service
 from app.services.notification_service import notify_user
-from app.services.post_service import ANON_ALLOWED_BOARDS
+from app.services.post_service import ANON_ALLOWED_BOARDS, _resolve_nickname_snapshot
 
 
 async def create_comment(
@@ -32,6 +32,7 @@ async def create_comment(
         content=req.content,
         is_anonymous=req.is_anonymous,
         nickname_type=req.nickname_type,
+        nickname_snapshot=_resolve_nickname_snapshot(req.nickname_type, req.is_anonymous, user),
     )
     db.add(comment)
     await temperature_service.adjust(user.id, "comment_created", db)
@@ -151,6 +152,9 @@ async def list_comments(post_id: int, user: User, db: AsyncSession) -> list[Comm
             return "관리자"
         if c.is_anonymous:
             return None
+        snapshot = getattr(c, "nickname_snapshot", None)
+        if snapshot:
+            return snapshot
         nick_type = getattr(c, "nickname_type", "anon")
         if nick_type == "certified":
             return author.certified_nickname or author.nickname

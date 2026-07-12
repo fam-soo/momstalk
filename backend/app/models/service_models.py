@@ -186,6 +186,9 @@ class Post(Base):
     content = Column(Text, nullable=False)
     is_anonymous = Column(Boolean, default=True)
     nickname_type = Column(String(10), nullable=False, server_default="anon")  # anon / certified
+    # 작성 시점 닉네임 스냅샷 — 이후 유저가 닉네임을 바꿔도 과거 글의 표시명은
+    # 바뀌지 않도록 고정한다. NULL이면(과거 데이터) 조회 시 현재 닉네임으로 대체.
+    nickname_snapshot = Column(String(50), nullable=True)
     view_count = Column(Integer, default=0)
     like_count = Column(Integer, default=0)
     scrap_count = Column(Integer, default=0)
@@ -209,6 +212,8 @@ class Comment(Base):
     content = Column(Text, nullable=False)
     is_anonymous = Column(Boolean, default=True)
     nickname_type = Column(String(10), nullable=False, server_default="anon")  # anon / certified
+    # 작성 시점 닉네임 스냅샷 — Post.nickname_snapshot과 동일한 목적.
+    nickname_snapshot = Column(String(50), nullable=True)
     like_count = Column(Integer, default=0)
     report_count = Column(Integer, default=0)
     is_hidden = Column(Boolean, default=False)
@@ -488,6 +493,8 @@ class AcademyReview(Base):
     review_text = Column(Text, nullable=False)
     rating = Column(SmallInteger, nullable=False)
     nickname_type = Column(String(10), nullable=False, server_default="anon")
+    # 작성 시점 닉네임 스냅샷 — Post.nickname_snapshot과 동일한 목적.
+    nickname_snapshot = Column(String(50), nullable=True)
     is_anonymous = Column(Boolean, nullable=False, default=True)
     report_count = Column(Integer, default=0)
     is_hidden = Column(Boolean, default=False)
