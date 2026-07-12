@@ -739,11 +739,21 @@ def _constraint_excludes(constraint: str, academy: Academy, stats: dict) -> bool
 
 
 async def recommend_academies(user: User, req: RecommendationRequest, db: AsyncSession) -> RecommendationResponse:
-    region = req.region or (user.active_child.region if user.active_child else None) or user.region or ""
+    # regions(복수)가 오면 그걸 우선 사용 — 검색 필터처럼 기본 지역 + 추가 지역을
+    # 선택할 수 있게 하기 전에는 region(단일)만 있어서 다른 지역 학원까지 섞여
+    # 나오는 문제가 있었다(빈 문자열이면 필터 자체가 적용 안 됨).
+    regions = [r for r in (req.regions or []) if r] or (
+        [req.region] if req.region else
+        ([user.active_child.region] if user.active_child and user.active_child.region else
+         ([user.region] if user.region else []))
+    )
 
     filters = []
-    if region:
-        filters.append(Academy.region.ilike(f"%{region}%"))
+    if regions:
+        if len(regions) == 1:
+            filters.append(Academy.region.ilike(f"%{regions[0]}%"))
+        else:
+            filters.append(sa.or_(*[Academy.region.ilike(f"%{r}%") for r in regions]))
     subject_filters = []
     for s in req.subjects:
         kws = _SUBJECT_KEYWORDS.get(s, [s])

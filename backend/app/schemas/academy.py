@@ -152,7 +152,8 @@ class RecommendationRequest(BaseModel):
     constraints: list[str] = []                        # 4단계 (최대 3)
     learning_goals: list[str] = []                      # 학습 목표 (선행/심화/내신/수능/경시/영재)
     note: Optional[str] = None                          # 5단계 (선택, 저장 안 함 — 표시만)
-    region: Optional[str] = None
+    region: Optional[str] = None                        # 레거시 단일 지역 (regions 없을 때 fallback)
+    regions: list[str] = []                             # 검색 대상 지역 (기본 지역 + 추가 선택, 복수)
 
     @field_validator("subjects")
     @classmethod

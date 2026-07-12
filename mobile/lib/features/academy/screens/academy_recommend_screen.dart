@@ -25,6 +25,17 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
   final Set<String> _subjects = {};
   static const _subjectOptions = ['국어', '영어', '수학'];
 
+  // 검색 지역 — 기본은 내 지역, 추가로 다른 구를 더 선택할 수 있다.
+  // (예전엔 지역 제한이 아예 없어서 추천 결과에 다른 지역 학원이 섞여 나왔음)
+  String _userRegion = '';
+  final Set<String> _extraRegions = {};
+  static const _seoulDistricts = [
+    '강남구', '강동구', '강북구', '강서구', '관악구', '광진구', '구로구', '금천구',
+    '노원구', '도봉구', '동대문구', '동작구', '마포구', '서대문구', '서초구',
+    '성동구', '성북구', '송파구', '양천구', '영등포구', '용산구', '은평구',
+    '종로구', '중구', '중랑구',
+  ];
+
   // 2단계 — 과목별 수준/성적
   final Map<String, String> _levelBySubject = {};
   final Map<String, String> _scoreBySubject = {};
@@ -53,6 +64,22 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
 
   // 5단계
   final _noteCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserRegion();
+  }
+
+  Future<void> _loadUserRegion() async {
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.get('/auth/me');
+      final p = resp.data as Map<String, dynamic>;
+      final region = p['region'] as String? ?? '';
+      if (mounted && region.isNotEmpty) setState(() => _userRegion = region);
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
@@ -90,6 +117,7 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
         'constraints': _constraints.toList(),
         'learning_goals': _learningGoals.toList(),
         'note': _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+        'regions': {if (_userRegion.isNotEmpty) _userRegion, ..._extraRegions}.toList(),
       });
       final data = resp.data as Map<String, dynamic>;
       final list = (data['results'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
@@ -182,6 +210,42 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
           onSelected: (_) => setState(() => sel ? _subjects.remove(s) : _subjects.add(s)),
         );
       }).toList()),
+      const SizedBox(height: 24),
+      const Divider(),
+      const SizedBox(height: 16),
+      Row(children: [
+        const Text('검색 지역', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(width: 8),
+        if (_userRegion.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text('기본: $_userRegion',
+              style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w600)),
+          ),
+      ]),
+      const SizedBox(height: 4),
+      Text('다른 지역 학원도 함께 보고 싶다면 추가로 선택하세요', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+      const SizedBox(height: 8),
+      Wrap(
+        spacing: 6, runSpacing: 6,
+        children: _seoulDistricts.map((district) {
+          final isBase = district == _userRegion;
+          final sel = _extraRegions.contains(district);
+          return FilterChip(
+            label: Text(district, style: const TextStyle(fontSize: 11)),
+            selected: isBase || sel,
+            onSelected: isBase ? null : (_) => setState(() {
+              sel ? _extraRegions.remove(district) : _extraRegions.add(district);
+            }),
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          );
+        }).toList(),
+      ),
     ]);
   }
 
