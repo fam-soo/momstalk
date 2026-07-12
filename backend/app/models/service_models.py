@@ -57,6 +57,9 @@ class UserChild(Base):
     class_num = Column(Integer, nullable=True)
     school_type = Column(String(10), nullable=True)
     region = Column(String(50), nullable=True)
+    # 학원 맞춤 추천용 — 아이 학습 성향 태그(["칭찬에_약해요", "외향적이에요"])와 현재 성적대
+    student_traits = Column(JSONB, nullable=True)
+    score_level = Column(String(20), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -437,6 +440,10 @@ class Academy(Base):
     b2b_expires_at = Column(DateTime, nullable=True)
     review_count = Column(Integer, default=0)
     avg_rating = Column(Numeric(3, 2), nullable=True)
+    # 강남엄마 스크래핑(scripts/scrape_gangmom.py, 리뷰 제외)으로 보강 — 수업 정원 기준 버킷
+    class_size = Column(String(20), nullable=True)   # "1:1" | "소수정예" | "중형" | "대형"
+    founded_year = Column(Integer, nullable=True)
+    business_hours = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -451,6 +458,9 @@ class AcademyReview(Base):
     teacher_styles = Column(JSONB, nullable=True)  # ["꼼꼼해요", "친절해요"]
     homework_level = Column(String(20), nullable=True)
     score_improvement = Column(String(30), nullable=True)
+    # 학원 맞춤 추천용 — 후기 작성 시점 기준 수강생 성향/성적대
+    student_traits = Column(JSONB, nullable=True)
+    score_level = Column(String(20), nullable=True)
     review_text = Column(Text, nullable=False)
     rating = Column(SmallInteger, nullable=False)
     nickname_type = Column(String(10), nullable=False, server_default="anon")
