@@ -109,6 +109,8 @@ class _SchoolSelectScreenState extends ConsumerState<SchoolSelectScreen> {
             color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.4),
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
             child: const Text(
+              '지역·학교 게시판은 같은 동네·학교 학부모끼리만 모이는 공간이라, '
+              '먼저 자녀가 다니는 학교를 등록해야 이용할 수 있어요.\n\n'
               '자녀가 다니는 학교를 검색하세요.\n학교명(예: 행복초) 또는 지역명(예: 강남구)으로 찾을 수 있어요.',
               style: TextStyle(fontSize: 13, height: 1.5),
             ),

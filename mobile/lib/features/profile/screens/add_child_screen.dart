@@ -142,6 +142,8 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
             color: theme.colorScheme.primaryContainer.withOpacity(0.4),
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
             child: const Text(
+              '자녀를 등록하면 그 자녀의 학교·학년 게시판을 이용할 수 있어요.\n'
+              '자녀가 여러 명이면 모두 등록해두고 내정보에서 전환하며 각자의 게시판을 볼 수 있어요.\n\n'
               '자녀가 다니는 학교를 검색하세요.\n학교명(예: 행복초) 또는 지역명(예: 강남구)으로 찾을 수 있어요.',
               style: TextStyle(fontSize: 13, height: 1.5),
             ),

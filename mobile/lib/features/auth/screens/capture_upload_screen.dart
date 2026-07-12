@@ -320,8 +320,10 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
                   const SizedBox(height: 8),
                   Text(
                     widget.captureType == 'child_add'
-                        ? '최근 1주일 이내 학교에서 받은 자료 사진을 업로드해 주세요.\n관리자 확인 후 해당 자녀 학교가 추가됩니다.'
-                        : '최근 1주일 이내 학교에서 받은 자료 사진을 업로드해 주세요.\n관리자 확인 후 정회원으로 승인됩니다.',
+                        ? '같은 학교 학부모들만 모이는 게시판이라 실제 재학생 학부모인지 확인이 필요해요.\n'
+                          '최근 1주일 이내 학교에서 받은 자료 사진을 업로드해 주세요.\n관리자 확인 후 해당 자녀 학교가 추가됩니다.'
+                        : '같은 학교·학년 학부모들만 모이는 게시판이라 실제 재학생 학부모인지 확인이 필요해요.\n'
+                          '최근 1주일 이내 학교에서 받은 자료 사진을 업로드해 주세요.\n관리자 확인 후 정회원으로 승인됩니다.',
                     style: const TextStyle(fontSize: 13, height: 1.5),
                   ),
                 ],
