@@ -36,6 +36,7 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
   static const _tapLimit = 2;
   static const _prefKey = 'preview_taps_region';
   static const _seenNoticePref = 'seen_notice_id';
+  static const _noticeSnoozeUntilPref = 'notice_snooze_until_ms';
 
   @override
   void initState() {
@@ -77,6 +78,10 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
     final latest = _notices.first;
     final latestId = latest['id'] as int? ?? 0;
     final prefs = await SharedPreferences.getInstance();
+
+    final snoozeUntil = prefs.getInt(_noticeSnoozeUntilPref) ?? 0;
+    if (DateTime.now().millisecondsSinceEpoch < snoozeUntil) return;
+
     final seenId = prefs.getInt(_seenNoticePref) ?? 0;
     if (latestId <= seenId) return;
     await prefs.setInt(_seenNoticePref, latestId);
@@ -98,6 +103,14 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
               style: const TextStyle(height: 1.6, fontSize: 14)),
         ),
         actions: [
+          TextButton(
+            onPressed: () async {
+              final until = DateTime.now().add(const Duration(days: 7)).millisecondsSinceEpoch;
+              await prefs.setInt(_noticeSnoozeUntilPref, until);
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('7일간 보지 않기'),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: const Text('닫기'),
