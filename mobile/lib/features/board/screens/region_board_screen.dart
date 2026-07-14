@@ -6,10 +6,10 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/board_search_app_bar.dart';
+import '../../../core/child_switch_title.dart';
 import '../../../core/constants.dart';
 import '../../../core/kst_time.dart';
 import '../../../core/notification_bell.dart';
-import '../../../core/region_switch_button.dart';
 import '../../../core/unified_notify_button.dart';
 import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart';
@@ -193,10 +193,15 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
             : AppBar(
                 leading: const UnifiedNotifyButton(prefKey: 'notify_region', label: '지역'),
                 centerTitle: true,
-                title: Text(_region.isNotEmpty ? '$_region 게시판' : '지역 게시판',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                title: ChildSwitchTitle(
+                  labelBuilder: (active) {
+                    final region = (active?['region'] as String?)?.isNotEmpty == true
+                        ? active!['region'] as String
+                        : _region;
+                    return region.isNotEmpty ? '$region 게시판' : '지역 게시판';
+                  },
+                ),
                 actions: [
-                  const RegionSwitchButton(),
                   IconButton(icon: const Icon(Icons.search), onPressed: _openSearch),
                 ],
               ),

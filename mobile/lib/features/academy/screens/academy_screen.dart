@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/child_switch_title.dart';
 import '../../../core/constants.dart';
-import '../../../core/region_switch_button.dart';
 import '../../../core/unified_notify_button.dart';
 import '../../../core/refresh_bus.dart';
 
@@ -625,38 +625,37 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
           ),
         ],
       ),
+      floatingActionButton: (_isAdmin || _searchActive)
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => context.push('/academy/recommend'),
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('추천'),
+            ),
     );
   }
 
   PreferredSizeWidget _buildNormalAppBar(ThemeData theme) {
     return AppBar(
       leading: const UnifiedNotifyButton(prefKey: 'notify_academy', label: '학원'),
-      title: Text(
-        _isAdmin
-            ? '전지역 학원 후기'
-            : _selectedRegions.isNotEmpty
-                ? '${_activeRegions.length}개 지역 학원 후기'
-                : (_userRegion.isNotEmpty ? '$_userRegion 학원 후기' : '학원 후기'),
-        style: const TextStyle(fontWeight: FontWeight.bold),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: (_isAdmin || _selectedRegions.isNotEmpty)
+          ? Text(
+              _isAdmin ? '전지역 학원 후기' : '${_activeRegions.length}개 지역 학원 후기',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            )
+          : ChildSwitchTitle(
+              labelBuilder: (active) {
+                final region = (active?['region'] as String?)?.isNotEmpty == true
+                    ? active!['region'] as String
+                    : _userRegion;
+                return region.isNotEmpty ? '$region 학원 후기' : '학원 후기';
+              },
+            ),
       centerTitle: true,
       titleSpacing: 0,
       actions: [
-        if (!_isAdmin) const RegionSwitchButton(),
-        if (!_isAdmin)
-          TextButton.icon(
-            onPressed: () => context.push('/academy/recommend'),
-            icon: const Icon(Icons.auto_awesome, size: 14),
-            label: const Text('추천'),
-            style: TextButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              minimumSize: Size.zero,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-          ),
         IconButton(
           icon: const Icon(Icons.search),
           tooltip: '학원명 검색',
