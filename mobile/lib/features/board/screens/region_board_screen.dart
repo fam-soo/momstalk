@@ -27,7 +27,7 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
   bool _isLurker = false;
   String _region = '';
   List<Map<String, dynamic>> _previewPosts = [];
-  List<Map<String, dynamic>> _notices = [];
+  Map<String, dynamic>? _popupNotice;
   int _previewTaps = 0;
   bool _searchActive = false;
   String _searchQuery = '';
@@ -66,16 +66,19 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
   }
 
   Future<void> _loadNotices() async {
+    // 게시판 상단 고정용 공지(지역별 학원가 안내 등)는 목록 조회 자체가
+    // list_posts에서 서버가 알아서 붙여준다 — 여기서 부르는 /posts/popup은
+    // 성격이 다른, 첫 진입 시 팝업 전용 콘텐츠(시스템 사용법·오픈 지역 현황).
     try {
       final dio = ref.read(dioProvider);
-      final resp = await dio.get('/posts/notices');
-      _notices = (resp.data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final resp = await dio.get('/posts/popup');
+      _popupNotice = resp.data == null ? null : Map<String, dynamic>.from(resp.data as Map);
     } catch (_) {}
   }
 
   Future<void> _maybeShowNoticePopup() async {
-    if (_notices.isEmpty || !mounted) return;
-    final latest = _notices.first;
+    final latest = _popupNotice;
+    if (latest == null || !mounted) return;
     final latestId = latest['id'] as int? ?? 0;
     final prefs = await SharedPreferences.getInstance();
 

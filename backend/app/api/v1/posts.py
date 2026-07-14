@@ -82,7 +82,12 @@ async def create_post(
 
 @router.get("/notices")
 async def get_notices(db: AsyncSession = Depends(get_service_db)):
-    """공지사항 목록 (인증 불필요). 지역 게시판 상단 고정 및 첫 로그인 팝업용."""
+    """공지사항 목록 (인증 불필요). 지역 게시판 상단 고정용.
+
+    게시판에 고정되는 공지(지역별 학원가 안내 등)와 첫 진입 시 뜨는 팝업은
+    성격이 달라서(팝업은 시스템 사용법·오픈 지역 현황처럼 전역 안내용) 완전히
+    분리된 board_type='popup' 콘텐츠를 쓴다 — /posts/popup 참고.
+    """
     from sqlalchemy import select as sa_select
     from app.models.service_models import Post as PostModel
 
@@ -103,6 +108,30 @@ async def get_notices(db: AsyncSession = Depends(get_service_db)):
         }
         for p in posts
     ]
+
+
+@router.get("/popup")
+async def get_popup_notice(db: AsyncSession = Depends(get_service_db)):
+    """첫 진입 시(혹은 새 내용이 있을 때) 뜨는 전역 팝업 안내 — 게시판에는
+    고정되지 않는 별도 콘텐츠(board_type='popup'). 없으면 null."""
+    from sqlalchemy import select as sa_select
+    from app.models.service_models import Post as PostModel
+
+    stmt = (
+        sa_select(PostModel)
+        .where(PostModel.board_type == "popup", PostModel.is_hidden == False, PostModel.is_deleted == False)  # noqa: E712
+        .order_by(PostModel.created_at.desc())
+        .limit(1)
+    )
+    post = (await db.execute(stmt)).scalars().first()
+    if not post:
+        return None
+    return {
+        "id": post.id,
+        "title": post.title,
+        "content": post.content,
+        "created_at": post.created_at.isoformat() if post.created_at else None,
+    }
 
 
 @router.get("/preview")

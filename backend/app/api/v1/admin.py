@@ -536,6 +536,105 @@ async def force_delete_post(
     await db.commit()
 
 
+# ── 공지 관리 ─────────────────────────────────────────
+# 일반 게시글 수정(PATCH /posts/{id})은 작성자 본인만 가능하고 target_region도
+# 못 바꾼다 — 공지는 관리자 계정이 여러 명일 수 있고(작성자와 수정자가 다를
+# 수 있음) 노출 범위(target_region)도 바꿔야 할 일이 많아 별도 엔드포인트로
+# 분리했다.
+
+class NoticeUpdateRequest(BaseModel):
+    title: str
+    content: str
+    target_region: Optional[str] = None
+    target_school_code: Optional[str] = None
+
+
+class NoticeBulkRequest(BaseModel):
+    # "{region}"이 있으면 지역명으로 치환된다 (예: "📍 {region} 학원가 현황 안내")
+    title_template: str
+    content_template: str
+    target_regions: list[str]
+
+
+@router.get("/notices")
+async def list_notices_admin(
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    posts = (await db.execute(
+        select(Post)
+        .where(Post.board_type == "notice", Post.is_deleted == False)
+        .order_by(desc(Post.created_at))
+    )).scalars().all()
+    return [
+        {
+            "id": p.id,
+            "title": p.title,
+            "content": p.content,
+            "target_region": p.target_region,
+            "school_code": p.school_code,
+            "author_id": p.author_id,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+        }
+        for p in posts
+    ]
+
+
+@router.patch("/notices/{notice_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def update_notice_admin(
+    notice_id: int,
+    req: NoticeUpdateRequest,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    post = (await db.execute(
+        select(Post).where(Post.id == notice_id, Post.board_type.in_(("notice", "popup")))
+    )).scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="공지를 찾을 수 없습니다.")
+    post.title = req.title
+    post.content = req.content
+    post.target_region = req.target_region
+    post.school_code = req.target_school_code
+    post.updated_at = datetime.utcnow()
+    db.add(AdminAction(admin_id=admin.id, action_type="update_notice", target_type="post", target_id=notice_id))
+    await db.commit()
+
+
+@router.post("/notices/bulk")
+async def bulk_upsert_notices_admin(
+    req: NoticeBulkRequest,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """여러 지역에 같은 공지를 한 번에 등록/갱신. 지역별로 이미 같은 제목의
+    공지가 있으면 내용만 갱신하고, 없으면 새로 만든다(멱등 — 여러 번 실행해도
+    지역당 하나만 유지)."""
+    results = []
+    for region in req.target_regions:
+        title = req.title_template.replace("{region}", region)
+        content = req.content_template.replace("{region}", region)
+        existing = (await db.execute(
+            select(Post).where(Post.board_type == "notice", Post.target_region == region, Post.title == title)
+        )).scalar_one_or_none()
+        if existing:
+            existing.content = content
+            existing.updated_at = datetime.utcnow()
+            results.append({"region": region, "action": "updated", "id": existing.id})
+        else:
+            post = Post(
+                author_id=admin.id, board_type="notice", target_region=region,
+                title=title, content=content, is_anonymous=False, nickname_type="anon",
+            )
+            db.add(post)
+            await db.flush()
+            results.append({"region": region, "action": "created", "id": post.id})
+    db.add(AdminAction(admin_id=admin.id, action_type="bulk_notice", target_type="post", detail=f"{len(results)}개 지역"))
+    await db.commit()
+    return {"results": results}
+
+
 # ── 신고 목록 ─────────────────────────────────────────
 
 @router.get("/reports")

@@ -1891,7 +1891,7 @@ class _SettingsTab extends ConsumerStatefulWidget {
 }
 
 class _SettingsTabState extends ConsumerState<_SettingsTab> with SingleTickerProviderStateMixin {
-  late final TabController _tc = TabController(length: 3, vsync: this);
+  late final TabController _tc = TabController(length: 4, vsync: this);
 
   @override
   void dispose() {
@@ -1905,12 +1905,12 @@ class _SettingsTabState extends ConsumerState<_SettingsTab> with SingleTickerPro
       TabBar(
         controller: _tc,
         labelStyle: const TextStyle(fontSize: 12),
-        tabs: const [Tab(text: '공지 작성'), Tab(text: '금칙어'), Tab(text: '관리 로그')],
+        tabs: const [Tab(text: '공지 작성'), Tab(text: '공지 관리'), Tab(text: '금칙어'), Tab(text: '관리 로그')],
       ),
       Expanded(
         child: TabBarView(
           controller: _tc,
-          children: const [_NoticePane(), _ProfanityPane(), _LogPane()],
+          children: const [_NoticePane(), _NoticeManagePane(), _ProfanityPane(), _LogPane()],
         ),
       ),
     ]);
@@ -1935,6 +1935,10 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
   // 결정한다. 예전엔 이 값을 그대로 board_type으로 보내서 "지역" 선택 시
   // 실제로는 board_type='region'인 평범한 게시글이 만들어졌고, 그 결과
   // 공지 고정이 전혀 동작하지 않고 인기글에 밀려 보이는 버그가 있었다.
+  // 'notice': 게시판 상단에 고정되는 일반 공지. 'popup': 첫 진입 시 뜨는
+  // 전역 팝업(시스템 사용법·오픈 지역 현황 등, 게시판에는 고정되지 않고
+  // 최신 1개만 유지됨) — /posts/popup, region_board_screen.dart 참고.
+  String _noticeType = 'notice';
   String _scope = 'global';
   String? _targetRegion;
   String? _targetSchoolCode;
@@ -1977,11 +1981,11 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('제목과 내용을 입력해주세요.')));
       return;
     }
-    if (_scope == 'region' && _targetRegion == null) {
+    if (_noticeType == 'notice' && _scope == 'region' && _targetRegion == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('지역을 선택해주세요.')));
       return;
     }
-    if (_scope == 'school' && _targetSchoolCode == null) {
+    if (_noticeType == 'notice' && _scope == 'school' && _targetSchoolCode == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('학교를 선택해주세요.')));
       return;
     }
@@ -1991,10 +1995,12 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
       final body = <String, dynamic>{
         'title': _titleCtrl.text,
         'content': _contentCtrl.text,
-        'board_type': 'notice',
+        'board_type': _noticeType,
       };
-      if (_scope == 'region' && _targetRegion != null) body['target_region'] = _targetRegion;
-      if (_scope == 'school' && _targetSchoolCode != null) body['target_school_code'] = _targetSchoolCode;
+      if (_noticeType == 'notice') {
+        if (_scope == 'region' && _targetRegion != null) body['target_region'] = _targetRegion;
+        if (_scope == 'school' && _targetSchoolCode != null) body['target_school_code'] = _targetSchoolCode;
+      }
       await dio.post('/posts', data: body);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('공지 작성 완료')));
@@ -2018,6 +2024,23 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        DropdownButtonFormField<String>(
+          value: _noticeType,
+          decoration: const InputDecoration(
+            labelText: '공지 유형', border: OutlineInputBorder(), isDense: true),
+          items: const [
+            DropdownMenuItem(value: 'notice', child: Text('게시판 공지 (상단 고정)')),
+            DropdownMenuItem(value: 'popup', child: Text('전역 팝업 (첫 진입 시 노출, 최신 1개만 유지)')),
+          ],
+          onChanged: (v) => setState(() => _noticeType = v!),
+        ),
+        if (_noticeType == 'popup') ...[
+          const SizedBox(height: 6),
+          Text('팝업은 게시판에는 고정되지 않고, 새로 등록하면 이전 팝업을 대체해요.',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+        ],
+        if (_noticeType == 'notice') ...[
+        const SizedBox(height: 10),
         DropdownButtonFormField<String>(
           value: _scope,
           decoration: const InputDecoration(
@@ -2116,6 +2139,7 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
               ),
           ],
         ],
+        ], // _noticeType == 'notice'
         const SizedBox(height: 10),
         TextField(
           controller: _titleCtrl,
@@ -2131,8 +2155,12 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
             alignLabelWithHint: true),
         ),
         const SizedBox(height: 4),
-        Text('작성한 공지는 해당 범위의 게시판 상단에 자동으로 고정돼요.',
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+        Text(
+          _noticeType == 'notice'
+              ? '작성한 공지는 해당 범위의 게시판 상단에 자동으로 고정돼요.'
+              : '등록하면 기존 팝업을 대체하고, 유저가 앱에 처음 진입할 때(또는 새 팝업이 있을 때) 안내돼요.',
+          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+        ),
         const SizedBox(height: 10),
         FilledButton(
           onPressed: _saving ? null : _submit,
@@ -2142,6 +2170,256 @@ class _NoticePaneState extends ConsumerState<_NoticePane> {
               : const Text('공지 작성'),
         ),
       ]),
+    );
+  }
+}
+
+// ── 공지 관리(조회/수정/일괄 등록) ────────────────────────
+
+class _NoticeManagePane extends ConsumerStatefulWidget {
+  const _NoticeManagePane();
+
+  @override
+  ConsumerState<_NoticeManagePane> createState() => _NoticeManagePaneState();
+}
+
+class _NoticeManagePaneState extends ConsumerState<_NoticeManagePane> {
+  List<Map<String, dynamic>> _notices = [];
+  List<Map<String, dynamic>> _popups = [];
+  bool _loading = true;
+
+  static const _regions = [
+    '강남구','강동구','강북구','강서구','관악구','광진구','구로구','금천구',
+    '노원구','도봉구','동대문구','동작구','마포구','서대문구','서초구','성동구',
+    '성북구','송파구','양천구','영등포구','용산구','은평구','종로구','중구','중랑구',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final dio = ref.read(adminDioProvider);
+      final resp = await dio.get('/admin/notices');
+      final all = List<Map<String, dynamic>>.from(resp.data as List);
+      if (mounted) {
+        setState(() {
+          _notices = all;
+          _loading = false;
+        });
+      }
+      // 팝업(board_type='popup')은 일반 게시글 목록에서 안 나오니(list_posts
+      // 대상이 아님) /posts/popup으로 별도 조회 — 최신 1개만 있음.
+      final popupResp = await dio.get('/posts/popup');
+      if (mounted && popupResp.data != null) {
+        setState(() => _popups = [Map<String, dynamic>.from(popupResp.data as Map)]);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _openEditDialog(Map<String, dynamic> notice, {required bool isPopup}) async {
+    final titleCtrl = TextEditingController(text: notice['title'] as String? ?? '');
+    final contentCtrl = TextEditingController(text: notice['content'] as String? ?? '');
+    String? targetRegion = notice['target_region'] as String?;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(isPopup ? '팝업 수정' : '공지 수정'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              if (!isPopup) ...[
+                DropdownButtonFormField<String?>(
+                  value: targetRegion,
+                  decoration: const InputDecoration(labelText: '타겟 지역 (미지정 시 전체)', border: OutlineInputBorder(), isDense: true),
+                  items: [
+                    const DropdownMenuItem<String?>(value: null, child: Text('전체 게시판')),
+                    ..._regions.map((r) => DropdownMenuItem<String?>(value: r, child: Text(r))),
+                  ],
+                  onChanged: (v) => setDialogState(() => targetRegion = v),
+                ),
+                const SizedBox(height: 10),
+              ],
+              TextField(
+                controller: titleCtrl,
+                decoration: const InputDecoration(labelText: '제목', border: OutlineInputBorder(), isDense: true),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: contentCtrl,
+                maxLines: 10,
+                decoration: const InputDecoration(labelText: '내용', border: OutlineInputBorder(), alignLabelWithHint: true),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('저장')),
+          ],
+        ),
+      ),
+    );
+    if (saved != true || !mounted) return;
+
+    try {
+      final dio = ref.read(adminDioProvider);
+      if (isPopup) {
+        // 팝업 전용 수정 API가 따로 없어도 /posts/{id} PATCH는 작성자(관리자
+        // 계정 #4)만 가능해 다른 관리자 계정에서는 실패할 수 있다 — 그래서
+        // 공지와 동일하게 /admin/notices/{id}를 그대로 재사용한다(팝업도
+        // Post 행이라 title/content만 바꾸면 되고 target_region은 null 유지).
+        await dio.patch('/admin/notices/${notice['id']}', data: {
+          'title': titleCtrl.text,
+          'content': contentCtrl.text,
+          'target_region': null,
+        });
+      } else {
+        await dio.patch('/admin/notices/${notice['id']}', data: {
+          'title': titleCtrl.text,
+          'content': contentCtrl.text,
+          'target_region': targetRegion,
+        });
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('저장했어요.')));
+        bumpBoardRefresh(ref);
+        _load();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('저장 실패: $e')));
+    }
+  }
+
+  Future<void> _openBulkDialog() async {
+    final titleCtrl = TextEditingController(text: '📍 {region} 학원가 현황 안내');
+    final contentCtrl = TextEditingController();
+    final selected = <String>{};
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('여러 지역에 일괄 등록'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const Text('제목/내용에 {region}을 넣으면 지역명으로 자동 치환돼요. 이미 같은 제목의 공지가 있는 지역은 내용만 갱신돼요.',
+                    style: TextStyle(fontSize: 11, color: Colors.grey)),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: titleCtrl,
+                  decoration: const InputDecoration(labelText: '제목 (템플릿)', border: OutlineInputBorder(), isDense: true),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: contentCtrl,
+                  maxLines: 8,
+                  decoration: const InputDecoration(labelText: '내용 (템플릿)', border: OutlineInputBorder(), alignLabelWithHint: true),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: _regions.map((r) {
+                    final sel = selected.contains(r);
+                    return FilterChip(
+                      label: Text(r, style: const TextStyle(fontSize: 11)),
+                      selected: sel,
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (_) => setDialogState(() => sel ? selected.remove(r) : selected.add(r)),
+                    );
+                  }).toList(),
+                ),
+              ]),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+            FilledButton(
+              onPressed: selected.isEmpty ? null : () => Navigator.pop(ctx, true),
+              child: const Text('일괄 등록'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result != true || !mounted) return;
+
+    try {
+      final dio = ref.read(adminDioProvider);
+      final resp = await dio.post('/admin/notices/bulk', data: {
+        'title_template': titleCtrl.text,
+        'content_template': contentCtrl.text,
+        'target_regions': selected.toList(),
+      });
+      final results = List<Map<String, dynamic>>.from(resp.data['results'] as List);
+      final created = results.where((r) => r['action'] == 'created').length;
+      final updated = results.where((r) => r['action'] == 'updated').length;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('완료: 신규 $created개, 갱신 $updated개')),
+        );
+        bumpBoardRefresh(ref);
+        _load();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('일괄 등록 실패: $e')));
+    }
+  }
+
+  Widget _tile(Map<String, dynamic> item, {required bool isPopup}) {
+    final region = item['target_region'] as String?;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        title: Text(item['title'] as String? ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          isPopup ? '전역 팝업' : (region != null ? '$region 게시판' : '전체 게시판'),
+          style: const TextStyle(fontSize: 11),
+        ),
+        trailing: const Icon(Icons.edit_outlined, size: 18),
+        onTap: () => _openEditDialog(item, isPopup: isPopup),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          FilledButton.icon(
+            onPressed: _openBulkDialog,
+            icon: const Icon(Icons.playlist_add_check, size: 18),
+            label: const Text('여러 지역에 일괄 등록'),
+          ),
+          const SizedBox(height: 16),
+          Text('전역 팝업 (${_popups.length})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          const SizedBox(height: 8),
+          if (_popups.isEmpty)
+            const Text('등록된 팝업이 없어요.', style: TextStyle(fontSize: 12, color: Colors.grey))
+          else
+            ..._popups.map((p) => _tile(p, isPopup: true)),
+          const SizedBox(height: 20),
+          Text('게시판 공지 (${_notices.length})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+          const SizedBox(height: 8),
+          if (_notices.isEmpty)
+            const Text('등록된 공지가 없어요.', style: TextStyle(fontSize: 12, color: Colors.grey))
+          else
+            ..._notices.map((n) => _tile(n, isPopup: false)),
+        ],
+      ),
     );
   }
 }

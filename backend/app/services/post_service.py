@@ -83,7 +83,7 @@ def _author_display_name(post_or_comment, author: User) -> str | None:
 
 
 async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
-    if req.board_type == "notice" and not user.is_admin:
+    if req.board_type in ("notice", "popup") and not user.is_admin:
         raise ValueError("공지사항은 관리자만 작성할 수 있습니다.")
     if req.board_type in ("school", "grade", "free", "region") and user.member_grade != "member" and not user.is_admin:
         raise ValueError("학부모 인증 정회원만 게시글을 작성할 수 있습니다.")
