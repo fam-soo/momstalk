@@ -29,17 +29,11 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
   List<Map<String, dynamic>> _previewPosts = [];
   List<Map<String, dynamic>> _notices = [];
   int _previewTaps = 0;
-  String _childGroup = 'all';
   bool _searchActive = false;
   String _searchQuery = '';
   final _searchCtrl = TextEditingController();
   final _searchFocus = FocusNode();
   static const _tapLimit = 2;
-  static const _childGroupOptions = [
-    ('all', '전체'),
-    ('school_age', '초중고맘'),
-    ('preschool', '미취학맘'),
-  ];
   static const _prefKey = 'preview_taps_region';
   static const _seenNoticePref = 'seen_notice_id';
 
@@ -211,19 +205,7 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
         // 공지가 배너(접힌 줄+펼친 줄)와 피드 카드로 최대 3중 중복 노출됐다.
         body: PostListWidget(
           boardType: 'region',
-          childGroup: _childGroup,
           searchQuery: _searchQuery,
-          extraFilterChips: [
-            for (final opt in _childGroupOptions) ...[
-              ChoiceChip(
-                label: Text(opt.$2, style: const TextStyle(fontSize: 12)),
-                selected: _childGroup == opt.$1,
-                visualDensity: VisualDensity.compact,
-                onSelected: (_) => setState(() => _childGroup = opt.$1),
-              ),
-              const SizedBox(width: 6),
-            ],
-          ],
         ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => context.push('/board/write?board_type=region'),

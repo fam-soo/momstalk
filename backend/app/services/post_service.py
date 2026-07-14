@@ -4,7 +4,7 @@ from sqlalchemy import select, func, or_, and_
 from sqlalchemy.exc import IntegrityError
 
 from app.core.profanity import check_profanity
-from app.models.service_models import Block, Comment, Like, Post, Report, Scrap, School, User, UserChild
+from app.models.service_models import Block, Comment, Like, Post, Report, Scrap, School, User
 from app.schemas.post import PostCreate, PostListItem, PostResponse, ScrapResponse, PostUpdate
 from app.services import temperature_service
 from app.services.school_unlock_service import get_unlock_status
@@ -209,7 +209,6 @@ async def list_posts(
     q: str | None = None,
     sort: str = "recent",       # "recent" | "popular"
     cursor: int | None = None,  # cursor 기반 페이지네이션: 마지막 post.id
-    child_group: str = "all",   # "all" | "school_age" | "preschool" — region 게시판 전용
 ) -> "PostListResponse":
     from app.schemas.post import PostListResponse
 
@@ -257,16 +256,6 @@ async def list_posts(
                     ),
                 )
             )
-            if child_group in ("school_age", "preschool"):
-                child_ids_query = select(UserChild.id).where(
-                    UserChild.school_type == "preschool" if child_group == "preschool"
-                    else UserChild.school_type.isnot(None) & (UserChild.school_type != "preschool")
-                )
-                query = query.where(
-                    Post.author_id.in_(
-                        select(User.id).where(User.active_child_id.in_(child_ids_query))
-                    )
-                )
         elif board_type == "free":
             pass
         else:
