@@ -57,7 +57,11 @@ async def get_current_user(
     try:
         await maybe_promote_grade(user, db)
     except Exception:
+        # maybe_promote_grade가 내부에서 이미 rollback+refresh를 하지만,
+        # 예상 못 한 경로로 여기까지 예외가 올라온 경우에도 user를 안전한
+        # 상태로 되돌려 인증 자체가 깨지지 않도록 한 번 더 방어한다.
         await db.rollback()
+        await db.refresh(user)
 
     return user
 
