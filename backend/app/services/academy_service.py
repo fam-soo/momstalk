@@ -822,6 +822,23 @@ async def recommend_academies(user: User, req: RecommendationRequest, db: AsyncS
         weight_used = 0.0
         reasons: list[str] = []
 
+        # 0) 과목 일치 정도 — 10% (항상 반영). curriculum_focus/teacher_styles가
+        # 채워진 학원이 각각 0.5%/12% 뿐이라(스크래핑 데이터 커버리지 한계),
+        # 그 신호에만 의존하면 절대다수 학원이 30점 문턱을 못 넘고 폴백으로
+        # 밀려난다 — SQL에서 이미 과목이 하나라도 일치해야 후보에 들어오므로,
+        # "몇 개나 일치하는지"만이라도 항상 점수에 반영해 이 쏠림을 완화한다.
+        if req.subjects:
+            academy_subjects = set(a.subjects or [])
+            subj_hits = sum(
+                1 for s in req.subjects
+                if s in academy_subjects or any(kw in (a.name or "") for kw in _SUBJECT_KEYWORDS.get(s, [s]))
+            )
+            comp = subj_hits / len(req.subjects)
+            score += comp * 10
+            weight_used += 10
+            if comp >= 0.5:
+                reasons.append("찾으시는 과목을 다뤄요")
+
         # 1) 수준(선행/심화/내신 등) 매칭 — 25%
         level_scores = []
         for subj in req.subjects:
