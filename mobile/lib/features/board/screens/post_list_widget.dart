@@ -345,6 +345,16 @@ class _PostCardState extends State<PostCard> {
                             style: TextStyle(fontSize: 10, color: Theme.of(ctx).colorScheme.onSecondaryContainer, fontWeight: FontWeight.w600)),
                       ),
                     ],
+                    Text(time, style: const TextStyle(fontSize: 11.5, color: Colors.grey)),
+                    if ((post['author_badge'] as String?)?.isNotEmpty == true) ...[
+                      const SizedBox(width: 4),
+                      _AuthorBadge(label: post['author_badge'] as String),
+                    ],
+                    if (widget.isAdmin) ...[
+                      const SizedBox(width: 4),
+                      _adminLocationLabel(ctx),
+                    ],
+                    const Text(' · ', style: TextStyle(color: Colors.grey, fontSize: 11.5)),
                     Flexible(
                       child: Text(
                         (post['author_display_name'] as String?)?.isNotEmpty == true
@@ -355,16 +365,6 @@ class _PostCardState extends State<PostCard> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if ((post['author_badge'] as String?)?.isNotEmpty == true) ...[
-                      const SizedBox(width: 4),
-                      _AuthorBadge(label: post['author_badge'] as String),
-                    ],
-                    if (widget.isAdmin) ...[
-                      const SizedBox(width: 4),
-                      _adminLocationLabel(ctx),
-                    ],
-                    const Text(' · ', style: TextStyle(color: Colors.grey, fontSize: 11.5)),
-                    Text(time, style: const TextStyle(fontSize: 11.5, color: Colors.grey)),
                   ]),
                 ),
                 // 오른쪽: 좋아요·댓글·조회수·더보기 — 항상 우측 끝 정렬 고정
