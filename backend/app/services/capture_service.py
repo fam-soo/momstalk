@@ -274,7 +274,11 @@ async def approve_capture(capture_id: int, admin: User, db: AsyncSession) -> Non
             user.grade = capture.input_grade
 
         push_title = "자녀 학교 인증 완료!"
-        push_body = f"{capture.input_school_name} 학부모로 확인되었습니다."
+        push_body = (
+            "미취학맘으로 확인되었습니다."
+            if capture.input_school_type == "preschool" or not capture.input_school_name
+            else f"{capture.input_school_name} 학부모로 확인되었습니다."
+        )
     else:
         # 최초 가입 승인: 정회원 승급
         user.member_grade = "member"
