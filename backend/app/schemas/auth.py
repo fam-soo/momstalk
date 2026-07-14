@@ -114,6 +114,13 @@ class CaptureSubmitRequest(BaseModel):
     region: str = ""
     expected_entry_year: Optional[int] = None
 
+    @field_validator("school_type")
+    @classmethod
+    def check_school_type(cls, v: str) -> str:
+        if v not in ("elementary", "middle", "high", "preschool"):
+            raise ValueError("school_type은 elementary / middle / high / preschool 중 하나여야 합니다.")
+        return v
+
 
 class InviteGenerateResponse(BaseModel):
     token: str

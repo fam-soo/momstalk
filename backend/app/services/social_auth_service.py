@@ -65,7 +65,7 @@ async def kakao_login(
                 school_code="__pending__",
                 school_name="",
                 grade=1,
-                school_type="",
+                school_type=None,
                 social_provider="kakao",
                 member_grade="lurker",
                 auth_pending=False,
