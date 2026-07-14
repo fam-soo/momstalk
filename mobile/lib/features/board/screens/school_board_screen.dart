@@ -637,7 +637,8 @@ class _SchoolLockedView extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '같은 학교 학부모가 모이면 자동으로 열려요.\n지금 $memberCount명 모였고, $remaining명 더 모이면 이용할 수 있어요.',
+            '같은 학교 학부모 중 학원 후기를 남긴 분이 모이면 자동으로 열려요.\n'
+            '지금 $memberCount명이 후기를 남겼고, $remaining명 더 남기면 이용할 수 있어요.',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 13, height: 1.5, color: Colors.grey.shade600),
           ),
@@ -657,10 +658,20 @@ class _SchoolLockedView extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
+              onPressed: () => context.go('/academy'),
+              icon: const Icon(Icons.rate_review_outlined, size: 18),
+              label: const Text('학원 후기 작성하러 가기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
               onPressed: onInvite,
               icon: const Icon(Icons.person_add_alt_1, size: 18),
               label: const Text('같은 학교 학부모 초대하기', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
             ),
           ),
           const SizedBox(height: 8),
@@ -708,7 +719,7 @@ class _FirstToOpenBanner extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '${schoolName.isNotEmpty ? schoolName : '우리 학교'}가 맘스토크 최초로 게시판을 여는 학교가 되어보세요!\n학부모를 초대할수록 더 빨리 열려요.',
+          '${schoolName.isNotEmpty ? schoolName : '우리 학교'}가 맘스토크 최초로 게시판을 여는 학교가 되어보세요!\n학부모를 초대하고, 학원 후기를 남길수록 더 빨리 열려요.',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, height: 1.5, color: Colors.grey.shade700),
         ),

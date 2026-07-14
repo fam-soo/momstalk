@@ -725,10 +725,10 @@ class _UserListPaneState extends ConsumerState<_UserListPane> with AutomaticKeep
             child: Row(children: [
               Expanded(
                 child: Text(
-                  '$_schoolName · 정회원 ${_schoolUnlock!['member_count']}/${_schoolUnlock!['threshold']}명'
+                  '$_schoolName · 학원 후기 작성 정회원 ${_schoolUnlock!['member_count']}/${_schoolUnlock!['threshold']}명'
                   '${(_schoolUnlock!['unlocked'] as bool? ?? false) ? ' (언락됨)' : ''}'
                   ' · 전체 가입(인증대기 포함) ${_schoolUnlock!['total_registered'] ?? '-'}명'
-                  '\n학교 게시판 언락/대시보드는 "정회원"만 세요 — 인증 전 계정까지 세면 문턱 의미가 없어져요.',
+                  '\n학교 게시판 언락 기준은 "정회원 10명" 또는 "학원 후기를 쓴 정회원 10명" 중 먼저 충족되는 쪽이에요(이미 열린 학교는 계속 열린 채 유지).',
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ),
