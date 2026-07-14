@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import JSONB as PGJSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.profanity import check_profanity
-from app.models.service_models import Academy, AcademyReview, AcademyReviewUnlock, User
+from app.models.service_models import Academy, AcademyReview, AcademyReviewUnlock, User, UserChild
 from app.schemas.academy import (
     AcademyReviewCreate,
     AcademyReviewResponse,
@@ -749,17 +749,37 @@ def _constraint_excludes(constraint: str, academy: Academy, stats: dict) -> bool
     return False
 
 
+_ACADEMY_SCHOOL_TYPE_LABEL = {"elementary": "초등학교", "middle": "중학교", "high": "고등학교"}
+
+
 async def recommend_academies(user: User, req: RecommendationRequest, db: AsyncSession) -> RecommendationResponse:
+    # 학교급(초/중/고) 정보 없이 추천하면 초등학생 자녀에게 고등부 학원이
+    # 섞여 나오는 등 엉뚱한 결과가 나갈 수 있어, 어떤 자녀를 위한 추천인지
+    # 반드시 선택하도록 강제한다(설문 첫 단계에서 자녀 선택 UI로 요구).
+    child_result = await db.execute(
+        select(UserChild).where(UserChild.id == req.child_id, UserChild.user_id == user.id)
+    )
+    child = child_result.scalar_one_or_none()
+    if not child:
+        raise ValueError("추천받을 자녀를 선택해주세요.")
+
     # regions(복수)가 오면 그걸 우선 사용 — 검색 필터처럼 기본 지역 + 추가 지역을
     # 선택할 수 있게 하기 전에는 region(단일)만 있어서 다른 지역 학원까지 섞여
     # 나오는 문제가 있었다(빈 문자열이면 필터 자체가 적용 안 됨).
     regions = [r for r in (req.regions or []) if r] or (
         [req.region] if req.region else
-        ([user.active_child.region] if user.active_child and user.active_child.region else
+        ([child.region] if child.region else
          ([user.region] if user.region else []))
     )
 
     filters = []
+    # 미취학은 학원 school_type이 특정 학교급으로 좁혀지지 않은 경우가 많아
+    # (유아 대상 학원은 school_type이 비어있거나 다양함) 필터를 적용하지 않고,
+    # 초/중/고는 자녀 학교급과 일치하는 학원만 추천한다.
+    if child.school_type and child.school_type != "preschool":
+        mapped = _ACADEMY_SCHOOL_TYPE_LABEL.get(child.school_type)
+        if mapped:
+            filters.append(Academy.school_type.ilike(f"%{mapped}%"))
     if regions:
         if len(regions) == 1:
             filters.append(Academy.region.ilike(f"%{regions[0]}%"))

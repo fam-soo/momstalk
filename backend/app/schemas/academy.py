@@ -154,6 +154,7 @@ class RecommendationRequest(BaseModel):
     note: Optional[str] = None                          # 5단계 (선택, 저장 안 함 — 표시만)
     region: Optional[str] = None                        # 레거시 단일 지역 (regions 없을 때 fallback)
     regions: list[str] = []                             # 검색 대상 지역 (기본 지역 + 추가 선택, 복수)
+    child_id: int                                       # 추천 대상 자녀 (필수 — 학교급 필터링에 사용)
 
     @field_validator("subjects")
     @classmethod

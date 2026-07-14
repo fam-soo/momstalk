@@ -22,6 +22,28 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
   List<Map<String, dynamic>>? _results;
   bool _isFallback = false;
 
+  // 0단계 — 추천 대상 자녀 (필수). 학교급 정보 없이 추천하면 초등학생
+  // 자녀에게 고등부 학원이 섞여 나오는 등 결과가 부정확해질 수 있어,
+  // 어떤 자녀를 위한 추천인지 반드시 먼저 선택하게 한다.
+  List<Map<String, dynamic>> _children = [];
+  bool _childrenLoading = true;
+  int? _selectedChildId;
+
+  static const _schoolTypeLabel = {'elementary': '초', 'middle': '중', 'high': '고'};
+
+  String _childLabel(Map<String, dynamic> c) {
+    final schoolType = c['school_type'] as String?;
+    final name = c['school_name'] as String?;
+    if (schoolType == 'preschool') return '미취학';
+    final grade = c['grade'] as int?;
+    if (name != null && name.isNotEmpty) {
+      return grade != null ? '$name $grade학년' : name;
+    }
+    final level = _schoolTypeLabel[schoolType];
+    if (level != null && grade != null) return '$level$grade';
+    return '자녀 ${c['id']}';
+  }
+
   // 1단계
   final Set<String> _subjects = {};
   static const _subjectOptions = ['국어', '영어', '수학'];
@@ -69,17 +91,35 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
   @override
   void initState() {
     super.initState();
-    _loadUserRegion();
+    _loadChildren();
   }
 
-  Future<void> _loadUserRegion() async {
+  Future<void> _loadChildren() async {
     try {
       final dio = ref.read(dioProvider);
-      final resp = await dio.get('/auth/me');
-      final p = resp.data as Map<String, dynamic>;
-      final region = p['region'] as String? ?? '';
-      if (mounted && region.isNotEmpty) setState(() => _userRegion = region);
-    } catch (_) {}
+      final meResp = await dio.get('/auth/me');
+      final me = meResp.data as Map<String, dynamic>;
+      final childrenResp = await dio.get('/auth/me/children');
+      final children = (childrenResp.data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      if (!mounted) return;
+      setState(() {
+        _children = children;
+        _childrenLoading = false;
+        if (children.length == 1) {
+          _selectedChildId = children.first['id'] as int;
+          _applyChildRegion(children.first);
+        }
+      });
+      final region = me['region'] as String? ?? '';
+      if (mounted && region.isNotEmpty && _userRegion.isEmpty) setState(() => _userRegion = region);
+    } catch (_) {
+      if (mounted) setState(() => _childrenLoading = false);
+    }
+  }
+
+  void _applyChildRegion(Map<String, dynamic> child) {
+    final region = child['region'] as String?;
+    if (region != null && region.isNotEmpty) _userRegion = region;
   }
 
   @override
@@ -91,6 +131,8 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
   bool get _canProceed {
     switch (_step) {
       case 0:
+        return _selectedChildId != null;
+      case 1:
         return _subjects.isNotEmpty;
       default:
         return true;
@@ -102,6 +144,7 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
     try {
       final dio = ref.read(dioProvider);
       final resp = await dio.post('/academies/recommendations', data: {
+        'child_id': _selectedChildId,
         'subjects': _subjects.toList(),
         'subject_levels': {
           for (final s in _subjects)
@@ -135,12 +178,12 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
   }
 
   void _next() {
-    if (_step == 3) {
+    if (_step == 4) {
       // 4단계(목표/제약) 다음은 선택 단계(5단계)를 건너뛸지 물을 필요 없이 바로 5단계로
-      setState(() => _step = 4);
+      setState(() => _step = 5);
       return;
     }
-    if (_step == 4) {
+    if (_step == 5) {
       _submit();
       return;
     }
@@ -151,7 +194,7 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('학원 추천받기')),
-      body: _step == 5 ? _buildResults() : _buildSurveyStep(),
+      body: _step == 6 ? _buildResults() : _buildSurveyStep(),
       bottomNavigationBar: _step == 5
           ? null
           : SafeArea(
@@ -173,7 +216,7 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
                       style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
                       child: _loading
                           ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : Text(_step == 4 ? '추천받기' : '다음'),
+                          : Text(_step == 5 ? '추천받기' : '다음'),
                     ),
                   ),
                 ]),
@@ -186,17 +229,79 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        LinearProgressIndicator(value: (_step + 1) / 5),
+        LinearProgressIndicator(value: (_step + 1) / 6),
         const SizedBox(height: 20),
         switch (_step) {
-          0 => _stepSubjects(),
-          1 => _stepLevels(),
-          2 => _stepTraits(),
-          3 => _stepGoals(),
+          0 => _stepChild(),
+          1 => _stepSubjects(),
+          2 => _stepLevels(),
+          3 => _stepTraits(),
+          4 => _stepGoals(),
           _ => _stepNote(),
         },
       ],
     );
+  }
+
+  Widget _stepChild() {
+    if (_childrenLoading) {
+      return const Padding(
+        padding: EdgeInsets.only(top: 40),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_children.isEmpty) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('등록된 자녀 정보가 없어요', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Text('학교급(초/중/고)에 맞는 학원만 추천해드리려면 자녀 등록이 필요해요.',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+        const SizedBox(height: 16),
+        OutlinedButton(
+          onPressed: () => context.push('/profile/add-child'),
+          child: const Text('자녀 등록하러 가기'),
+        ),
+      ]);
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('어떤 자녀를 위한 추천인가요?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 4),
+      Text('자녀의 학교급에 맞는 학원만 골라서 추천해드려요.', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+      const SizedBox(height: 16),
+      ..._children.map((c) {
+        final id = c['id'] as int;
+        final selected = _selectedChildId == id;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => setState(() {
+              _selectedChildId = id;
+              _applyChildRegion(c);
+            }),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: selected ? Theme.of(context).colorScheme.primary : Colors.grey.shade300,
+                  width: selected ? 2 : 1,
+                ),
+                color: selected ? Theme.of(context).colorScheme.primary.withOpacity(0.06) : null,
+              ),
+              child: Row(children: [
+                Icon(
+                  selected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                  color: selected ? Theme.of(context).colorScheme.primary : Colors.grey.shade400,
+                ),
+                const SizedBox(width: 10),
+                Text(_childLabel(c), style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+              ]),
+            ),
+          ),
+        );
+      }),
+    ]);
   }
 
   Widget _stepSubjects() {
