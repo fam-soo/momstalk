@@ -50,7 +50,14 @@ async def get_current_user(
                 headers={"X-Suspend-Until": user.suspended_until.isoformat()},
             )
 
-    await maybe_promote_grade(user, db)
+    # 학년 자동 승급은 부가 기능이라, 여기서 실패해도 로그인/인증 자체가
+    # 깨지면 안 된다. 실패 시 세션을 롤백해두지 않으면 이 트랜잭션이 aborted
+    # 상태로 남아 이후 이 요청에서 실행되는 모든 쿼리가 연쇄로 실패한다
+    # (마이그레이션 직후 미승급 유저가 한꺼번에 몰려 발생했던 장애의 원인).
+    try:
+        await maybe_promote_grade(user, db)
+    except Exception:
+        await db.rollback()
 
     return user
 
