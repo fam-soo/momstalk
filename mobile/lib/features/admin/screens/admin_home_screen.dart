@@ -1067,13 +1067,21 @@ class _CapturesPaneState extends ConsumerState<_CapturesPane> with AutomaticKeep
               _statusChip('자녀 추가', Colors.purple)
             else
               _statusChip('신규 가입', Colors.blue),
+            if (c['input_school_type'] == 'preschool') ...[
+              const SizedBox(width: 6),
+              _statusChip('미취학', Colors.orange),
+            ],
             const Spacer(),
             Text(_timeAgo(c['created_at'] as String?),
                 style: const TextStyle(fontSize: 11, color: Colors.grey)),
           ]),
           const SizedBox(height: 4),
-          Text('${c['input_school_name']} · ${c['input_grade']}학년${c['input_class_num'] != null ? ' ${c['input_class_num']}반' : ''}',
-              style: const TextStyle(fontSize: 12)),
+          Text(
+            c['input_school_type'] == 'preschool'
+                ? '미취학 · ${c['input_region'] ?? '-'}'
+                : '${c['input_school_name']} · ${c['input_grade']}학년${c['input_class_num'] != null ? ' ${c['input_class_num']}반' : ''}',
+            style: const TextStyle(fontSize: 12),
+          ),
           if (c['has_image'] == true) ...[
             const SizedBox(height: 8),
             FutureBuilder<Uint8List?>(

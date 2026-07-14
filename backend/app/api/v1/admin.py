@@ -59,6 +59,8 @@ async def list_captures(
             "input_school_name": c.input_school_name,
             "input_grade": c.input_grade,
             "input_class_num": c.input_class_num,
+            "input_school_type": c.input_school_type,
+            "input_region": c.input_region,
             "capture_type": c.capture_type if hasattr(c, "capture_type") else "initial",
             "has_image": bool(c.image_data),
             "created_at": c.created_at.isoformat() if c.created_at else None,

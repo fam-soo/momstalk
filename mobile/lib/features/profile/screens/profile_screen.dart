@@ -204,9 +204,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final activeChild = activeChildId != null
         ? children.firstWhere((c) => (c as Map)['id'] == activeChildId, orElse: () => null)
         : null;
+    final isActiveChildPreschool = activeChild?['school_type'] == 'preschool';
     final displayRegion = (activeChild?['region'] ?? _profile!['region']) as String?;
-    final displaySchool = (activeChild?['school_name'] ?? _profile!['school_name']) as String?;
-    final displayGrade = (activeChild?['grade'] ?? _profile!['grade']) as int?;
+    final displaySchool = isActiveChildPreschool ? '미취학' : (activeChild?['school_name'] ?? _profile!['school_name']) as String?;
+    final displayGrade = isActiveChildPreschool ? null : (activeChild?['grade'] ?? _profile!['grade']) as int?;
 
     final needsSchoolVerification = _profile!['needs_school_verification'] as bool? ?? false;
 
@@ -736,6 +737,7 @@ class _ChildrenSectionState extends ConsumerState<_ChildrenSection> {
       case 'elementary': return '초';
       case 'middle': return '중';
       case 'high': return '고';
+      case 'preschool': return '미취학';
       default: return '';
     }
   }
@@ -828,10 +830,15 @@ class _ChildrenSectionState extends ConsumerState<_ChildrenSection> {
               children: _children.map<Widget>((child) {
                 final id = child['id'] as int;
                 final isActive = id == _activeChildId;
-                final schoolName = child['school_name'] as String? ?? '';
+                final isPreschool = child['school_type'] == 'preschool';
+                final schoolName = isPreschool
+                    ? ((child['region'] as String?)?.isNotEmpty == true ? child['region'] as String : '미취학')
+                    : (child['school_name'] as String? ?? '');
                 final grade = child['grade'] as int?;
                 final schoolType = _schoolTypeLabel(child['school_type'] as String?);
-                final label = '$schoolName ${grade != null ? "$grade학년" : ""}($schoolType)';
+                final label = isPreschool
+                    ? '$schoolName($schoolType)'
+                    : '$schoolName ${grade != null ? "$grade학년" : ""}($schoolType)';
                 return GestureDetector(
                   onLongPress: () => _deleteChild(id, label),
                   child: FilterChip(
