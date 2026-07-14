@@ -156,6 +156,8 @@ class User(Base):
     # 관리자 화면용 접속 통계 (카카오 로그인 성공 시마다 갱신)
     last_login_at = Column(DateTime, nullable=True)
     login_count = Column(Integer, default=0, server_default="0")
+    # 매년 3/1 학년 자동 승급이 적용된 연도 — 같은 해에 중복 적용 방지용
+    grade_promoted_year = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     posts = relationship("Post", back_populates="author")

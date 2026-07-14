@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.core.security import decode_token
 from app.db import get_db
 from app.models.service_models import User
+from app.services.grade_promotion_service import maybe_promote_grade
 
 bearer_scheme = HTTPBearer()
 optional_bearer_scheme = HTTPBearer(auto_error=False)
@@ -48,6 +49,8 @@ async def get_current_user(
                 detail=f"계정이 정지되었습니다. 해제 시각: {until_str}",
                 headers={"X-Suspend-Until": user.suspended_until.isoformat()},
             )
+
+    await maybe_promote_grade(user, db)
 
     return user
 
