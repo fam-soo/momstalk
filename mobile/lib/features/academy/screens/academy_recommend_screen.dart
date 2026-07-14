@@ -195,7 +195,7 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
     return Scaffold(
       appBar: AppBar(title: const Text('학원 추천받기')),
       body: _step == 6 ? _buildResults() : _buildSurveyStep(),
-      bottomNavigationBar: _step == 5
+      bottomNavigationBar: _step == 6
           ? null
           : SafeArea(
               child: Padding(
