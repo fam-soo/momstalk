@@ -3,6 +3,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../features/auth/screens/login_screen.dart';
 import '../features/auth/screens/school_select_screen.dart';
@@ -190,12 +191,44 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
   Timer? _bannerDismissTimer;
   StreamSubscription<String>? _swClickSub;
 
+  static const _prefServiceCoverageSeenKey = 'seen_service_coverage_notice_v1';
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _initPush();
     _initUpdateCheck();
+    _maybeShowServiceCoverageNotice();
+  }
+
+  /// 학교 검색은 전국 지원되지만 학원 후기는 아직 서울 일부 구만 수집돼 있다
+  /// — 최초 진입 시 한 번만 안내해 "우리 동네는 왜 학원이 없지?" 오해를 줄인다.
+  Future<void> _maybeShowServiceCoverageNotice() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_prefServiceCoverageSeenKey) ?? false) return;
+    // initState 직후엔 아직 화면이 완전히 안 그려져 있을 수 있어 첫 프레임 이후로 미룬다.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: const Icon(Icons.info_outline, color: Color(0xFF4A90D9)),
+          title: const Text('서비스 안내'),
+          content: const Text(
+            '학교/지역 게시판은 전국에서 이용할 수 있어요.\n\n'
+            '다만 학원 후기는 아직 서울 일부 지역만 수집되어 있어요. '
+            '우리 동네 학원 정보가 안 보이더라도 서비스 대상 밖은 아니니, '
+            '순차적으로 넓혀갈 예정이에요!',
+            style: TextStyle(fontSize: 14, height: 1.6),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('확인')),
+          ],
+        ),
+      );
+      await prefs.setBool(_prefServiceCoverageSeenKey, true);
+    });
   }
 
   @override
