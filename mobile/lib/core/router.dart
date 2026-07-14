@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -29,6 +30,7 @@ import 'constants.dart';
 import 'push_notifications.dart';
 import 'push_target.dart';
 import 'refresh_bus.dart';
+import 'sw_notification_bridge.dart';
 import 'update_checker.dart';
 import '../features/admin/screens/admin_login_screen.dart';
 import '../features/admin/screens/admin_home_screen.dart';
@@ -185,6 +187,7 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
   String? _pendingNotifText;
   String? _pendingNotifLocation;
   Timer? _bannerDismissTimer;
+  StreamSubscription<String>? _swClickSub;
 
   @override
   void initState() {
@@ -196,6 +199,7 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
 
   @override
   void dispose() {
+    _swClickSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _updateCheckTimer?.cancel();
     _bannerDismissTimer?.cancel();
@@ -239,6 +243,29 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
       final location = pushTargetLocation(msg.data);
       _showNotificationBanner(title: title, body: body, location: location);
     });
+
+    // 상단바 알림을 탭해서 앱이 열린 경우(백그라운드에서 복귀 / 종료 상태에서
+    // 콜드스타트) — 포그라운드 배너와 달리 OS가 알림을 이미 보여줬으므로,
+    // 여기서는 배너 없이 바로 해당 화면으로 이동한다. (네이티브 앱 빌드용 —
+    // 지금은 모바일도 웹으로 접속 중이라 바로 아래 서비스워커 브리지가 실제로 쓰인다.)
+    PushNotifications.listenBackgroundTaps(_navigateFromPush);
+    final initialMessage = await PushNotifications.getInitialMessage();
+    if (initialMessage != null) _navigateFromPush(initialMessage);
+
+    // 웹(PWA 포함): 알림을 탭했을 때 이미 열려있는 탭/창이 있으면 서비스워커가
+    // 그 탭을 포커스만 시키고 실제 이동은 postMessage로 알려준다 — 이걸 듣는
+    // 코드가 없어서 "알림을 눌러도 게시글로 안 열린다"는 신고의 실제 원인이었다.
+    // path는 '/#/board/123' 형태(해시 라우팅)라 앞의 '#'을 떼고 push한다.
+    _swClickSub = notificationClickPaths().listen((path) {
+      if (!mounted) return;
+      final location = path.startsWith('/#') ? path.substring(2) : path;
+      if (location.isNotEmpty) context.push(location);
+    });
+  }
+
+  void _navigateFromPush(RemoteMessage msg) {
+    final location = pushTargetLocation(msg.data);
+    if (location != null && mounted) context.push(location);
   }
 
   /// 알림함으로 가는 상시 버튼 대신, 알림이 실제로 도착한 순간에만 화면

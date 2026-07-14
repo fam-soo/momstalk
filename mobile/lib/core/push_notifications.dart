@@ -161,4 +161,25 @@ class PushNotifications {
     if (messaging == null) return;
     FirebaseMessaging.onMessage.listen(onMessage);
   }
+
+  /// 앱이 백그라운드(완전 종료는 아님)에 있을 때 상단바 알림을 탭해서
+  /// 앱이 포그라운드로 돌아온 경우. 이 리스너가 없으면 OS가 알림은
+  /// 정상적으로 그려주지만 탭했을 때 앱 안에서 어디로도 이동시켜주지 않는다.
+  static void listenBackgroundTaps(void Function(RemoteMessage) onMessageOpened) {
+    final messaging = _tryInstance();
+    if (messaging == null) return;
+    FirebaseMessaging.onMessageOpenedApp.listen(onMessageOpened);
+  }
+
+  /// 앱이 완전히 종료된 상태에서 상단바 알림을 탭해 콜드스타트로 실행된
+  /// 경우. 앱 시작 후 1회만 확인하면 된다(이후엔 listenBackgroundTaps가 처리).
+  static Future<RemoteMessage?> getInitialMessage() async {
+    final messaging = _tryInstance();
+    if (messaging == null) return null;
+    try {
+      return await messaging.getInitialMessage();
+    } catch (_) {
+      return null;
+    }
+  }
 }
