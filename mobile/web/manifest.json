@@ -2,12 +2,7 @@
     "name": "MomsTalk",
     "short_name": "MomsTalk",
     "start_url": ".",
-    "scope": "/",
-    "id": "/",
     "display": "standalone",
-    "launch_handler": {
-        "client_mode": "navigate-existing"
-    },
     "background_color": "#FFFFFF",
     "theme_color": "#4A90D9",
     "description": "학부모 전용 익명 커뮤니티",
