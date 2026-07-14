@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/school_display.dart';
 
 /// 수업당 평균 정원을 10/20/30/50/100명 단위 구간으로 표시 — 원본 숫자는
 /// DB에 그대로 저장돼 있고(academies.avg_class_capacity), 구간 기준은
@@ -563,7 +564,7 @@ class _ReviewCard extends StatelessWidget {
     final text = review['review_text'] as String? ?? '';
     final homeworkLevel = review['homework_level'] as String? ?? '';
     final scoreImprovement = review['score_improvement'] as String? ?? '';
-    final schoolName = review['author_school_name'] as String?;
+    final schoolName = shortSchoolName(review['author_school_name'] as String?);
     final grade = review['author_grade'] as int?;
     final schoolInfo = isSeed
         ? ''

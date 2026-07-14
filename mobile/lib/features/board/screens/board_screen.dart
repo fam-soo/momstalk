@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/router.dart';
+import '../../../core/school_display.dart';
 import 'post_list_widget.dart';
 
 final userProfileProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
@@ -67,7 +68,7 @@ class _BoardScreenState extends ConsumerState<BoardScreen> with SingleTickerProv
         (profile['member_grade'] as String? ?? '') == 'admin';
     final isMember = isAdmin || (profile['member_grade'] as String? ?? 'lurker') == 'member';
     final region = profile['region'] as String? ?? '';
-    final school = profile['school_name'] as String? ?? '';
+    final school = shortSchoolName(profile['school_name'] as String?);
     final grade = profile['grade'] as int? ?? 1;
 
     if (isAdmin) {

@@ -10,6 +10,7 @@ import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
 import '../../../core/kst_time.dart';
 import '../../../core/notification_bell.dart';
+import '../../../core/school_display.dart';
 import '../../../core/unified_notify_button.dart';
 import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart';
@@ -884,7 +885,7 @@ class _SchoolDropdownTitle extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(cSchool, style: TextStyle(
+              Text(cIsPreschool ? cSchool : shortSchoolName(cSchool), style: TextStyle(
                 fontWeight: i == selectedIdx ? FontWeight.bold : FontWeight.normal,
                 fontSize: 14,
               )),
@@ -909,7 +910,7 @@ class _SchoolDropdownTitle extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Text(
-          schoolName.length > 9 ? '${schoolName.substring(0, 8)}…' : schoolName,
+          isPreschool ? schoolName : shortSchoolName(schoolName),
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
         ),
         const SizedBox(width: 2),

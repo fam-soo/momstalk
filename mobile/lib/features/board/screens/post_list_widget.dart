@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../core/api_client.dart';
 import '../../../core/kst_time.dart';
 import '../../../core/refresh_bus.dart';
+import '../../../core/school_display.dart';
 import 'post_detail_screen.dart' show showReportDialog;
 
 class PostListWidget extends ConsumerStatefulWidget {
@@ -283,7 +284,7 @@ class _PostCardState extends State<PostCard> {
     if (boardType == 'region') {
       label = post['author_region'] as String?;
     } else if (boardType == 'school') {
-      label = post['author_school'] as String?;
+      label = shortSchoolName(post['author_school'] as String?);
     }
     if (label == null || label.isEmpty) return const SizedBox.shrink();
     return Container(

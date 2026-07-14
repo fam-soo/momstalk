@@ -10,6 +10,7 @@ import '../../../core/api_client.dart';
 import '../../../core/kst_time.dart';
 import '../../../core/notification_prefs.dart';
 import '../../../core/push_notifications.dart';
+import '../../../core/school_display.dart';
 import '../../../core/refresh_bus.dart';
 import '../../../core/router.dart';
 import '../../../core/web_open_helper.dart';
@@ -206,7 +207,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         : null;
     final isActiveChildPreschool = activeChild?['school_type'] == 'preschool';
     final displayRegion = (activeChild?['region'] ?? _profile!['region']) as String?;
-    final displaySchool = isActiveChildPreschool ? '미취학' : (activeChild?['school_name'] ?? _profile!['school_name']) as String?;
+    final rawDisplaySchool = (activeChild?['school_name'] ?? _profile!['school_name']) as String?;
+    final displaySchool = isActiveChildPreschool
+        ? '미취학'
+        : (rawDisplaySchool != null && rawDisplaySchool.isNotEmpty ? shortSchoolName(rawDisplaySchool) : rawDisplaySchool);
     final displayGrade = isActiveChildPreschool ? null : (activeChild?['grade'] ?? _profile!['grade']) as int?;
 
     final needsSchoolVerification = _profile!['needs_school_verification'] as bool? ?? false;
@@ -833,12 +837,13 @@ class _ChildrenSectionState extends ConsumerState<_ChildrenSection> {
                 final isPreschool = child['school_type'] == 'preschool';
                 final schoolName = isPreschool
                     ? ((child['region'] as String?)?.isNotEmpty == true ? child['region'] as String : '미취학')
-                    : (child['school_name'] as String? ?? '');
+                    : shortSchoolName(child['school_name'] as String?);
                 final grade = child['grade'] as int?;
-                final schoolType = _schoolTypeLabel(child['school_type'] as String?);
+                // shortSchoolName이 이미 "신서중"처럼 초/중/고 글자를 포함하므로
+                // 학교급을 괄호로 다시 붙이지 않는다(미취학만 별도 표기).
                 final label = isPreschool
-                    ? '$schoolName($schoolType)'
-                    : '$schoolName ${grade != null ? "$grade학년" : ""}($schoolType)';
+                    ? '$schoolName(${_schoolTypeLabel(child['school_type'] as String?)})'
+                    : '$schoolName ${grade != null ? "$grade학년" : ""}'.trim();
                 return GestureDetector(
                   onLongPress: () => _deleteChild(id, label),
                   child: FilterChip(
