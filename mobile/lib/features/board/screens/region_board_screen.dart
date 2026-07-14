@@ -10,7 +10,6 @@ import '../../../core/child_switch_title.dart';
 import '../../../core/constants.dart';
 import '../../../core/kst_time.dart';
 import '../../../core/notification_bell.dart';
-import '../../../core/unified_notify_button.dart';
 import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart';
 
@@ -207,7 +206,7 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
                 onClose: _closeSearch,
               )
             : AppBar(
-                leading: const UnifiedNotifyButton(prefKey: 'notify_region', label: '지역'),
+                leading: const NotificationBellButton(),
                 centerTitle: true,
                 title: ChildSwitchTitle(
                   labelBuilder: (active) {

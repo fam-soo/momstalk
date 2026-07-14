@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/api_client.dart';
 import '../../../core/child_switch_title.dart';
 import '../../../core/constants.dart';
-import '../../../core/unified_notify_button.dart';
+import '../../../core/notification_bell.dart';
 import '../../../core/refresh_bus.dart';
 
 class AcademyScreen extends ConsumerStatefulWidget {
@@ -637,7 +637,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
 
   PreferredSizeWidget _buildNormalAppBar(ThemeData theme) {
     return AppBar(
-      leading: const UnifiedNotifyButton(prefKey: 'notify_academy', label: '학원'),
+      leading: const NotificationBellButton(),
       title: (_isAdmin || _selectedRegions.isNotEmpty)
           ? Text(
               _isAdmin ? '전지역 학원 후기' : '${_activeRegions.length}개 지역 학원 후기',
