@@ -191,7 +191,9 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
   Timer? _bannerDismissTimer;
   StreamSubscription<String>? _swClickSub;
 
-  static const _prefServiceCoverageSeenKey = 'seen_service_coverage_notice_v1';
+  // 내용이 바뀔 때마다 버전을 올려서, 이미 v1을 봤던 유저에게도 새 안내가
+  // 다시 한 번 보이게 한다(추천 참여 유도 문구 추가 — v2).
+  static const _prefServiceCoverageSeenKey = 'seen_service_coverage_notice_v2';
 
   @override
   void initState() {
@@ -219,7 +221,10 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
             '학교/지역 게시판은 전국에서 이용할 수 있어요.\n\n'
             '다만 학원 후기는 아직 서울 일부 지역만 수집되어 있어요. '
             '우리 동네 학원 정보가 안 보이더라도 서비스 대상 밖은 아니니, '
-            '순차적으로 넓혀갈 예정이에요!',
+            '순차적으로 넓혀갈 예정이에요!\n\n'
+            '학원 추천 기능은 학부모님들이 남긴 후기를 바탕으로 동작해요. '
+            '후기가 쌓일수록 추천 정확도가 올라가니, 이용해보신 학원 후기를 '
+            '남겨주시면 다른 학부모님들께 큰 도움이 돼요!',
             style: TextStyle(fontSize: 14, height: 1.6),
           ),
           actions: [

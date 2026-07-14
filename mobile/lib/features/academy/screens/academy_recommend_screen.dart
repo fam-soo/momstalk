@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/info_banner.dart';
 
 /// 학원 추천받기 — 5단계 설문 후 규칙 기반 매칭 결과를 보여준다.
 /// 매칭 점수(0~100%)는 서버(academy_service.recommend_academies)가 계산하며,
@@ -200,6 +201,12 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
 
   Widget _stepSubjects() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const InfoBanner(
+        margin: EdgeInsets.only(bottom: 16),
+        text: '추천은 학부모님들이 남겨주신 실제 후기를 바탕으로 이뤄져요. '
+            '후기가 많아질수록 추천 정확도가 올라가니, 이용해보신 학원 후기를 남겨주시면 '
+            '다른 학부모님들께도 큰 도움이 돼요!',
+      ),
       const Text('어떤 과목을 추천받고 싶으세요?', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
       const SizedBox(height: 16),
       Wrap(spacing: 8, runSpacing: 8, children: _subjectOptions.map((s) {
@@ -377,25 +384,13 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
     }
     return Column(children: [
       if (_isFallback)
-        Container(
-          width: double.infinity,
-          margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.amber.shade50,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.amber.shade200),
-          ),
-          child: Row(children: [
-            Icon(Icons.info_outline, size: 16, color: Colors.amber.shade800),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '조건에 딱 맞는 학원은 없었어요. 같은 과목을 가르치는 학원을 평점 높은 순으로 보여드릴게요 — 아래 후기를 참고해서 직접 골라보세요.',
-                style: TextStyle(fontSize: 12.5, color: Colors.amber.shade900, height: 1.4),
-              ),
-            ),
-          ]),
+        const InfoBanner(
+          tone: InfoBannerTone.notice,
+          text: '조건에 딱 맞는 학원은 없었어요. 같은 과목을 가르치는 학원을 평점 높은 순으로 보여드릴게요 — 아래 후기를 참고해서 직접 골라보세요.',
+        )
+      else
+        const InfoBanner(
+          text: '이 추천은 학부모님들의 후기를 바탕으로 계산돼요. 마음에 드는 학원을 이용해보셨다면 후기를 남겨주세요 — 다음 추천이 더 정확해져요!',
         ),
       Expanded(
         child: ListView.separated(
