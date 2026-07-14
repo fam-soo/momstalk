@@ -219,7 +219,7 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
           title: const Text('서비스 안내'),
           content: const Text(
             '학교/지역 게시판은 전국에서 이용할 수 있어요.\n\n'
-            '다만 학원 후기는 아직 서울 일부 지역만 수집되어 있어요. '
+            '다만 학원 후기는 아직 서울 일부 지역만 준비되어 있어요. '
             '우리 동네 학원 정보가 안 보이더라도 서비스 대상 밖은 아니니, '
             '순차적으로 넓혀갈 예정이에요!\n\n'
             '학원 추천 기능은 학부모님들이 남긴 후기를 바탕으로 동작해요. '
