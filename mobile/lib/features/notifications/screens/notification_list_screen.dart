@@ -7,6 +7,7 @@ import '../../../core/kst_time.dart';
 import '../../../core/notification_prefs.dart';
 import '../../../core/push_notifications.dart';
 import '../../../core/push_target.dart';
+import '../../../core/refresh_bus.dart';
 
 /// 알림함 — FCM 푸시는 기기가 꺼져있거나 알림 권한이 없으면 놓치기 쉬워서,
 /// 앱 안에서 지난 알림을 모아 다시 볼 수 있도록 내정보 탭에서 진입하는
@@ -47,6 +48,7 @@ class _NotificationListScreenState extends ConsumerState<NotificationListScreen>
       final dio = ref.read(dioProvider);
       await dio.post('/notifications/read-all');
       if (mounted) setState(() { for (final n in _items) n['is_read'] = true; });
+      bumpNotificationRefresh(ref);
     } catch (_) {}
   }
 
@@ -56,6 +58,7 @@ class _NotificationListScreenState extends ConsumerState<NotificationListScreen>
         final dio = ref.read(dioProvider);
         await dio.post('/notifications/${n['id']}/read');
         if (mounted) setState(() => n['is_read'] = true);
+        bumpNotificationRefresh(ref);
       } catch (_) {}
     }
     final data = n['data'] as Map?;

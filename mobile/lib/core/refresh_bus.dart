@@ -26,3 +26,13 @@ final adminRefreshSignal = StateProvider<int>((_) => 0);
 void bumpAdminRefresh(WidgetRef ref) {
   ref.read(adminRefreshSignal.notifier).state++;
 }
+
+/// 알림함(다른 탭에 각각 떠 있는 알림 벨 버튼)들의 안읽은 개수 재조회를
+/// 동기화하는 신호. 알림함에서 "모두 읽음" 등으로 읽음 처리를 하면 이
+/// 신호를 bump해서, 다른 게시판 화면에 이미 떠 있는 벨 버튼(각자 로컬
+/// State로 뱃지 카운트를 들고 있어 서로 알지 못함)도 함께 최신화한다.
+final notificationRefreshSignal = StateProvider<int>((_) => 0);
+
+void bumpNotificationRefresh(WidgetRef ref) {
+  ref.read(notificationRefreshSignal.notifier).state++;
+}

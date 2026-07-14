@@ -42,14 +42,25 @@ def _effective_region(user: User) -> str:
     return (active.region if active else None) or user.region or _DEFAULT_REGION
 
 
-def _child_badge_label(child) -> str | None:
-    """닉네임 옆에 노출할 자녀 상태 뱃지. 미취학은 "미취학", 그 외엔 학년으로 표시."""
+_SCHOOL_TYPE_LABEL = {"elementary": "초", "middle": "중", "high": "고"}
+
+
+def _author_badge(author: User | None) -> str | None:
+    """닉네임 옆에 노출할 작성자 상태 뱃지. 관리자는 학교/학년과 무관하게
+    "관리자" 표시만으로 충분하니 뱃지를 아예 안 붙인다(예전엔 관리자 본인의
+    active_child 기준 "1학년" 같은 뱃지가 같이 붙어서 혼란스러웠다).
+    일반 유저는 미취학이면 "미취학", 그 외엔 "초3"/"중2"처럼 학교급+학년을
+    같이 표시한다("3학년"만으로는 초·중·고 3학년이 구분 안 됐다)."""
+    if not author or author.is_admin:
+        return None
+    child = author.active_child
     if not child:
         return None
     if child.school_type == "preschool":
         return "미취학"
     if child.grade:
-        return f"{child.grade}학년"
+        level = _SCHOOL_TYPE_LABEL.get(child.school_type, "")
+        return f"{level}{child.grade}" if level else f"{child.grade}학년"
     return None
 
 
@@ -182,7 +193,7 @@ async def get_post_response(post: Post, user: User, db: AsyncSession) -> PostRes
         is_anonymous=post.is_anonymous,
         nickname_type=getattr(post, "nickname_type", "anon"),
         author_display_name=display_name,
-        author_badge=_child_badge_label(author.active_child) if author else None,
+        author_badge=_author_badge(author),
         view_count=post.view_count,
         like_count=post.like_count,
         scrap_count=post.scrap_count,
@@ -390,7 +401,7 @@ async def list_posts(
             is_anonymous=post.is_anonymous,
             nickname_type=getattr(post, "nickname_type", "anon"),
             author_display_name=display_name,
-            author_badge=_child_badge_label(author.active_child) if author else None,
+            author_badge=_author_badge(author),
             author_region=author.region if author else None,
             author_school=author.school_name if author else None,
             view_count=post.view_count,
@@ -498,7 +509,7 @@ async def get_hot_posts(user: User, db: AsyncSession, limit: int = 30) -> "PostL
             is_anonymous=post.is_anonymous,
             nickname_type=getattr(post, "nickname_type", "anon"),
             author_display_name=display_name,
-            author_badge=_child_badge_label(author.active_child) if author else None,
+            author_badge=_author_badge(author),
             author_region=author.region if author else None,
             author_school=author.school_name if author else None,
             view_count=post.view_count,

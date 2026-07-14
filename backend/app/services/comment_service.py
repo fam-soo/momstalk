@@ -6,7 +6,7 @@ from app.models.service_models import Block, Comment, Like, Post, User
 from app.schemas.comment import CommentCreate, CommentResponse
 from app.services import temperature_service
 from app.services.notification_service import notify_user
-from app.services.post_service import ANON_ALLOWED_BOARDS, _child_badge_label, _resolve_nickname_snapshot
+from app.services.post_service import ANON_ALLOWED_BOARDS, _author_badge, _resolve_nickname_snapshot
 
 
 async def create_comment(
@@ -60,7 +60,7 @@ async def create_comment(
         is_liked=False,
         is_mine=True,
         anon_label=anon_labels.get(comment.author_id) if comment.is_anonymous else None,
-        author_badge=_child_badge_label(user.active_child),
+        author_badge=_author_badge(user),
         created_at=comment.created_at,
     )
 
@@ -176,7 +176,7 @@ async def list_comments(post_id: int, user: User, db: AsyncSession) -> list[Comm
             is_mine=(c.author_id == user.id),
             anon_label=anon_labels.get(c.author_id) if c.is_anonymous else None,
             author_nickname=_comment_display_name(c),
-            author_badge=_child_badge_label(users_map.get(c.author_id).active_child) if users_map.get(c.author_id) else None,
+            author_badge=_author_badge(users_map.get(c.author_id)),
             created_at=c.created_at,
         )
         for c in comments

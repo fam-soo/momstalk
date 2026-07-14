@@ -359,6 +359,29 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                     child: Text('$_totalReviews개', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
                   ),
                 const Spacer(),
+                InkWell(
+                  onTap: () {
+                    setState(() => _excludePreschool = !_excludePreschool);
+                    _load();
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _excludePreschool ? theme.colorScheme.primary.withOpacity(0.1) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _excludePreschool ? theme.colorScheme.primary : Colors.grey.shade400,
+                      ),
+                    ),
+                    child: Text('미취학맘 제외',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _excludePreschool ? theme.colorScheme.primary : Colors.grey.shade600,
+                          fontWeight: _excludePreschool ? FontWeight.bold : FontWeight.normal,
+                        )),
+                  ),
+                ),
                 TextButton.icon(
                   onPressed: () => context
                       .push('/academy/${widget.academyId}/review/write')
@@ -366,23 +389,6 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                   icon: const Icon(Icons.edit_outlined, size: 16),
                   label: const Text('후기 작성'),
                   style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Text('미취학 맘 후기 제외', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                Switch(
-                  value: _excludePreschool,
-                  onChanged: (v) {
-                    setState(() => _excludePreschool = v);
-                    _load();
-                  },
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ],
             ),

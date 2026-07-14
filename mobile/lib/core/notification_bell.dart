@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'api_client.dart';
+import 'refresh_bus.dart';
 
 /// 모든 주요 화면의 AppBar 왼쪽 상단에 공통으로 붙는 알림 버튼.
 /// 안읽은 알림 수를 배지로 보여주고, 탭하면 알림함으로 이동한 뒤 돌아오면
@@ -38,6 +39,9 @@ class _NotificationBellButtonState extends ConsumerState<NotificationBellButton>
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(notificationRefreshSignal, (prev, next) {
+      if (prev != null && prev != next) _refresh();
+    });
     return IconButton(
       icon: Stack(clipBehavior: Clip.none, children: [
         const Icon(Icons.notifications_outlined),
