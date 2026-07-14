@@ -4,7 +4,7 @@ from sqlalchemy import select, func, or_, and_
 from sqlalchemy.exc import IntegrityError
 
 from app.core.profanity import check_profanity
-from app.models.service_models import Block, Comment, Like, Post, Report, Scrap, School, User
+from app.models.service_models import Block, Comment, Like, Post, Report, Scrap, School, User, UserChild
 from app.schemas.post import PostCreate, PostListItem, PostResponse, ScrapResponse, PostUpdate
 from app.services import temperature_service
 from app.services.school_unlock_service import get_unlock_status
@@ -14,9 +14,28 @@ from app.services.school_unlock_service import get_unlock_status
 SCHOOL_GATED_BOARDS = {"school", "grade"}
 
 REPORT_AUTO_HIDE_THRESHOLD = 5
+# 미취학 뱃지 계정은 학교 인증 없이 가입 가능해 어뷰징(홍보 우회) 진입장벽이
+# 낮다 — 신고 누적 시 더 적은 횟수로 자동 블라인드되도록 임계치를 낮춘다.
+REPORT_AUTO_HIDE_THRESHOLD_PRESCHOOL = 3
 
 # 익명 작성 옵션을 선택할 수 있는 게시판. grade(학년/반)·notice(공지)는 실명(닉네임) 고정.
 ANON_ALLOWED_BOARDS = {"school", "free", "region"}
+
+
+def _is_preschool(user: User) -> bool:
+    active = user.active_child
+    return bool(active and active.school_type == "preschool")
+
+
+def _child_badge_label(child) -> str | None:
+    """닉네임 옆에 노출할 자녀 상태 뱃지. 미취학은 "미취학", 그 외엔 학년으로 표시."""
+    if not child:
+        return None
+    if child.school_type == "preschool":
+        return "미취학"
+    if child.grade:
+        return f"{child.grade}학년"
+    return None
 
 
 def _resolve_nickname_snapshot(nickname_type: str, is_anonymous: bool, author: User) -> str | None:
@@ -83,6 +102,8 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
             school_code = row
 
     if req.board_type in SCHOOL_GATED_BOARDS and not user.is_admin:
+        if _is_preschool(user):
+            raise ValueError("학교 인증이 필요한 게시판입니다.")
         unlock = await get_unlock_status(school_code, db)
         if not unlock["unlocked"]:
             raise ValueError("학교 게시판이 아직 잠겨 있어요. 같은 학교 학부모가 더 모이면 열려요.")
@@ -146,6 +167,7 @@ async def get_post_response(post: Post, user: User, db: AsyncSession) -> PostRes
         is_anonymous=post.is_anonymous,
         nickname_type=getattr(post, "nickname_type", "anon"),
         author_display_name=display_name,
+        author_badge=_child_badge_label(author.active_child) if author else None,
         view_count=post.view_count,
         like_count=post.like_count,
         scrap_count=post.scrap_count,
@@ -172,10 +194,13 @@ async def list_posts(
     q: str | None = None,
     sort: str = "recent",       # "recent" | "popular"
     cursor: int | None = None,  # cursor 기반 페이지네이션: 마지막 post.id
+    child_group: str = "all",   # "all" | "school_age" | "preschool" — region 게시판 전용
 ) -> "PostListResponse":
     from app.schemas.post import PostListResponse
 
     if board_type in SCHOOL_GATED_BOARDS and not user.is_admin:
+        if _is_preschool(user):
+            raise ValueError("학교 인증이 필요한 게시판입니다.")
         unlock = await get_unlock_status(school_code, db)
         if not unlock["unlocked"]:
             raise ValueError("학교 게시판이 아직 잠겨 있어요. 같은 학교 학부모가 더 모이면 열려요.")
@@ -203,6 +228,8 @@ async def list_posts(
         if board_type == "region":
             # 일반 유저 글: 같은 지역 유저의 school_code 기준
             # 관리자 공지: School 테이블의 region 기준 (등록된 유저 없어도 표시)
+            # 미취학 작성자는 school_code가 없어 위 조건에 걸리지 않으므로,
+            # author_id가 같은 지역 유저인지로도 매칭해야 지역 게시판에 노출된다.
             query = query.where(
                 or_(
                     Post.school_code.in_(
@@ -211,8 +238,21 @@ async def list_posts(
                     Post.school_code.in_(
                         select(School.school_code).where(School.region == effective_region)
                     ),
+                    Post.author_id.in_(
+                        select(User.id).where(User.region == effective_region)
+                    ),
                 )
             )
+            if child_group in ("school_age", "preschool"):
+                child_ids_query = select(UserChild.id).where(
+                    UserChild.school_type == "preschool" if child_group == "preschool"
+                    else UserChild.school_type.isnot(None) & (UserChild.school_type != "preschool")
+                )
+                query = query.where(
+                    Post.author_id.in_(
+                        select(User.id).where(User.active_child_id.in_(child_ids_query))
+                    )
+                )
         elif board_type == "free":
             pass
         else:
@@ -347,6 +387,7 @@ async def list_posts(
             is_anonymous=post.is_anonymous,
             nickname_type=getattr(post, "nickname_type", "anon"),
             author_display_name=display_name,
+            author_badge=_child_badge_label(author.active_child) if author else None,
             author_region=author.region if author else None,
             author_school=author.school_name if author else None,
             view_count=post.view_count,
@@ -455,6 +496,7 @@ async def get_hot_posts(user: User, db: AsyncSession, limit: int = 30) -> "PostL
             is_anonymous=post.is_anonymous,
             nickname_type=getattr(post, "nickname_type", "anon"),
             author_display_name=display_name,
+            author_badge=_child_badge_label(author.active_child) if author else None,
             author_region=author.region if author else None,
             author_school=author.school_name if author else None,
             view_count=post.view_count,
@@ -591,7 +633,9 @@ async def report_content(
 
     if target:
         target.report_count += 1
-        if target.report_count >= REPORT_AUTO_HIDE_THRESHOLD:
+        author = (await db.execute(select(User).where(User.id == target.author_id))).scalar_one_or_none()
+        threshold = REPORT_AUTO_HIDE_THRESHOLD_PRESCHOOL if author and _is_preschool(author) else REPORT_AUTO_HIDE_THRESHOLD
+        if target.report_count >= threshold:
             target.is_hidden = True
             await temperature_service.adjust(target.author_id, "post_hidden", db)
 

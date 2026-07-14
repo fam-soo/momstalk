@@ -24,13 +24,14 @@ _ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/heic", "image/heif"}
 
 async def _upsert_child(
     user: User,
-    school_code: str,
-    school_name: str,
+    school_code: str | None,
+    school_name: str | None,
     grade: int | None,
     class_num: int | None,
     school_type: str | None,
     region: str | None,
     db: AsyncSession,
+    expected_entry_year: int | None = None,
 ) -> UserChild:
     """school_code 기준으로 UserChild를 만들거나 갱신한다.
 
@@ -41,16 +42,31 @@ async def _upsert_child(
     집계하기 때문에, 최초 가입자는 두 번째 자녀를 추가하기 전까지 이 모든
     카운팅에서 통째로 빠져 있었다 — 최초 가입 승인 시에도 항상 UserChild를
     만들도록 통일한다.
+
+    미취학(school_type="preschool")은 school_code가 없어서 이 매칭을 그대로
+    쓰면 "school_code IS NULL"로 조회돼 같은 유저의 서로 다른 미취학 자녀가
+    한 행으로 합쳐진다 — school_code가 없을 땐 매칭을 건너뛰고 현재
+    active_child가 미취학 행일 때만 그 행을 갱신, 아니면 새로 만든다.
     """
-    existing = (await db.execute(
-        select(UserChild).where(UserChild.user_id == user.id, UserChild.school_code == school_code)
-    )).scalar_one_or_none()
+    existing = None
+    if school_code:
+        existing = (await db.execute(
+            select(UserChild).where(UserChild.user_id == user.id, UserChild.school_code == school_code)
+        )).scalar_one_or_none()
+    elif school_type == "preschool" and user.active_child_id:
+        candidate = (await db.execute(
+            select(UserChild).where(UserChild.id == user.active_child_id, UserChild.user_id == user.id)
+        )).scalar_one_or_none()
+        if candidate and candidate.school_code is None:
+            existing = candidate
     if existing:
         existing.grade = grade
         if class_num:
             existing.class_num = class_num
         if school_type:
             existing.school_type = school_type
+        if expected_entry_year:
+            existing.expected_entry_year = expected_entry_year
         child = existing
     else:
         child = UserChild(
@@ -61,6 +77,7 @@ async def _upsert_child(
             class_num=class_num,
             school_type=school_type or None,
             region=region or user.region,
+            expected_entry_year=expected_entry_year,
         )
         db.add(child)
         await db.flush()
@@ -73,14 +90,15 @@ async def submit_capture(
     user: User,
     image_data: bytes | None,
     image_content_type: str | None,
-    school_code: str,
-    school_name: str,
-    grade: int,
+    school_code: str | None,
+    school_name: str | None,
+    grade: int | None,
     class_num: int | None,
     db: AsyncSession,
     region: str = "",
     school_type: str = "",
     capture_type: str = "initial",
+    expected_entry_year: int | None = None,
 ) -> AuthCapture:
     """캡처 이미지 + 학교 정보 제출 → auth_captures 행 생성.
     capture_type='initial': 최초 가입 인증 (user.auth_pending = True)
@@ -106,6 +124,7 @@ async def submit_capture(
             existing.input_class_num = class_num
             existing.input_school_type = school_type or None
             existing.input_region = region or None
+            existing.input_expected_entry_year = expected_entry_year
             existing.status = "pending"
             existing.reviewed_by = None
             existing.reviewed_at = None
@@ -124,6 +143,7 @@ async def submit_capture(
                 input_class_num=class_num,
                 input_school_type=school_type or None,
                 input_region=region or None,
+                input_expected_entry_year=expected_entry_year,
             )
             db.add(capture)
         if region:
@@ -147,6 +167,7 @@ async def submit_capture(
             existing.input_class_num = class_num
             existing.input_school_type = school_type or None
             existing.input_region = region or None
+            existing.input_expected_entry_year = expected_entry_year
             existing.reviewed_by = None
             existing.reviewed_at = None
             existing.reject_reason = None
@@ -164,6 +185,7 @@ async def submit_capture(
                 input_class_num=class_num,
                 input_school_type=school_type or None,
                 input_region=region or None,
+                input_expected_entry_year=expected_entry_year,
             )
             db.add(capture)
 
@@ -172,7 +194,7 @@ async def submit_capture(
 
     # 신뢰된 사용자: 심사 없이 즉시 승인 처리
     if getattr(user, "is_trusted", False):
-        await _auto_approve_trusted(user, capture, school_code, school_name, grade, class_num, school_type, region, db)
+        await _auto_approve_trusted(user, capture, school_code, school_name, grade, class_num, school_type, region, db, expected_entry_year)
 
     return capture
 
@@ -180,13 +202,14 @@ async def submit_capture(
 async def _auto_approve_trusted(
     user: User,
     capture: AuthCapture,
-    school_code: str,
-    school_name: str,
-    grade: int,
+    school_code: str | None,
+    school_name: str | None,
+    grade: int | None,
     class_num: int | None,
     school_type: str,
     region: str,
     db: AsyncSession,
+    expected_entry_year: int | None = None,
 ) -> None:
     """is_trusted 유저의 캡처를 즉시 승인."""
     from app.models.service_models import UserChild
@@ -195,7 +218,7 @@ async def _auto_approve_trusted(
     capture.image_data = None
     capture.image_content_type = None
 
-    await _upsert_child(user, school_code, school_name, grade, class_num, school_type, region, db)
+    await _upsert_child(user, school_code, school_name, grade, class_num, school_type, region, db, expected_entry_year)
 
     if capture.capture_type != "child_add":
         # 최초 가입: 정회원 승급 + legacy 필드 동기화 (UserChild 생성은 위에서 이미 처리)
@@ -240,6 +263,7 @@ async def approve_capture(capture_id: int, admin: User, db: AsyncSession) -> Non
         capture.input_school_type,
         capture.input_region,
         db,
+        capture.input_expected_entry_year,
     )
 
     if capture.capture_type == "child_add":

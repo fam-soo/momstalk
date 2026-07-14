@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel, field_validator
 import re
 
@@ -46,8 +47,8 @@ class ParentVerifyRequest(BaseModel):
     @field_validator("school_type")
     @classmethod
     def check_school_type(cls, v: str) -> str:
-        if v not in ("elementary", "middle", "high"):
-            raise ValueError("school_type은 elementary / middle / high 중 하나여야 합니다.")
+        if v not in ("elementary", "middle", "high", "preschool"):
+            raise ValueError("school_type은 elementary / middle / high / preschool 중 하나여야 합니다.")
         return v
 
 
@@ -78,8 +79,8 @@ class DevLoginRequest(BaseModel):
     @field_validator("school_type")
     @classmethod
     def check_school_type(cls, v: str) -> str:
-        if v not in ("elementary", "middle", "high"):
-            raise ValueError("school_type은 elementary / middle / high 중 하나여야 합니다.")
+        if v not in ("elementary", "middle", "high", "preschool"):
+            raise ValueError("school_type은 elementary / middle / high / preschool 중 하나여야 합니다.")
         return v
 
 
@@ -105,11 +106,13 @@ class CapturePresignResponse(BaseModel):
 
 class CaptureSubmitRequest(BaseModel):
     s3_key: str
-    school_code: str
-    school_name: str
-    grade: int
+    school_code: Optional[str] = None
+    school_name: Optional[str] = None
+    grade: Optional[int] = None
     class_num: int | None = None
     school_type: str
+    region: str = ""
+    expected_entry_year: Optional[int] = None
 
 
 class InviteGenerateResponse(BaseModel):

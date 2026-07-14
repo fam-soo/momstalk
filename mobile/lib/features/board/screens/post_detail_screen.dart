@@ -436,6 +436,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                         : (post['is_anonymous'] == true ? '익명' : (post['author']?['nickname'] ?? '')),
                     style: const TextStyle(color: Colors.grey, fontSize: 13),
                   ),
+                  if ((post['author_badge'] as String?)?.isNotEmpty == true) ...[
+                    const SizedBox(width: 5),
+                    _CommentBadge(label: post['author_badge'] as String, color: Theme.of(context).colorScheme.tertiary),
+                  ],
                   const Spacer(),
                   Text('조회 ${post['view_count'] ?? 0}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                 ]),
@@ -705,6 +709,10 @@ class _CommentTileState extends ConsumerState<_CommentTile> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Text(authorName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                if ((c['author_badge'] as String?)?.isNotEmpty == true) ...[
+                  const SizedBox(width: 6),
+                  _CommentBadge(label: c['author_badge'] as String, color: Theme.of(context).colorScheme.tertiary),
+                ],
                 if (isPostAuthor) ...[
                   const SizedBox(width: 6),
                   _CommentBadge(label: '작성자', color: Theme.of(context).colorScheme.primary),

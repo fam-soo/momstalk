@@ -259,7 +259,7 @@ async def search_academies(
     if not academies:
         neis_results = await neis_service.search_academies(
             name=name,
-            region=region,
+            region=regions[0] if regions else None,
             subject=subjects[0] if subjects else None,
         )
         added = False
@@ -381,6 +381,10 @@ async def create_review(
     academy = (await db.execute(select(Academy).where(Academy.id == academy_id))).scalar_one_or_none()
     if not academy:
         raise ValueError("학원을 찾을 수 없습니다.")
+
+    active_child = user.active_child
+    if active_child and active_child.school_type == "preschool" and academy.school_type in ("middle", "high"):
+        raise ValueError("미취학 자녀로는 중·고등 전문 학원에 후기를 남길 수 없어요.")
 
     check_profanity(req.review_text, "후기")
 
@@ -621,7 +625,7 @@ async def get_unlock_quota_summary(user: User, db: AsyncSession) -> AcademyUnloc
     )
 
 
-async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> AcademyReviewListResponse:
+async def list_reviews(academy_id: int, user: User, db: AsyncSession, exclude_preschool: bool = False) -> AcademyReviewListResponse:
     result = await db.execute(
         select(AcademyReview, User)
         .outerjoin(User, User.id == AcademyReview.author_id)
@@ -644,6 +648,8 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession) -> Academy
 
     out = []
     for review, author in rows:
+        if exclude_preschool and author and author.active_child and author.active_child.school_type == "preschool":
+            continue
         is_own = bool(author and author.id == user.id)
         # 학원이 잠겨 있으면 기본 소개(seed) + 사용자 후기 모두 가림 처리
         # 단, 본인이 작성한 후기는 잠금 대상에서 제외 (본인 글을 본인이 못 보는 문제 방지)

@@ -57,6 +57,9 @@ class UserChild(Base):
     class_num = Column(Integer, nullable=True)
     school_type = Column(String(10), nullable=True)
     region = Column(String(50), nullable=True)
+    # 미취학(school_type=preschool) 전용 — 초등학교 입학 예정 연도. 생년월일 대신
+    # 이 값만 저장해 "학교 인증 하시겠어요?" 전환 유도 안내 시점을 계산한다.
+    expected_entry_year = Column(Integer, nullable=True)
     # 학원 맞춤 추천용 — 아이 학습 성향 태그(["칭찬에_약해요", "외향적이에요"])와 현재 성적대
     student_traits = Column(JSONB, nullable=True)
     score_level = Column(String(20), nullable=True)
@@ -338,12 +341,13 @@ class AuthCapture(Base):
     s3_key = Column(String(300), nullable=True)   # 구 Supabase Storage 키 (레거시 행 하위호환용, 신규 행은 미사용)
     image_data = Column(LargeBinary, nullable=True)       # 캡처 이미지 원본 (심사 후 삭제)
     image_content_type = Column(String(30), nullable=True)
-    input_school_code = Column(String(20), nullable=False)
-    input_school_name = Column(String(100), nullable=False)
-    input_grade = Column(Integer, nullable=False)
+    input_school_code = Column(String(20), nullable=True)   # 미취학은 학교가 없어 null
+    input_school_name = Column(String(100), nullable=True)
+    input_grade = Column(Integer, nullable=True)
     input_class_num = Column(Integer, nullable=True)
     input_school_type = Column(String(20), nullable=True)
     input_region = Column(String(50), nullable=True)
+    input_expected_entry_year = Column(Integer, nullable=True)  # 미취학 전용
     status = Column(String(20), default="pending")       # pending / approved / rejected
     reviewed_by = Column(Integer, nullable=True)
     reviewed_at = Column(DateTime, nullable=True)

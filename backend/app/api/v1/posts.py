@@ -21,6 +21,7 @@ async def list_posts(
     sort: str = Query("recent", description="recent | popular"),
     q: str = Query(None, description="검색어 (제목+내용)"),
     child_id: int = Query(None, description="다자녀 조회 시 특정 자녀의 학교 보기. 본인 자녀만 허용."),
+    child_group: str = Query("all", description="region 게시판 전용: all | school_age | preschool"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_service_db),
 ):
@@ -60,6 +61,7 @@ async def list_posts(
             q=q,
             sort=sort,
             cursor=cursor,
+            child_group=child_group,
         )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))

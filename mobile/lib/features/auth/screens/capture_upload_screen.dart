@@ -112,6 +112,9 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
     if (widget.schoolInfo['class_num'] != null) {
       request.fields['class_num'] = '${widget.schoolInfo['class_num']}';
     }
+    if (widget.schoolInfo['expected_entry_year'] != null) {
+      request.fields['expected_entry_year'] = '${widget.schoolInfo['expected_entry_year']}';
+    }
     return request.send().timeout(const Duration(minutes: 3));
   }
 
@@ -243,6 +246,7 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
         'class_num': widget.schoolInfo['class_num'],
         'school_type': widget.schoolInfo['school_type'],
         'region': widget.schoolInfo['region'] ?? '',
+        'expected_entry_year': widget.schoolInfo['expected_entry_year'],
       });
 
       if (widget.captureType == 'child_add') {
@@ -289,13 +293,17 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
     );
   }
 
+  bool get _isPreschool => widget.schoolInfo['school_type'] == 'preschool';
+
   @override
   Widget build(BuildContext context) {
     final schoolName = widget.schoolInfo['school_name'] as String? ?? '학교';
     final grade = widget.schoolInfo['grade'] as int? ?? 1;
+    final region = widget.schoolInfo['region'] as String? ?? '';
+    final headerLabel = _isPreschool ? '$region 미취학 학부모 인증' : '$schoolName $grade학년 학부모 인증';
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.captureType == 'child_add' ? '자녀 학교 인증' : '근거자료 등록')),
+      appBar: AppBar(title: Text(widget.captureType == 'child_add' ? '자녀 인증' : '근거자료 등록')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -314,16 +322,18 @@ class _CaptureUploadScreenState extends ConsumerState<CaptureUploadScreen> {
                   Row(children: [
                     Icon(Icons.info_outline, size: 16, color: Theme.of(context).colorScheme.primary),
                     const SizedBox(width: 6),
-                    Text('$schoolName $grade학년 학부모 인증',
+                    Text(headerLabel,
                         style: TextStyle(fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.primary)),
                   ]),
                   const SizedBox(height: 8),
                   Text(
-                    widget.captureType == 'child_add'
-                        ? '같은 학교 학부모들만 모이는 게시판이라 실제 재학생 학부모인지 확인이 필요해요.\n'
-                          '최근 1주일 이내 학교에서 받은 자료 사진을 업로드해 주세요.\n관리자 확인 후 해당 자녀 학교가 추가됩니다.'
-                        : '같은 학교·학년 학부모들만 모이는 게시판이라 실제 재학생 학부모인지 확인이 필요해요.\n'
-                          '최근 1주일 이내 학교에서 받은 자료 사진을 업로드해 주세요.\n관리자 확인 후 정회원으로 승인됩니다.',
+                    _isPreschool
+                        ? '어린이집/유치원 알림장이나 안내문 사진을 업로드해 주세요.\n관리자 확인 후 이용할 수 있어요. (학교 게시판은 이용할 수 없고, 지역 게시판만 이용 가능해요)'
+                        : widget.captureType == 'child_add'
+                            ? '같은 학교 학부모들만 모이는 게시판이라 실제 재학생 학부모인지 확인이 필요해요.\n'
+                              '최근 1주일 이내 학교에서 받은 자료 사진을 업로드해 주세요.\n관리자 확인 후 해당 자녀 학교가 추가됩니다.'
+                            : '같은 학교·학년 학부모들만 모이는 게시판이라 실제 재학생 학부모인지 확인이 필요해요.\n'
+                              '최근 1주일 이내 학교에서 받은 자료 사진을 업로드해 주세요.\n관리자 확인 후 정회원으로 승인됩니다.',
                     style: const TextStyle(fontSize: 13, height: 1.5),
                   ),
                 ],

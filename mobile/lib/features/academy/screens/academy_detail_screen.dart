@@ -62,6 +62,7 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
   int _nextUnlockAt = 1;
   int _userReviewCount = 0;
   bool _infoExpanded = true;  // 학원 기본정보 접기/펼치기 — 기본은 펼침
+  bool _excludePreschool = false;  // 미취학 맘 후기 제외 토글
 
   @override
   void initState() {
@@ -98,7 +99,10 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
 
       // 리뷰 로드는 학원 정보와 분리 — 실패해도 학원 정보는 표시
       try {
-        final reviewsResp = await dio.get('/academies/${widget.academyId}/reviews');
+        final reviewsResp = await dio.get(
+          '/academies/${widget.academyId}/reviews',
+          queryParameters: {'exclude_preschool': _excludePreschool},
+        );
         final data = reviewsResp.data as Map<String, dynamic>;
         final quotaInfo = data['quota_info'] as Map<String, dynamic>? ?? {};
         if (mounted) {
@@ -361,6 +365,23 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
                   icon: const Icon(Icons.edit_outlined, size: 16),
                   label: const Text('후기 작성'),
                   style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text('미취학 맘 후기 제외', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                Switch(
+                  value: _excludePreschool,
+                  onChanged: (v) {
+                    setState(() => _excludePreschool = v);
+                    _load();
+                  },
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ],
             ),

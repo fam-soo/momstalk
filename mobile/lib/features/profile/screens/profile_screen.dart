@@ -208,9 +208,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final displaySchool = (activeChild?['school_name'] ?? _profile!['school_name']) as String?;
     final displayGrade = (activeChild?['grade'] ?? _profile!['grade']) as int?;
 
+    final needsSchoolVerification = _profile!['needs_school_verification'] as bool? ?? false;
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // ── 미취학 → 초1 전환 유도 안내 ──────────────────
+        if (needsSchoolVerification) ...[
+          Card(
+            clipBehavior: Clip.antiAlias,
+            color: Colors.orange.shade50,
+            child: ListTile(
+              leading: Icon(Icons.school_outlined, color: Colors.orange.shade700),
+              title: const Text('자녀가 초등학교에 입학했나요?', style: TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text('학교 인증을 하면 학교·학년 게시판도 이용할 수 있어요.', style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/profile/add-child'),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+
         // ── 관리자 패널 (최상단) ──────────────────────────
         if (isAdmin) ...[
           Card(

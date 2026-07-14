@@ -27,7 +27,13 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
   List<Map<String, dynamic>> _previewPosts = [];
   List<Map<String, dynamic>> _notices = [];
   int _previewTaps = 0;
+  String _childGroup = 'all';
   static const _tapLimit = 2;
+  static const _childGroupOptions = [
+    ('all', '전체'),
+    ('school_age', '초중고맘'),
+    ('preschool', '미취학맘'),
+  ];
   static const _prefKey = 'preview_taps_region';
   static const _seenNoticePref = 'seen_notice_id';
 
@@ -167,7 +173,26 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
         // 공지는 PostListWidget 안에서 게시글 목록 최상단에 이미 고정
         // 표시된다(📌공지 배지). 예전엔 여기 별도 배너 바까지 있어서 같은
         // 공지가 배너(접힌 줄+펼친 줄)와 피드 카드로 최대 3중 중복 노출됐다.
-        body: const PostListWidget(boardType: 'region'),
+        body: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              child: Wrap(
+                spacing: 8,
+                children: _childGroupOptions.map((opt) {
+                  final selected = _childGroup == opt.$1;
+                  return ChoiceChip(
+                    label: Text(opt.$2, style: const TextStyle(fontSize: 12)),
+                    selected: selected,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => setState(() => _childGroup = opt.$1),
+                  );
+                }).toList(),
+              ),
+            ),
+            Expanded(child: PostListWidget(boardType: 'region', childGroup: _childGroup)),
+          ],
+        ),
         floatingActionButton: FloatingActionButton.extended(
           onPressed: () => context.push('/board/write?board_type=region'),
           icon: const Icon(Icons.edit_outlined),

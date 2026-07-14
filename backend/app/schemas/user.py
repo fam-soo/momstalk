@@ -11,6 +11,7 @@ class ChildProfile(BaseModel):
     class_num: Optional[int] = None
     school_type: Optional[str] = None
     region: Optional[str] = None
+    expected_entry_year: Optional[int] = None
     # 학원 추천용 — 가입 시엔 선택 입력, 학원 검색 시 필수로 요구됨(프론트에서 게이팅)
     learning_goals: Optional[list[str]] = None
 
@@ -43,6 +44,7 @@ class UserProfile(BaseModel):
     is_trusted: bool = False
     admin_username: Optional[str] = None
     reject_reason: Optional[str] = None
+    needs_school_verification: bool = False   # 미취학 자녀가 입학 예정연도를 넘겼을 때 True
     profile_updated_at: Optional[datetime] = None
     created_at: datetime
     children: list[ChildProfile] = []
@@ -63,44 +65,53 @@ class UpdateNicknameRequest(BaseModel):
 
 class UpdateProfileRequest(BaseModel):
     region: str
-    school_code: str
-    school_name: str
-    grade: int
+    school_code: Optional[str] = None
+    school_name: Optional[str] = None
+    grade: Optional[int] = None
     school_type: str
 
     @field_validator("grade")
     @classmethod
-    def check_grade(cls, v: int) -> int:
-        if not (1 <= v <= 6):
+    def check_grade(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (1 <= v <= 6):
             raise ValueError("학년은 1~6 사이여야 합니다.")
         return v
 
     @field_validator("school_type")
     @classmethod
     def check_school_type(cls, v: str) -> str:
-        if v not in ("elementary", "middle", "high"):
-            raise ValueError("school_type은 elementary / middle / high 중 하나여야 합니다.")
+        if v not in ("elementary", "middle", "high", "preschool"):
+            raise ValueError("school_type은 elementary / middle / high / preschool 중 하나여야 합니다.")
         return v
+
+    def model_post_init(self, __context) -> None:
+        if self.school_type != "preschool" and not (self.school_code and self.school_name and self.grade):
+            raise ValueError("school_code/school_name/grade는 preschool이 아니면 필수입니다.")
 
 
 class AddChildRequest(BaseModel):
-    school_code: str
-    school_name: str
-    grade: int
+    school_code: Optional[str] = None
+    school_name: Optional[str] = None
+    grade: Optional[int] = None
     class_num: Optional[int] = None
     school_type: str
     region: Optional[str] = None
+    expected_entry_year: Optional[int] = None
 
     @field_validator("grade")
     @classmethod
-    def check_grade(cls, v: int) -> int:
-        if not (1 <= v <= 6):
+    def check_grade(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (1 <= v <= 6):
             raise ValueError("학년은 1~6 사이여야 합니다.")
         return v
 
     @field_validator("school_type")
     @classmethod
     def check_school_type(cls, v: str) -> str:
-        if v not in ("elementary", "middle", "high"):
-            raise ValueError("school_type은 elementary / middle / high 중 하나여야 합니다.")
+        if v not in ("elementary", "middle", "high", "preschool"):
+            raise ValueError("school_type은 elementary / middle / high / preschool 중 하나여야 합니다.")
         return v
+
+    def model_post_init(self, __context) -> None:
+        if self.school_type != "preschool" and not (self.school_code and self.school_name and self.grade):
+            raise ValueError("school_code/school_name/grade는 preschool이 아니면 필수입니다.")

@@ -830,6 +830,7 @@ class _SchoolDropdownTitle extends StatelessWidget {
     'elementary' => '초',
     'middle' => '중',
     'high' => '고',
+    'preschool' => '미취학',
     _ => '',
   };
 
@@ -837,13 +838,17 @@ class _SchoolDropdownTitle extends StatelessWidget {
     'elementary' => Colors.green,
     'middle' => Colors.blue,
     'high' => Colors.purple,
+    'preschool' => Colors.orange,
     _ => Colors.grey,
   };
 
   @override
   Widget build(BuildContext context) {
     final sel = children[selectedIdx];
-    final schoolName = sel['school_name'] as String? ?? '학교';
+    final isPreschool = sel['school_type'] == 'preschool';
+    final schoolName = isPreschool
+        ? ((sel['region'] as String?)?.isNotEmpty == true ? sel['region'] as String : '미취학')
+        : (sel['school_name'] as String? ?? '학교');
     final grade = sel['grade'] as int? ?? 1;
     final type = sel['school_type'] as String?;
     final typeLabel = _typeLabel(type);
@@ -857,7 +862,10 @@ class _SchoolDropdownTitle extends StatelessWidget {
       itemBuilder: (_) => children.asMap().entries.map((entry) {
         final i = entry.key;
         final c = entry.value;
-        final cSchool = c['school_name'] as String? ?? '학교';
+        final cIsPreschool = c['school_type'] == 'preschool';
+        final cSchool = cIsPreschool
+            ? ((c['region'] as String?)?.isNotEmpty == true ? c['region'] as String : '미취학')
+            : (c['school_name'] as String? ?? '학교');
         final cGrade = c['grade'] as int? ?? 1;
         final cType = c['school_type'] as String?;
         final cLabel = _typeLabel(cType);
@@ -880,7 +888,7 @@ class _SchoolDropdownTitle extends StatelessWidget {
                 fontWeight: i == selectedIdx ? FontWeight.bold : FontWeight.normal,
                 fontSize: 14,
               )),
-              Text('$cGrade학년', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              if (!cIsPreschool) Text('$cGrade학년', style: const TextStyle(fontSize: 11, color: Colors.grey)),
             ]),
             if (i == selectedIdx) ...[
               const Spacer(),
@@ -905,7 +913,7 @@ class _SchoolDropdownTitle extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
         ),
         const SizedBox(width: 2),
-        Text(' $grade학년', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+        if (!isPreschool) Text(' $grade학년', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
         const SizedBox(width: 2),
         const Icon(Icons.arrow_drop_down, size: 20),
       ]),

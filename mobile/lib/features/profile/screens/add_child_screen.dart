@@ -130,6 +130,82 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
 
   int get _maxGrade => _selected?['school_type'] == 'elementary' ? 6 : 3;
 
+  Future<void> _addPreschoolChild() async {
+    final regionCtrl = TextEditingController();
+    final thisYear = DateTime.now().year;
+    int? entryYear;
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('미취학 자녀 추가'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('학교 검색 없이 동네(지역) 인증만으로 추가할 수 있어요.', style: TextStyle(fontSize: 13)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: regionCtrl,
+                autofocus: true,
+                decoration: const InputDecoration(hintText: '예: 양천구', border: OutlineInputBorder(), isDense: true),
+              ),
+              const SizedBox(height: 12),
+              const Text('초등학교 입학 예정 연도 (선택)', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<int?>(
+                value: entryYear,
+                decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                items: [
+                  const DropdownMenuItem<int?>(value: null, child: Text('선택 안함')),
+                  ...List.generate(6, (i) => thisYear + i)
+                      .map((y) => DropdownMenuItem<int?>(value: y, child: Text('$y년'))),
+                ],
+                onChanged: (v) => setDialogState(() => entryYear = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('취소')),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop({'region': regionCtrl.text.trim(), 'entryYear': entryYear}),
+              child: const Text('다음'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final region = result?['region'] as String?;
+    if (region == null || region.isEmpty || !mounted) return;
+    final schoolInfo = {'school_type': 'preschool', 'region': region, 'expected_entry_year': result?['entryYear']};
+
+    if (_isTrusted) {
+      setState(() => _saving = true);
+      try {
+        final dio = ref.read(dioProvider);
+        await dio.post('/auth/me/children', data: schoolInfo);
+        ref.invalidate(userProfileProvider);
+        bumpBoardRefresh(ref);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('자녀가 추가되었습니다.')));
+          context.pop(true);
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('추가 실패: $e')));
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
+      return;
+    }
+
+    final captureResult = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CaptureUploadScreen(schoolInfo: schoolInfo, captureType: 'child_add'),
+      ),
+    );
+    if (captureResult == true && mounted) context.pop(true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -146,6 +222,17 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
               '자녀가 여러 명이면 모두 등록해두고 내정보에서 전환하며 각자의 게시판을 볼 수 있어요.\n\n'
               '자녀가 다니는 학교를 검색하세요.\n학교명(예: 행복초) 또는 지역명(예: 강남구)으로 찾을 수 있어요.',
               style: TextStyle(fontSize: 13, height: 1.5),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _addPreschoolChild,
+                icon: const Icon(Icons.child_care, size: 18),
+                label: const Text('우리 아이는 아직 미취학이에요', style: TextStyle(fontSize: 13)),
+              ),
             ),
           ),
           Padding(

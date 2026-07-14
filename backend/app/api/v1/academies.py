@@ -173,11 +173,12 @@ async def get_kakao_place(
 async def list_reviews(
     academy_id: int,
     request: Request,
+    exclude_preschool: bool = False,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_service_db),
 ):
     await RateLimit.academy_detail(request)
-    return await academy_service.list_reviews(academy_id, user, db)
+    return await academy_service.list_reviews(academy_id, user, db, exclude_preschool=exclude_preschool)
 
 
 @router.post("/{academy_id}/reviews", response_model=AcademyReviewResponse, status_code=201)

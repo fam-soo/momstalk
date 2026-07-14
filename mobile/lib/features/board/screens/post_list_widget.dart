@@ -14,7 +14,9 @@ class PostListWidget extends ConsumerStatefulWidget {
   final bool isAdmin;
   /// 다자녀 조회 시 특정 자녀 ID (null이면 active_child 사용)
   final int? childId;
-  const PostListWidget({super.key, required this.boardType, this.isAdmin = false, this.childId});
+  /// region 게시판 전용 그룹 필터: all | school_age | preschool
+  final String childGroup;
+  const PostListWidget({super.key, required this.boardType, this.isAdmin = false, this.childId, this.childGroup = 'all'});
 
   @override
   ConsumerState<PostListWidget> createState() => _PostListWidgetState();
@@ -41,6 +43,14 @@ class _PostListWidgetState extends ConsumerState<PostListWidget> with AutomaticK
     super.initState();
     _load(reset: true);
     _scrollCtrl.addListener(_onScroll);
+  }
+
+  @override
+  void didUpdateWidget(covariant PostListWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.childGroup != widget.childGroup) {
+      _load(reset: true);
+    }
   }
 
   @override
@@ -73,6 +83,9 @@ class _PostListWidgetState extends ConsumerState<PostListWidget> with AutomaticK
       };
       if (!reset && _nextCursor != null) params['cursor'] = _nextCursor;
       if (widget.childId != null) params['child_id'] = widget.childId;
+      if (widget.boardType == 'region' && widget.childGroup != 'all') {
+        params['child_group'] = widget.childGroup;
+      }
       final resp = await dio.get('/posts', queryParameters: params);
       final data = Map<String, dynamic>.from(resp.data as Map);
       final items = (data['items'] as List)
@@ -337,6 +350,10 @@ class _PostCardState extends State<PostCard> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    if ((post['author_badge'] as String?)?.isNotEmpty == true) ...[
+                      const SizedBox(width: 4),
+                      _AuthorBadge(label: post['author_badge'] as String),
+                    ],
                     if (widget.isAdmin) ...[
                       const SizedBox(width: 4),
                       _adminLocationLabel(ctx),
@@ -407,6 +424,27 @@ class _PostCardState extends State<PostCard> {
         ),
       );
     });
+  }
+}
+
+/// 작성자 자녀 상태 뱃지 — "미취학" / "2학년" 등. 닉네임 옆에 작게 표시.
+class _AuthorBadge extends StatelessWidget {
+  final String label;
+  const _AuthorBadge({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 9.5, color: Theme.of(context).colorScheme.onTertiaryContainer, fontWeight: FontWeight.w600),
+      ),
+    );
   }
 }
 

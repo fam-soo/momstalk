@@ -33,6 +33,7 @@ class CommentResponse(BaseModel):
     anon_label: Optional[str] = None   # 익명 표시명: "글쓴이" / "익명1" / "익명2" ... (is_anonymous=True일 때만)
     created_at: datetime
     author_nickname: Optional[str] = None    # nickname_type=anon이면 익명닉네임, certified이면 인증닉네임
+    author_badge: Optional[str] = None       # "미취학" / "2학년" 등 — 작성자 자녀 상태 뱃지
 
     model_config = {"from_attributes": True}
 

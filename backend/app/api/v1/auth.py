@@ -195,6 +195,9 @@ def _user_profile_with_active_child(user: User) -> UserProfile:
         profile.grade = active.grade or profile.grade
         profile.school_type = active.school_type or profile.school_type
         profile.learning_goals = active.learning_goals or profile.learning_goals
+        if active.school_type == "preschool" and active.expected_entry_year:
+            from datetime import date
+            profile.needs_school_verification = date.today().year >= active.expected_entry_year
     return profile
 
 
@@ -330,17 +333,24 @@ async def kakao_login(
 @router.post("/capture/upload", status_code=status.HTTP_204_NO_CONTENT)
 async def capture_upload(
     file: UploadFile = File(..., description="알림장 캡처 이미지 (jpg/png/heic)"),
-    school_code: str = Form(...),
-    school_name: str = Form(...),
-    grade: int = Form(...),
+    school_code: str | None = Form(None),
+    school_name: str | None = Form(None),
+    grade: int | None = Form(None),
     class_num: int | None = Form(None),
     school_type: str = Form(...),
     region: str = Form(""),
     capture_type: str = Form("initial"),
+    expected_entry_year: int | None = Form(None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """캡처 이미지 + 학교 정보를 한 번에 제출. DB에 저장 후 심사 대기 상태로 전환."""
+    """캡처 이미지 + 학교 정보를 한 번에 제출. DB에 저장 후 심사 대기 상태로 전환.
+
+    school_type="preschool"은 학교가 없는 미취학 가입이라 school_code/school_name/
+    grade 없이도 제출 가능 — 지역(region) 인증만으로 진행한다.
+    """
+    if school_type != "preschool" and not (school_code and school_name and grade):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="school_code/school_name/grade는 미취학이 아니면 필수입니다.")
     data = await file.read()
     if len(data) > 10 * 1024 * 1024:  # 10 MB
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="파일 크기는 10MB 이하여야 합니다.")
@@ -352,6 +362,7 @@ async def capture_upload(
     await capture_service.submit_capture(
         user, data, content_type, school_code, school_name, grade, class_num, db,
         region=region, school_type=school_type, capture_type=capture_type,
+        expected_entry_year=expected_entry_year,
     )
 
 
@@ -363,7 +374,8 @@ async def capture_submit(
 ):
     """[DEV] 이미지 없이 학교 정보만으로 제출 (더미 s3_key). 관리자 검토 대기 상태로 전환."""
     await capture_service.submit_capture(
-        user, None, None, req.school_code, req.school_name, req.grade, req.class_num, db
+        user, None, None, req.school_code, req.school_name, req.grade, req.class_num, db,
+        region=req.region, school_type=req.school_type, expected_entry_year=req.expected_entry_year,
     )
 
 
@@ -537,6 +549,7 @@ async def add_child(
         class_num=req.class_num,
         school_type=req.school_type,
         region=req.region,
+        expected_entry_year=req.expected_entry_year,
     )
     db.add(child)
     await db.flush()
@@ -569,6 +582,8 @@ async def update_child(
     child.school_type = req.school_type
     if req.region:
         child.region = req.region
+    if req.expected_entry_year:
+        child.expected_entry_year = req.expected_entry_year
 
     await db.commit()
     await db.refresh(child)
