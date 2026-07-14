@@ -4,7 +4,7 @@ from sqlalchemy import select, func, or_, and_
 from sqlalchemy.exc import IntegrityError
 
 from app.core.profanity import check_profanity
-from app.models.service_models import Block, Comment, Like, Post, Report, Scrap, School, User
+from app.models.service_models import Block, Comment, Like, Post, Report, Scrap, School, User, UserChild
 from app.schemas.post import PostCreate, PostListItem, PostResponse, ScrapResponse, PostUpdate
 from app.services import temperature_service
 from app.services.school_unlock_service import get_unlock_status
@@ -45,15 +45,7 @@ def _effective_region(user: User) -> str:
 _SCHOOL_TYPE_LABEL = {"elementary": "초", "middle": "중", "high": "고"}
 
 
-def _author_badge(author: User | None) -> str | None:
-    """닉네임 옆에 노출할 작성자 상태 뱃지. 관리자는 학교/학년과 무관하게
-    "관리자" 표시만으로 충분하니 뱃지를 아예 안 붙인다(예전엔 관리자 본인의
-    active_child 기준 "1학년" 같은 뱃지가 같이 붙어서 혼란스러웠다).
-    일반 유저는 미취학이면 "미취학", 그 외엔 "초3"/"중2"처럼 학교급+학년을
-    같이 표시한다("3학년"만으로는 초·중·고 3학년이 구분 안 됐다)."""
-    if not author or author.is_admin:
-        return None
-    child = author.active_child
+def _badge_label_for_child(child) -> str | None:
     if not child:
         return None
     if child.school_type == "preschool":
@@ -62,6 +54,42 @@ def _author_badge(author: User | None) -> str | None:
         level = _SCHOOL_TYPE_LABEL.get(child.school_type, "")
         return f"{level}{child.grade}" if level else f"{child.grade}학년"
     return None
+
+
+def _author_badge(author: User | None, post: Post | None = None, children_by_user: dict | None = None) -> str | None:
+    """닉네임 옆에 노출할 작성자 상태 뱃지. 관리자는 학교/학년과 무관하게
+    "관리자" 표시만으로 충분하니 뱃지를 아예 안 붙인다(예전엔 관리자 본인의
+    active_child 기준 "1학년" 같은 뱃지가 같이 붙어서 혼란스러웠다).
+    일반 유저는 미취학이면 "미취학", 그 외엔 "초3"/"중2"처럼 학교급+학년을
+    같이 표시한다("3학년"만으로는 초·중·고 3학년이 구분 안 됐다).
+
+    다자녀 유저가 학교/학년 게시판에 글을 쓴 뒤 다른 자녀로 활성 자녀를
+    바꾸면, 예전엔 active_child 기준으로만 뱃지를 계산해서 "중학교 게시판인데
+    초1"처럼 글을 쓴 자녀가 아닌 현재 활성 자녀의 뱃지가 잘못 표시됐다.
+    학교/학년 게시판은 글에 스냅샷된 school_code(+grade)와 일치하는 자녀를
+    찾아 그 자녀 기준으로 뱃지를 계산한다."""
+    if not author or author.is_admin:
+        return None
+    if post is not None and post.board_type in SCHOOL_GATED_BOARDS and post.school_code:
+        candidates = (children_by_user or {}).get(author.id, [])
+        matched = next((c for c in candidates if c.school_code == post.school_code), None)
+        if matched:
+            return _badge_label_for_child(matched)
+    child = author.active_child
+    return _badge_label_for_child(child)
+
+
+async def _batch_children_for_gated_posts(posts: list[Post], author_ids: set[int], db: AsyncSession) -> dict[int, list]:
+    """학교/학년 게시판 글이 섞여 있을 때만 작성자들의 자녀 목록을 한 번에
+    조회해 _author_badge()가 글 작성 당시 학교와 일치하는 자녀를 찾을 수
+    있게 한다. 지역/전체 게시판만 있는 목록이면 조회를 아예 건너뛴다."""
+    if not any(p.board_type in SCHOOL_GATED_BOARDS and p.school_code for p in posts):
+        return {}
+    children_result = await db.execute(select(UserChild).where(UserChild.user_id.in_(author_ids)))
+    children_by_user: dict[int, list] = {}
+    for child in children_result.scalars():
+        children_by_user.setdefault(child.user_id, []).append(child)
+    return children_by_user
 
 
 def _resolve_nickname_snapshot(nickname_type: str, is_anonymous: bool, author: User) -> str | None:
@@ -185,6 +213,10 @@ async def get_post_response(post: Post, user: User, db: AsyncSession) -> PostRes
     )).scalar() or 0
     author = (await db.execute(select(User).where(User.id == post.author_id))).scalar_one_or_none()
     display_name = _author_display_name(post, author) if author else None
+    children_by_user: dict = {}
+    if author and post.board_type in SCHOOL_GATED_BOARDS and post.school_code:
+        children_result = await db.execute(select(UserChild).where(UserChild.user_id == author.id))
+        children_by_user[author.id] = children_result.scalars().all()
     return PostResponse(
         id=post.id,
         board_type=post.board_type,
@@ -193,7 +225,7 @@ async def get_post_response(post: Post, user: User, db: AsyncSession) -> PostRes
         is_anonymous=post.is_anonymous,
         nickname_type=getattr(post, "nickname_type", "anon"),
         author_display_name=display_name,
-        author_badge=_author_badge(author),
+        author_badge=_author_badge(author, post, children_by_user),
         view_count=post.view_count,
         like_count=post.like_count,
         scrap_count=post.scrap_count,
@@ -388,6 +420,7 @@ async def list_posts(
     author_ids = {p.author_id for p in posts}
     authors_result = await db.execute(select(User).where(User.id.in_(author_ids)))
     authors: dict[int, User] = {u.id: u for u in authors_result.scalars()}
+    children_by_user = await _batch_children_for_gated_posts(posts, author_ids, db)
 
     items = []
     for post in posts:
@@ -401,7 +434,7 @@ async def list_posts(
             is_anonymous=post.is_anonymous,
             nickname_type=getattr(post, "nickname_type", "anon"),
             author_display_name=display_name,
-            author_badge=_author_badge(author),
+            author_badge=_author_badge(author, post, children_by_user),
             author_region=author.region if author else None,
             author_school=author.school_name if author else None,
             view_count=post.view_count,
@@ -497,6 +530,7 @@ async def get_hot_posts(user: User, db: AsyncSession, limit: int = 30) -> "PostL
     author_ids = {p.author_id for p in scored}
     authors_result = await db.execute(select(User).where(User.id.in_(author_ids)))
     authors: dict[int, User] = {u.id: u for u in authors_result.scalars()}
+    children_by_user = await _batch_children_for_gated_posts(scored, author_ids, db)
 
     items = []
     for post in scored:
@@ -509,7 +543,7 @@ async def get_hot_posts(user: User, db: AsyncSession, limit: int = 30) -> "PostL
             is_anonymous=post.is_anonymous,
             nickname_type=getattr(post, "nickname_type", "anon"),
             author_display_name=display_name,
-            author_badge=_author_badge(author),
+            author_badge=_author_badge(author, post, children_by_user),
             author_region=author.region if author else None,
             author_school=author.school_name if author else None,
             view_count=post.view_count,

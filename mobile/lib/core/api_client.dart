@@ -4,8 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:go_router/go_router.dart';
+
 import 'constants.dart';
 import 'mock_interceptor.dart';
+import 'nav_key.dart';
 
 // 웹: SharedPreferences (localStorage) — Web Crypto API 의존성 없음
 // 모바일: FlutterSecureStorage (Android Keystore / iOS Keychain)
@@ -85,6 +88,12 @@ final dioProvider = Provider<Dio>((ref) {
             await _storage.deleteAll();
           }
         }
+        // 리프레시 실패(리프레시 토큰 만료 등) 또는 재시도 후에도 401 —
+        // 세션이 완전히 끊긴 상태다. 예전엔 여기서 콘솔에 401만 남기고
+        // 화면은 그대로 두어서, 사용자는 로그인된 화면(예: 관리자 페이지)을
+        // 계속 보면서 왜 데이터가 하나도 안 불러와지는지 알 수 없었다.
+        // 로그인 화면으로 강제 이동시켜 재로그인을 유도한다.
+        _redirectToLoginOnSessionExpired();
       }
       handler.next(error);
     },
@@ -96,6 +105,14 @@ final dioProvider = Provider<Dio>((ref) {
 /// Dio 인터셉터 밖(예: package:http 사용 업로드)에서 401 발생 시 수동으로
 /// 토큰을 갱신할 때 사용. 성공 시 true, 실패(리프레시 토큰 만료 등) 시 false.
 Future<bool> tryRefreshToken(Dio dio) => _tryRefresh(dio);
+
+void _redirectToLoginOnSessionExpired() {
+  final ctx = rootNavKey.currentContext;
+  if (ctx == null) return;
+  final currentLoc = GoRouterState.of(ctx).uri.toString();
+  if (currentLoc.startsWith('/auth')) return;
+  ctx.go('/auth/login');
+}
 
 Future<bool> _tryRefresh(Dio dio) async {
   try {

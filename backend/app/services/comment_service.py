@@ -2,11 +2,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.profanity import check_profanity
-from app.models.service_models import Block, Comment, Like, Post, User
+from app.models.service_models import Block, Comment, Like, Post, User, UserChild
 from app.schemas.comment import CommentCreate, CommentResponse
 from app.services import temperature_service
 from app.services.notification_service import notify_user
-from app.services.post_service import ANON_ALLOWED_BOARDS, _author_badge, _resolve_nickname_snapshot
+from app.services.post_service import (
+    ANON_ALLOWED_BOARDS,
+    SCHOOL_GATED_BOARDS,
+    _author_badge,
+    _resolve_nickname_snapshot,
+)
 
 
 async def create_comment(
@@ -48,6 +53,11 @@ async def create_comment(
     post_obj = (await db.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
     anon_labels = _build_anon_labels(all_comments, post_obj.author_id if post_obj else None)
 
+    children_by_user: dict = {}
+    if post_obj and post_obj.board_type in SCHOOL_GATED_BOARDS and post_obj.school_code:
+        children_result = await db.execute(select(UserChild).where(UserChild.user_id == user.id))
+        children_by_user[user.id] = children_result.scalars().all()
+
     response = CommentResponse(
         id=comment.id,
         post_id=comment.post_id,
@@ -60,7 +70,7 @@ async def create_comment(
         is_liked=False,
         is_mine=True,
         anon_label=anon_labels.get(comment.author_id) if comment.is_anonymous else None,
-        author_badge=_author_badge(user),
+        author_badge=_author_badge(user, post_obj, children_by_user),
         created_at=comment.created_at,
     )
 
@@ -145,6 +155,12 @@ async def list_comments(post_id: int, user: User, db: AsyncSession) -> list[Comm
         for u in users_result.scalars():
             users_map[u.id] = u
 
+    children_by_user: dict = {}
+    if post and post.board_type in SCHOOL_GATED_BOARDS and post.school_code and all_author_ids:
+        children_result = await db.execute(select(UserChild).where(UserChild.user_id.in_(all_author_ids)))
+        for child in children_result.scalars():
+            children_by_user.setdefault(child.user_id, []).append(child)
+
     def _comment_display_name(c: Comment) -> str | None:
         author = users_map.get(c.author_id)
         if not author:
@@ -176,7 +192,7 @@ async def list_comments(post_id: int, user: User, db: AsyncSession) -> list[Comm
             is_mine=(c.author_id == user.id),
             anon_label=anon_labels.get(c.author_id) if c.is_anonymous else None,
             author_nickname=_comment_display_name(c),
-            author_badge=_author_badge(users_map.get(c.author_id)),
+            author_badge=_author_badge(users_map.get(c.author_id), post, children_by_user),
             created_at=c.created_at,
         )
         for c in comments

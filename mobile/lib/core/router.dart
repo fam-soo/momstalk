@@ -27,6 +27,7 @@ import '../features/academy/screens/academy_detail_screen.dart';
 import '../features/academy/screens/academy_review_write_screen.dart';
 import '../features/academy/screens/academy_recommend_screen.dart';
 import 'api_client.dart' show tokenStorageProvider;
+import 'nav_key.dart';
 import 'constants.dart';
 import 'push_notifications.dart';
 import 'push_target.dart';
@@ -37,12 +38,11 @@ import 'update_checker.dart';
 import '../features/admin/screens/admin_login_screen.dart';
 import '../features/admin/screens/admin_home_screen.dart';
 
-final _rootNavKey = GlobalKey<NavigatorState>();
 final _shellNavKey = GlobalKey<NavigatorState>();
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
-    navigatorKey: _rootNavKey,
+    navigatorKey: rootNavKey,
     initialLocation: '/region',
     redirect: (context, state) async {
       final loc = state.matchedLocation;
@@ -80,52 +80,52 @@ final routerProvider = Provider<GoRouter>((ref) {
       // 초대 링크 딥링크
       GoRoute(
         path: '/invite/:token',
-        parentNavigatorKey: _rootNavKey,
+        parentNavigatorKey: rootNavKey,
         builder: (ctx, s) => InviteJoinScreen(token: s.pathParameters['token']!),
       ),
 
       // ── 게시판 관련 (Shell 밖) ─────────────────────────
       GoRoute(
         path: '/board/write',
-        parentNavigatorKey: _rootNavKey,
+        parentNavigatorKey: rootNavKey,
         builder: (ctx, s) => PostWriteScreen(
           boardType: s.uri.queryParameters['board_type'] ?? 'free',
         ),
       ),
       GoRoute(
         path: '/board/:postId',
-        parentNavigatorKey: _rootNavKey,
+        parentNavigatorKey: rootNavKey,
         builder: (ctx, s) => PostDetailScreen(
           postId: int.parse(s.pathParameters['postId']!),
           highlightCommentId: int.tryParse(s.uri.queryParameters['highlight_comment_id'] ?? ''),
         ),
       ),
       // 대화(DM) 기능은 하단 탭에서는 뺐지만(당분간 미사용) 라우트 자체는 남겨둔다.
-      GoRoute(path: '/dm', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const DmListScreen()),
+      GoRoute(path: '/dm', parentNavigatorKey: rootNavKey, builder: (ctx, s) => const DmListScreen()),
       GoRoute(
         path: '/dm/:convId',
-        parentNavigatorKey: _rootNavKey,
+        parentNavigatorKey: rootNavKey,
         builder: (ctx, s) => DmChatScreen(
           convId: int.parse(s.pathParameters['convId']!),
           otherNickname: s.extra as String? ?? '대화',
         ),
       ),
-      GoRoute(path: '/profile', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const ProfileScreen()),
-      GoRoute(path: '/profile/add-child', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const AddChildScreen()),
-      GoRoute(path: '/notifications', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const NotificationListScreen()),
-      GoRoute(path: '/terms', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const TermsScreen()),
-      GoRoute(path: '/privacy', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const PrivacyScreen()),
-      GoRoute(path: '/search', parentNavigatorKey: _rootNavKey, builder: (ctx, s) => const SearchScreen()),
+      GoRoute(path: '/profile', parentNavigatorKey: rootNavKey, builder: (ctx, s) => const ProfileScreen()),
+      GoRoute(path: '/profile/add-child', parentNavigatorKey: rootNavKey, builder: (ctx, s) => const AddChildScreen()),
+      GoRoute(path: '/notifications', parentNavigatorKey: rootNavKey, builder: (ctx, s) => const NotificationListScreen()),
+      GoRoute(path: '/terms', parentNavigatorKey: rootNavKey, builder: (ctx, s) => const TermsScreen()),
+      GoRoute(path: '/privacy', parentNavigatorKey: rootNavKey, builder: (ctx, s) => const PrivacyScreen()),
+      GoRoute(path: '/search', parentNavigatorKey: rootNavKey, builder: (ctx, s) => const SearchScreen()),
 
       // ── 학원 후기 (Shell 밖) ───────────────────────────
       GoRoute(
         path: '/academy/recommend',
-        parentNavigatorKey: _rootNavKey,
+        parentNavigatorKey: rootNavKey,
         builder: (ctx, s) => const AcademyRecommendScreen(),
       ),
       GoRoute(
         path: '/academy/:id/review/write',
-        parentNavigatorKey: _rootNavKey,
+        parentNavigatorKey: rootNavKey,
         builder: (ctx, s) => AcademyReviewWriteScreen(
           academyId: int.parse(s.pathParameters['id']!),
           editingReview: s.extra as Map<String, dynamic>?,
@@ -133,13 +133,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/academy/:id',
-        parentNavigatorKey: _rootNavKey,
+        parentNavigatorKey: rootNavKey,
         builder: (ctx, s) => AcademyDetailScreen(academyId: int.parse(s.pathParameters['id']!)),
       ),
 
       // ── 바텀 네비 Shell (5탭) ────────────────────────────
       StatefulShellRoute.indexedStack(
-        parentNavigatorKey: _rootNavKey,
+        parentNavigatorKey: rootNavKey,
         builder: (ctx, state, shell) => _MainShell(shell: shell),
         branches: [
           StatefulShellBranch(
