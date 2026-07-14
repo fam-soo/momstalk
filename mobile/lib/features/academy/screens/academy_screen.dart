@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/constants.dart';
+import '../../../core/region_switch_button.dart';
 import '../../../core/unified_notify_button.dart';
 import '../../../core/refresh_bus.dart';
 
@@ -643,6 +644,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       centerTitle: true,
       titleSpacing: 0,
       actions: [
+        if (!_isAdmin) const RegionSwitchButton(),
         if (!_isAdmin)
           TextButton.icon(
             onPressed: () => context.push('/academy/recommend'),

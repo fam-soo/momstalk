@@ -5,9 +5,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/board_search_app_bar.dart';
 import '../../../core/constants.dart';
 import '../../../core/kst_time.dart';
 import '../../../core/notification_bell.dart';
+import '../../../core/region_switch_button.dart';
 import '../../../core/unified_notify_button.dart';
 import '../../../core/refresh_bus.dart';
 import 'post_list_widget.dart';
@@ -28,6 +30,10 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
   List<Map<String, dynamic>> _notices = [];
   int _previewTaps = 0;
   String _childGroup = 'all';
+  bool _searchActive = false;
+  String _searchQuery = '';
+  final _searchCtrl = TextEditingController();
+  final _searchFocus = FocusNode();
   static const _tapLimit = 2;
   static const _childGroupOptions = [
     ('all', '전체'),
@@ -41,6 +47,27 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
   void initState() {
     super.initState();
     _init();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  void _openSearch() {
+    setState(() => _searchActive = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _searchFocus.requestFocus());
+  }
+
+  void _closeSearch() {
+    _searchCtrl.clear();
+    setState(() { _searchActive = false; _searchQuery = ''; });
+  }
+
+  void _submitSearch() {
+    setState(() => _searchQuery = _searchCtrl.text.trim());
   }
 
   Future<void> _loadNotices() async {
@@ -161,36 +188,41 @@ class _RegionBoardScreenState extends ConsumerState<RegionBoardScreen> {
 
     if (_isMember) {
       return Scaffold(
-        appBar: AppBar(
-          leading: const UnifiedNotifyButton(prefKey: 'notify_region', label: '지역'),
-          centerTitle: true,
-          title: Text(_region.isNotEmpty ? '$_region 게시판' : '지역 게시판',
-              style: const TextStyle(fontWeight: FontWeight.bold)),
-          actions: [
-            IconButton(icon: const Icon(Icons.search), onPressed: () => context.push('/search')),
-          ],
-        ),
+        appBar: _searchActive
+            ? BoardSearchAppBar(
+                controller: _searchCtrl,
+                focusNode: _searchFocus,
+                hintText: '지역 게시판 검색',
+                onSubmitted: _submitSearch,
+                onClose: _closeSearch,
+              )
+            : AppBar(
+                leading: const UnifiedNotifyButton(prefKey: 'notify_region', label: '지역'),
+                centerTitle: true,
+                title: Text(_region.isNotEmpty ? '$_region 게시판' : '지역 게시판',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                actions: [
+                  const RegionSwitchButton(),
+                  IconButton(icon: const Icon(Icons.search), onPressed: _openSearch),
+                ],
+              ),
         // 공지는 PostListWidget 안에서 게시글 목록 최상단에 이미 고정
         // 표시된다(📌공지 배지). 예전엔 여기 별도 배너 바까지 있어서 같은
         // 공지가 배너(접힌 줄+펼친 줄)와 피드 카드로 최대 3중 중복 노출됐다.
-        body: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: Wrap(
-                spacing: 8,
-                children: _childGroupOptions.map((opt) {
-                  final selected = _childGroup == opt.$1;
-                  return ChoiceChip(
-                    label: Text(opt.$2, style: const TextStyle(fontSize: 12)),
-                    selected: selected,
-                    visualDensity: VisualDensity.compact,
-                    onSelected: (_) => setState(() => _childGroup = opt.$1),
-                  );
-                }).toList(),
+        body: PostListWidget(
+          boardType: 'region',
+          childGroup: _childGroup,
+          searchQuery: _searchQuery,
+          extraFilterChips: [
+            for (final opt in _childGroupOptions) ...[
+              ChoiceChip(
+                label: Text(opt.$2, style: const TextStyle(fontSize: 12)),
+                selected: _childGroup == opt.$1,
+                visualDensity: VisualDensity.compact,
+                onSelected: (_) => setState(() => _childGroup = opt.$1),
               ),
-            ),
-            Expanded(child: PostListWidget(boardType: 'region', childGroup: _childGroup)),
+              const SizedBox(width: 6),
+            ],
           ],
         ),
         floatingActionButton: FloatingActionButton.extended(

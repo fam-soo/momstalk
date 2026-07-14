@@ -17,7 +17,20 @@ class PostListWidget extends ConsumerStatefulWidget {
   final int? childId;
   /// region 게시판 전용 그룹 필터: all | school_age | preschool
   final String childGroup;
-  const PostListWidget({super.key, required this.boardType, this.isAdmin = false, this.childId, this.childGroup = 'all'});
+  /// 정렬 칩 왼쪽에 같은 줄로 붙일 추가 필터(예: 지역 게시판의 초중고맘/미취학맘
+  /// 그룹 필터). 정렬 칩과는 구분선으로 나눠 표시한다.
+  final List<Widget>? extraFilterChips;
+  /// 이 게시판 안에서의 검색어(별도 화면으로 이동하지 않는 인라인 검색용).
+  final String? searchQuery;
+  const PostListWidget({
+    super.key,
+    required this.boardType,
+    this.isAdmin = false,
+    this.childId,
+    this.childGroup = 'all',
+    this.extraFilterChips,
+    this.searchQuery,
+  });
 
   @override
   ConsumerState<PostListWidget> createState() => _PostListWidgetState();
@@ -49,7 +62,7 @@ class _PostListWidgetState extends ConsumerState<PostListWidget> with AutomaticK
   @override
   void didUpdateWidget(covariant PostListWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.childGroup != widget.childGroup) {
+    if (oldWidget.childGroup != widget.childGroup || oldWidget.searchQuery != widget.searchQuery) {
       _load(reset: true);
     }
   }
@@ -84,6 +97,7 @@ class _PostListWidgetState extends ConsumerState<PostListWidget> with AutomaticK
       };
       if (!reset && _nextCursor != null) params['cursor'] = _nextCursor;
       if (widget.childId != null) params['child_id'] = widget.childId;
+      if (widget.searchQuery != null && widget.searchQuery!.isNotEmpty) params['q'] = widget.searchQuery;
       if (widget.boardType == 'region' && widget.childGroup != 'all') {
         params['child_group'] = widget.childGroup;
       }
@@ -138,11 +152,18 @@ class _PostListWidgetState extends ConsumerState<PostListWidget> with AutomaticK
         Container(
           color: theme.colorScheme.surface,
           padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
-          child: Row(children: [
-            _SortChip(label: '최신순', value: 'recent', current: _sort, onSelect: _setSort),
-            const SizedBox(width: 8),
-            _SortChip(label: '🔥 인기순', value: 'popular', current: _sort, onSelect: _setSort),
-          ]),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              if (widget.extraFilterChips != null && widget.extraFilterChips!.isNotEmpty) ...[
+                ...widget.extraFilterChips!,
+                const SizedBox(height: 20, child: VerticalDivider(width: 17, thickness: 1)),
+              ],
+              _SortChip(label: '최신순', value: 'recent', current: _sort, onSelect: _setSort),
+              const SizedBox(width: 8),
+              _SortChip(label: '🔥 인기순', value: 'popular', current: _sort, onSelect: _setSort),
+            ]),
+          ),
         ),
         const Divider(height: 1),
         Expanded(

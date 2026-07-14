@@ -31,6 +31,7 @@ import 'push_notifications.dart';
 import 'push_target.dart';
 import 'refresh_bus.dart';
 import 'sw_notification_bridge.dart';
+import 'user_profile_provider.dart';
 import 'update_checker.dart';
 import '../features/admin/screens/admin_login_screen.dart';
 import '../features/admin/screens/admin_home_screen.dart';
@@ -350,9 +351,20 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
     await PushNotifications.dismissBanner();
   }
 
+  /// 등록된 자녀가 있지만 전부 미취학이면 학교 게시판을 이용할 수 없다 —
+  /// 학교 게시판 화면 안에서도 같은 조건으로 막지만(school_board_screen.dart),
+  /// 하단 탭 자체도 눌러보기 전에 잠긴 상태로 보여줘 혼란을 줄인다.
+  bool _onlyPreschoolChildren(AsyncValue<Map<String, dynamic>> profileAsync) {
+    final children = profileAsync.valueOrNull?['children'] as List?;
+    if (children == null || children.isEmpty) return false;
+    return children.every((c) => (c as Map)['school_type'] == 'preschool');
+  }
+
   @override
   Widget build(BuildContext context) {
     final shell = widget.shell;
+    final profileAsync = ref.watch(userProfileProvider);
+    final schoolLocked = _onlyPreschoolChildren(profileAsync);
     return Scaffold(
       body: Column(
         children: [
@@ -368,16 +380,26 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
       bottomNavigationBar: NavigationBar(
         selectedIndex: shell.currentIndex,
         onDestinationSelected: (i) {
+          if (i == 1 && schoolLocked) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('미취학 자녀만 있으면 학교 게시판을 이용할 수 없어요. 학교 인증 후 이용해보세요.')),
+            );
+            return;
+          }
           // 이미 선택된 탭을 다시 탭하면 해당 탭 내부 화면을 새로고침한다.
           if (i == shell.currentIndex) bumpBoardRefresh(ref);
           shell.goBranch(i, initialLocation: i == shell.currentIndex);
         },
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.location_on_outlined), selectedIcon: Icon(Icons.location_on), label: '지역'),
-          NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: '학교'),
-          NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: '학원'),
-          NavigationDestination(icon: Icon(Icons.local_fire_department_outlined), selectedIcon: Icon(Icons.local_fire_department), label: '인기'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '내정보'),
+        destinations: [
+          const NavigationDestination(icon: Icon(Icons.location_on_outlined), selectedIcon: Icon(Icons.location_on), label: '지역'),
+          NavigationDestination(
+            icon: Icon(schoolLocked ? Icons.lock_outline : Icons.school_outlined),
+            selectedIcon: Icon(schoolLocked ? Icons.lock_outline : Icons.school),
+            label: '학교',
+          ),
+          const NavigationDestination(icon: Icon(Icons.storefront_outlined), selectedIcon: Icon(Icons.storefront), label: '학원'),
+          const NavigationDestination(icon: Icon(Icons.local_fire_department_outlined), selectedIcon: Icon(Icons.local_fire_department), label: '인기'),
+          const NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: '내정보'),
         ],
       ),
     );

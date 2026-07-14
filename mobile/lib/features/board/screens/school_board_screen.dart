@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/board_search_app_bar.dart';
 import '../../../core/constants.dart';
 import '../../../core/kst_time.dart';
 import '../../../core/notification_bell.dart';
@@ -35,6 +36,11 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
   TabController? _tabController;
   List<Map<String, dynamic>> _children = [];
   int _selectedChildIdx = 0;
+  bool _onlyPreschoolChildren = false; // 등록된 자녀가 있지만 전부 미취학인 경우
+  bool _searchActive = false;
+  String _searchQuery = '';
+  final _searchCtrl = TextEditingController();
+  final _searchFocus = FocusNode();
   bool _authPending = false;
   bool _isAdmin = false;
   // 학교 게시판 언락(같은 학교 정회원 N명 모임) 상태
@@ -62,7 +68,23 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
     WidgetsBinding.instance.removeObserver(this);
     _unlockPollTimer?.cancel();
     _tabController?.dispose();
+    _searchCtrl.dispose();
+    _searchFocus.dispose();
     super.dispose();
+  }
+
+  void _openSearch() {
+    setState(() => _searchActive = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _searchFocus.requestFocus());
+  }
+
+  void _closeSearch() {
+    _searchCtrl.clear();
+    setState(() { _searchActive = false; _searchQuery = ''; });
+  }
+
+  void _submitSearch() {
+    setState(() => _searchQuery = _searchCtrl.text.trim());
   }
 
   @override
@@ -112,10 +134,14 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       final isAdmin = profile['is_admin'] as bool? ?? false;
       final authPending = profile['auth_pending'] as bool? ?? false;
       if (mounted) {
-        final children = (profile['children'] as List? ?? [])
+        final allChildren = (profile['children'] as List? ?? [])
             .map((c) => Map<String, dynamic>.from(c as Map))
             .toList();
-        final canAccess = (isMember || isAdmin) && !authPending;
+        // 미취학 자녀는 학교가 없어 학교 게시판 자체를 이용할 수 없다 —
+        // 상단 자녀 전환 목록에서도 아예 고를 수 없게 제외한다.
+        final children = allChildren.where((c) => c['school_type'] != 'preschool').toList();
+        final onlyPreschoolChildren = allChildren.isNotEmpty && children.isEmpty;
+        final canAccess = (isMember || isAdmin) && !authPending && !onlyPreschoolChildren;
         final tabs = canAccess ? TabController(length: 2, vsync: this) : null;
         // 내정보(활성 자녀)를 기준으로 초기 선택 자녀를 맞춘다 — 항상 0번째로
         // 고정하면 학교 게시판이 내정보에서 고른 자녀와 무관하게 보였다.
@@ -150,7 +176,8 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
         setState(() {
           _isMember = canAccess;
           // auth_pending 중이면 lurker도 아닌 '인증 대기' 상태로 처리
-          _isLurker = !canAccess && !authPending;
+          _isLurker = !canAccess && !authPending && !onlyPreschoolChildren;
+          _onlyPreschoolChildren = onlyPreschoolChildren;
           _authPending = authPending && !isAdmin;
           _isAdmin = isAdmin;
           _schoolName = profile['school_name'] as String? ?? '';
@@ -348,6 +375,39 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       );
     }
 
+    // 등록된 자녀가 있지만 전부 미취학 — 학교가 없어 게시판 자체를 이용할 수 없다.
+    if (_onlyPreschoolChildren) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: const NotificationBellButton(),
+          centerTitle: true,
+          title: const Text('학교 게시판', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.child_care, size: 64, color: Colors.grey.shade400),
+              const SizedBox(height: 20),
+              const Text('미취학 자녀만 등록되어 있어요', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Text(
+                '학교 게시판은 학교 인증이 필요해요.\n자녀가 초등학교에 입학했다면 학교 인증을 해보세요.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, height: 1.6, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: () => context.push('/profile/add-child'),
+                icon: const Icon(Icons.school_outlined, size: 18),
+                label: const Text('학교 인증하기'),
+              ),
+            ]),
+          ),
+        ),
+      );
+    }
+
     if (_isMember) {
       final tc = _tabController!;
       final hasMultiChild = _children.length > 1;
@@ -398,7 +458,15 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
       }
 
       return Scaffold(
-        appBar: AppBar(
+        appBar: _searchActive
+            ? BoardSearchAppBar(
+                controller: _searchCtrl,
+                focusNode: _searchFocus,
+                hintText: '학교 게시판 검색',
+                onSubmitted: _submitSearch,
+                onClose: _closeSearch,
+              )
+            : AppBar(
           // 학교 게시판은 탭이 학교/학년 둘이라, 현재 선택된 탭 기준으로
           // 알림 버튼이 대상 게시판을 자동으로 바꿔가며 표시한다.
           leading: AnimatedBuilder(
@@ -410,7 +478,7 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
           centerTitle: true,
           title: appBarTitle,
           actions: [
-            IconButton(icon: const Icon(Icons.search), onPressed: () => context.push('/search')),
+            IconButton(icon: const Icon(Icons.search), onPressed: _openSearch),
           ],
           bottom: PreferredSize(
             preferredSize: const Size.fromHeight(48),
@@ -448,12 +516,14 @@ class _SchoolBoardScreenState extends ConsumerState<SchoolBoardScreen>
               key: ValueKey('school-$displaySchool-$displayGrade-$selectedChildId'),
               boardType: 'school',
               childId: selectedChildId,
+              searchQuery: _searchQuery,
             ),
             if (hasGrade)
               PostListWidget(
                 key: ValueKey('grade-$displaySchool-$displayGrade-$selectedChildId'),
                 boardType: 'grade',
                 childId: selectedChildId,
+                searchQuery: _searchQuery,
               )
             else
               Center(

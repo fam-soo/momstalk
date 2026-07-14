@@ -7,13 +7,10 @@ import 'package:dio/dio.dart';
 import '../../../core/api_client.dart';
 import '../../../core/router.dart';
 import '../../../core/school_display.dart';
+import '../../../core/user_profile_provider.dart';
 import 'post_list_widget.dart';
 
-final userProfileProvider = FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
-  final dio = ref.read(dioProvider);
-  final resp = await dio.get('/auth/me');
-  return Map<String, dynamic>.from(resp.data);
-});
+export '../../../core/user_profile_provider.dart' show userProfileProvider;
 
 class BoardScreen extends ConsumerStatefulWidget {
   const BoardScreen({super.key});

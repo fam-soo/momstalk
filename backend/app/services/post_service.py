@@ -27,6 +27,21 @@ def _is_preschool(user: User) -> bool:
     return bool(active and active.school_type == "preschool")
 
 
+_DEFAULT_REGION = "양천구"
+
+
+def _effective_region(user: User) -> str:
+    """지역 게시판 기본 지역 계산 — active_child 기준 우선.
+
+    예전엔 user.region(레거시, 첫 자녀 등록 시에만 동기화)만 봐서 다자녀
+    유저가 다른 지역 자녀로 전환해도 지역 게시판은 예전 자녀 지역에 그대로
+    머물러 있었다(학원 게시판은 프론트가 /auth/me의 activeChild 반영값을
+    region 파라미터로 직접 넘겨서 이 문제가 없었음 — academy_screen.dart).
+    """
+    active = user.active_child
+    return (active.region if active else None) or user.region or _DEFAULT_REGION
+
+
 def _child_badge_label(child) -> str | None:
     """닉네임 옆에 노출할 자녀 상태 뱃지. 미취학은 "미취학", 그 외엔 학년으로 표시."""
     if not child:
@@ -220,8 +235,7 @@ async def list_posts(
     if q:
         query = query.where(or_(Post.title.ilike(f"%{q}%"), Post.content.ilike(f"%{q}%")))
 
-    _DEFAULT_REGION = "양천구"
-    effective_region = user.region or _DEFAULT_REGION
+    effective_region = _effective_region(user)
 
     # 관리자: 모든 지역/학교 필터 없이 전체 조회
     if not user.is_admin:
@@ -417,8 +431,7 @@ async def get_hot_posts(user: User, db: AsyncSession, limit: int = 30) -> "PostL
     blocked_ids_result = await db.execute(select(Block.blocked_user_id).where(Block.user_id == user.id))
     blocked_ids = {r for r in blocked_ids_result.scalars()}
 
-    _DEFAULT_REGION = "양천구"
-    effective_region = user.region or _DEFAULT_REGION
+    effective_region = _effective_region(user)
     since = datetime.utcnow() - timedelta(days=7)
 
     query = select(Post).where(
