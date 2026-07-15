@@ -166,7 +166,7 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
       final data = resp.data as Map<String, dynamic>;
       final list = (data['results'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
       final isFallback = data['is_fallback'] as bool? ?? false;
-      if (mounted) setState(() { _results = list; _isFallback = isFallback; _step = 5; });
+      if (mounted) setState(() { _results = list; _isFallback = isFallback; _step = 6; });
     } on DioException catch (e) {
       if (mounted) {
         final detail = e.response?.data is Map ? e.response?.data['detail'] as String? : null;
