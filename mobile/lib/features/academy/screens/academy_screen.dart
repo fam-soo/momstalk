@@ -47,6 +47,7 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
   bool _loading = true;
   bool _searched = false;
   String? _error;
+  List<Map<String, dynamic>> _needsReview = [];
 
   static const _subjects = ['수학', '영어', '과학', '국어', '음악', '미술', '체육', '코딩', '기타'];
   static const _levels = ['초등', '중등', '고등'];
@@ -123,10 +124,21 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
       }
       if (region.isEmpty) region = '양천구';
       if (mounted) setState(() => _userRegion = region);
+      _loadNeedsReview(region);
       await _search(regionOverride: region);
     } catch (e) {
       if (mounted) setState(() { _loading = false; _error = e.toString(); });
     }
+  }
+
+  Future<void> _loadNeedsReview(String region) async {
+    if (region.isEmpty) return;
+    try {
+      final dio = ref.read(dioProvider);
+      final resp = await dio.get('/academies/needs-review', queryParameters: {'region': region});
+      final list = (resp.data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      if (mounted) setState(() => _needsReview = list);
+    } catch (_) {}
   }
 
   Future<void> _search({String? regionOverride}) async {
@@ -601,6 +613,8 @@ class _AcademyScreenState extends ConsumerState<AcademyScreen> {
                                         style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                                       ),
                                     ),
+                                    if (!_isAdmin && !_hasFilter && _searchCtrl.text.isEmpty && _needsReview.isNotEmpty)
+                                      _NeedsReviewBanner(academies: _needsReview),
                                     if (!_isAdmin && _memberGrade != 'lurker')
                                       _ListQuotaBanner(
                                         userReviewCount: _userReviewCount,
@@ -807,6 +821,51 @@ class _AcademyTile extends StatelessWidget {
 
 // ── 리스트 상단 후기 열람 권한 배너 ──────────────────────────────────
 // 후기를 작성할수록 "가림 처리 없이 전체 열람 가능한 학원 개수"가 늘어난다.
+/// "아직 후기 없는 우리 동네 학원" 배너 — 탭하면 그 학원의 후기 작성 화면으로
+/// 바로 이동해 첫 리뷰어(개척자) 유도.
+class _NeedsReviewBanner extends StatelessWidget {
+  final List<Map<String, dynamic>> academies;
+  const _NeedsReviewBanner({required this.academies});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Icon(Icons.emoji_events_outlined, size: 16, color: Colors.amber.shade800),
+            const SizedBox(width: 6),
+            Text('아직 후기 없는 우리 동네 학원',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.amber.shade900)),
+          ]),
+          const SizedBox(height: 2),
+          Text('첫 리뷰어가 되어 개척자 뱃지를 받아보세요',
+              style: TextStyle(fontSize: 11.5, color: Colors.amber.shade800)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6, runSpacing: 6,
+            children: academies.map((a) => ActionChip(
+              backgroundColor: Colors.white,
+              side: BorderSide(color: Colors.amber.shade300),
+              label: Text(a['name'] as String? ?? '', style: const TextStyle(fontSize: 11.5)),
+              onPressed: () => context.push('/academy/${a['id']}/review/write'),
+            )).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ListQuotaBanner extends StatelessWidget {
   final int userReviewCount;
   final int unlockedCount;

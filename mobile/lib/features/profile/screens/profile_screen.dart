@@ -27,6 +27,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Map<String, dynamic>? _profile;
+  Map<String, dynamic>? _stats;
   bool _loading = true;
 
   @override
@@ -41,6 +42,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       final dio = ref.read(dioProvider);
       final resp = await dio.get('/auth/me');
       setState(() => _profile = Map<String, dynamic>.from(resp.data));
+      try {
+        final statsResp = await dio.get('/auth/me/stats');
+        if (mounted) setState(() => _stats = Map<String, dynamic>.from(statsResp.data));
+      } catch (_) {}
     } catch (e) {
       if (e is DioException && e.response?.statusCode == 401) {
         await ref.read(tokenStorageProvider).deleteAll();
@@ -287,6 +292,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     },
                   ),
                 ]),
+                if (!isAdmin && isMember && _stats != null) ...[
+                  const SizedBox(height: 2),
+                  _ActivityStatsRow(stats: _stats!),
+                ],
                 if (!isAdmin) ...[
                   InkWell(
                     borderRadius: BorderRadius.circular(8),
@@ -1118,6 +1127,70 @@ class _TemperatureChip extends StatelessWidget {
           style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600),
         ),
       ],
+    );
+  }
+}
+
+// ── 활동 통계 + 마일스톤 뱃지 ─────────────────────────────────────────
+
+class _ActivityStatsRow extends StatelessWidget {
+  final Map<String, dynamic> stats;
+  const _ActivityStatsRow({required this.stats});
+
+  // 기준값은 초기 임의값 — 실제 활동량 분포 보고 조정 예정.
+  static const _postTiers = [10, 50];
+  static const _reviewTiers = [5, 20];
+  static const _commentTiers = [50, 200];
+
+  String? _milestoneLabel(String prefix, int count, List<int> tiers) {
+    for (int i = tiers.length - 1; i >= 0; i--) {
+      if (count >= tiers[i]) return '$prefix ${tiers[i]}+';
+    }
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final postCount = stats['post_count'] as int? ?? 0;
+    final reviewCount = stats['review_count'] as int? ?? 0;
+    final commentCount = stats['comment_count'] as int? ?? 0;
+
+    final milestones = [
+      _milestoneLabel('게시글', postCount, _postTiers),
+      _milestoneLabel('후기', reviewCount, _reviewTiers),
+      _milestoneLabel('댓글', commentCount, _commentTiers),
+    ].whereType<String>().toList();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '게시글 $postCount · 후기 $reviewCount · 댓글 $commentCount',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          if (milestones.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4, runSpacing: 4,
+              children: milestones.map((m) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.deepPurple.shade100),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.military_tech, size: 11, color: Colors.deepPurple.shade400),
+                  const SizedBox(width: 3),
+                  Text(m, style: TextStyle(fontSize: 10.5, color: Colors.deepPurple.shade700, fontWeight: FontWeight.w600)),
+                ]),
+              )).toList(),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

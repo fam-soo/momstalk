@@ -101,6 +101,8 @@ class AcademyReviewResponse(BaseModel):
     author_display_name: Optional[str] = None
     author_school_name: Optional[str] = None
     author_grade: Optional[int] = None
+    is_pioneer: bool = False          # 이 학원의 첫 실사용자 후기면 "개척자" 뱃지
+    author_review_badge: Optional[str] = None  # 작성자가 다작 리뷰어면 "찐후기러" 등
     report_count: int = 0
     is_hidden: bool = False
     created_at: datetime

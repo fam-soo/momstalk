@@ -229,6 +229,28 @@ async def get_me(
     return profile
 
 
+@router.get("/me/stats")
+async def get_my_stats(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """내정보 화면 활동 통계(게시글/댓글/후기 개수) — 마일스톤 뱃지 표시용."""
+    from sqlalchemy import select as sa_select, func as sa_func
+    from app.models.service_models import Post, Comment
+
+    post_count = (await db.execute(
+        sa_select(sa_func.count()).where(Post.author_id == user.id, Post.is_deleted == False)
+    )).scalar() or 0
+    comment_count = (await db.execute(
+        sa_select(sa_func.count()).where(Comment.author_id == user.id, Comment.is_deleted == False)
+    )).scalar() or 0
+    return {
+        "post_count": post_count,
+        "comment_count": comment_count,
+        "review_count": user.academy_review_count,
+    }
+
+
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_account(
     user: User = Depends(get_current_user),

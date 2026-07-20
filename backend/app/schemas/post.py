@@ -51,6 +51,7 @@ class PostResponse(BaseModel):
     nickname_type: str = "anon"
     author_display_name: Optional[str] = None   # 표시용 닉네임 (익명이면 None)
     author_badge: Optional[str] = None   # "미취학" / "2학년" 등 — 작성자 자녀 상태 뱃지
+    is_first_post: bool = False   # 작성자의 생애 첫 게시글이면 "첫 글" 뱃지 표시
     view_count: int
     like_count: int
     scrap_count: int
@@ -76,6 +77,7 @@ class PostListItem(BaseModel):
     nickname_type: str = "anon"
     author_display_name: Optional[str] = None
     author_badge: Optional[str] = None   # "미취학" / "2학년" 등 — 작성자 자녀 상태 뱃지
+    is_first_post: bool = False   # 작성자의 생애 첫 게시글이면 "첫 글" 뱃지 표시
     author_region: Optional[str] = None    # 관리자용: 작성자 지역
     author_school: Optional[str] = None    # 관리자용: 작성자 학교명
     view_count: int

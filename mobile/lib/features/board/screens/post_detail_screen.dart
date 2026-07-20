@@ -440,6 +440,10 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                     const SizedBox(width: 5),
                     _CommentBadge(label: post['author_badge'] as String, color: Theme.of(context).colorScheme.tertiary),
                   ],
+                  if (post['is_first_post'] == true) ...[
+                    const SizedBox(width: 5),
+                    _CommentBadge(label: '🏆 첫 글', color: Colors.amber.shade800),
+                  ],
                   const Spacer(),
                   Text('조회 ${post['view_count'] ?? 0}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                 ]),

@@ -32,12 +32,13 @@ class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const tabs = ['통계', '사용자', '신고', '콘텐츠', '설정'];
+    const tabs = ['통계', '사용자', '신고', '콘텐츠', '리마인드', '설정'];
     const icons = [
       Icons.bar_chart_rounded,
       Icons.people_alt_outlined,
       Icons.report_problem_outlined,
       Icons.article_outlined,
+      Icons.campaign_outlined,
       Icons.settings_outlined,
     ];
     const activeIcons = [
@@ -45,6 +46,7 @@ class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen> {
       Icons.people_alt,
       Icons.report_problem,
       Icons.article,
+      Icons.campaign,
       Icons.settings,
     ];
 
@@ -76,6 +78,7 @@ class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen> {
           _UsersTab(),
           _ReportsTab(),
           _ContentTab(),
+          _ReviewNudgeTab(),
           _SettingsTab(),
         ],
       ),
@@ -91,7 +94,7 @@ class _AdminHomeScreenState extends ConsumerState<AdminHomeScreen> {
         },
         height: 60,
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: List.generate(5, (i) => NavigationDestination(
+        destinations: List.generate(6, (i) => NavigationDestination(
           icon: Icon(icons[i], size: 22),
           selectedIcon: Icon(activeIcons[i], size: 22),
           label: tabs[i],
@@ -462,6 +465,384 @@ class _SchoolBarChart extends StatelessWidget {
           );
         }).toList(),
       ),
+    );
+  }
+}
+
+// ── 학원 후기 리마인드 탭 ─────────────────────────────
+//
+// 가입자가 아직 적어 자동 발송 대신 관리자가 직접 확인하고 보내는 방식.
+// "추천 매칭"(시스템이 유저-학원 짝을 골라줌)과 "수동 매칭"(관리자가 유저·
+// 학원을 하나씩 직접 검색해 매칭) 두 가지 진입 경로를 모두 제공한다.
+
+class _ReviewNudgeTab extends ConsumerStatefulWidget {
+  const _ReviewNudgeTab();
+
+  @override
+  ConsumerState<_ReviewNudgeTab> createState() => _ReviewNudgeTabState();
+}
+
+class _ReviewNudgeTabState extends ConsumerState<_ReviewNudgeTab> with SingleTickerProviderStateMixin {
+  late final TabController _tc = TabController(length: 2, vsync: this);
+
+  @override
+  void dispose() {
+    _tc.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        TabBar(
+          controller: _tc,
+          labelStyle: const TextStyle(fontSize: 13),
+          tabs: const [Tab(text: '추천 매칭'), Tab(text: '수동 매칭')],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tc,
+            children: const [_SuggestedNudgePane(), _ManualNudgePane()],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SuggestedNudgePane extends ConsumerStatefulWidget {
+  const _SuggestedNudgePane();
+
+  @override
+  ConsumerState<_SuggestedNudgePane> createState() => _SuggestedNudgePaneState();
+}
+
+class _SuggestedNudgePaneState extends ConsumerState<_SuggestedNudgePane> with AutomaticKeepAliveClientMixin {
+  final _regionCtrl = TextEditingController();
+  List<Map<String, dynamic>> _candidates = [];
+  final Set<int> _checked = {};
+  bool _loading = false;
+  bool _sending = false;
+  String? _resultMsg;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void dispose() {
+    _regionCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadCandidates() async {
+    setState(() { _loading = true; _resultMsg = null; });
+    try {
+      final dio = ref.read(adminDioProvider);
+      final resp = await dio.get('/admin/notify/review-nudge/candidates', queryParameters: {
+        if (_regionCtrl.text.trim().isNotEmpty) 'region': _regionCtrl.text.trim(),
+      });
+      final list = (resp.data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      setState(() {
+        _candidates = list;
+        _checked
+          ..clear()
+          ..addAll(list.map((c) => c['user_id'] as int));
+      });
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('불러오기 실패: $e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _send() async {
+    final targets = _candidates.where((c) => _checked.contains(c['user_id'] as int)).toList();
+    if (targets.isEmpty) return;
+    setState(() => _sending = true);
+    try {
+      final dio = ref.read(adminDioProvider);
+      final resp = await dio.post('/admin/notify/review-nudge/send', data: {
+        'pairs': targets.map((c) => {'user_id': c['user_id'], 'academy_id': c['academy_id']}).toList(),
+      });
+      final data = resp.data as Map<String, dynamic>;
+      final sentCount = data['sent_count'] as int? ?? 0;
+      final skipped = (data['skipped'] as List?) ?? [];
+      setState(() {
+        _resultMsg = '$sentCount명 발송 완료${skipped.isNotEmpty ? ', ${skipped.length}명 스킵' : ''}';
+        _candidates = [];
+        _checked.clear();
+      });
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('발송 실패: $e')));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _regionCtrl,
+                decoration: const InputDecoration(
+                  hintText: '지역 (비우면 전체)',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: _loading ? null : _loadCandidates,
+              child: _loading
+                  ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('후보 불러오기'),
+            ),
+          ]),
+        ),
+        if (_resultMsg != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(_resultMsg!, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+          ),
+        if (_candidates.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            child: Row(children: [
+              Text('대상 ${_candidates.length}명 중 ${_checked.length}명 선택',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              const Spacer(),
+              TextButton(
+                onPressed: () => setState(() {
+                  if (_checked.length == _candidates.length) {
+                    _checked.clear();
+                  } else {
+                    _checked
+                      ..clear()
+                      ..addAll(_candidates.map((c) => c['user_id'] as int));
+                  }
+                }),
+                child: Text(_checked.length == _candidates.length ? '전체 해제' : '전체 선택'),
+              ),
+            ]),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _candidates.length,
+              itemBuilder: (_, i) {
+                final c = _candidates[i];
+                final userId = c['user_id'] as int;
+                return CheckboxListTile(
+                  value: _checked.contains(userId),
+                  onChanged: (v) => setState(() {
+                    v == true ? _checked.add(userId) : _checked.remove(userId);
+                  }),
+                  title: Text('${c['nickname']} · ${c['child_label'] ?? '-'}'),
+                  subtitle: Text('${c['region']} → ${c['academy_name']}'),
+                  dense: true,
+                );
+              },
+            ),
+          ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: FilledButton(
+                onPressed: (_checked.isEmpty || _sending) ? null : _send,
+                style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+                child: _sending
+                    ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : Text('${_checked.length}명에게 발송'),
+              ),
+            ),
+          ),
+        ] else if (!_loading)
+          const Expanded(
+            child: Center(child: Text('지역을 입력하고 후보를 불러오세요', style: TextStyle(color: Colors.grey))),
+          ),
+      ],
+    );
+  }
+}
+
+class _ManualNudgePane extends ConsumerStatefulWidget {
+  const _ManualNudgePane();
+
+  @override
+  ConsumerState<_ManualNudgePane> createState() => _ManualNudgePaneState();
+}
+
+class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with AutomaticKeepAliveClientMixin {
+  final _userQueryCtrl = TextEditingController();
+  final _academyQueryCtrl = TextEditingController();
+  List<Map<String, dynamic>> _userResults = [];
+  List<Map<String, dynamic>> _academyResults = [];
+  Map<String, dynamic>? _selectedUser;
+  Map<String, dynamic>? _selectedAcademy;
+  bool _searchingUser = false;
+  bool _searchingAcademy = false;
+  bool _sending = false;
+  String? _resultMsg;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void dispose() {
+    _userQueryCtrl.dispose();
+    _academyQueryCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _searchUsers() async {
+    final q = _userQueryCtrl.text.trim();
+    if (q.isEmpty) return;
+    setState(() => _searchingUser = true);
+    try {
+      final dio = ref.read(adminDioProvider);
+      final resp = await dio.get('/admin/users', queryParameters: {'q': q});
+      setState(() => _userResults = (resp.data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList());
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _searchingUser = false);
+    }
+  }
+
+  Future<void> _searchAcademies() async {
+    final q = _academyQueryCtrl.text.trim();
+    if (q.isEmpty) return;
+    setState(() => _searchingAcademy = true);
+    try {
+      final dio = ref.read(adminDioProvider);
+      final resp = await dio.get('/academies', queryParameters: {'name': q});
+      setState(() => _academyResults = (resp.data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList());
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _searchingAcademy = false);
+    }
+  }
+
+  Future<void> _send() async {
+    if (_selectedUser == null || _selectedAcademy == null) return;
+    setState(() => _sending = true);
+    try {
+      final dio = ref.read(adminDioProvider);
+      final resp = await dio.post('/admin/notify/review-nudge/send', data: {
+        'pairs': [{'user_id': _selectedUser!['id'], 'academy_id': _selectedAcademy!['id']}],
+      });
+      final data = resp.data as Map<String, dynamic>;
+      final sentCount = data['sent_count'] as int? ?? 0;
+      final skipped = (data['skipped'] as List?) ?? [];
+      setState(() {
+        _resultMsg = sentCount > 0 ? '발송 완료' : '스킵됨: ${skipped.isNotEmpty ? skipped.first['reason'] : '-'}';
+        _selectedUser = null;
+        _selectedAcademy = null;
+        _userResults = [];
+        _academyResults = [];
+        _userQueryCtrl.clear();
+        _academyQueryCtrl.clear();
+      });
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('발송 실패: $e')));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        Text('1. 대상 유저 선택', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _userQueryCtrl,
+              decoration: const InputDecoration(hintText: '닉네임/카카오ID 검색', isDense: true, border: OutlineInputBorder()),
+              onSubmitted: (_) => _searchUsers(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: _searchingUser ? null : _searchUsers,
+            child: _searchingUser
+                ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('검색'),
+          ),
+        ]),
+        if (_selectedUser != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Chip(
+              label: Text('선택됨: ${_selectedUser!['nickname']}'),
+              onDeleted: () => setState(() => _selectedUser = null),
+            ),
+          )
+        else
+          ..._userResults.map((u) => ListTile(
+                dense: true,
+                title: Text(u['nickname'] ?? '-'),
+                subtitle: Text('${u['school_name'] ?? '-'} ${u['grade'] ?? ''}학년'),
+                onTap: () => setState(() { _selectedUser = u; _userResults = []; }),
+              )),
+        const Divider(height: 28),
+        Text('2. 학원 선택', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 6),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: _academyQueryCtrl,
+              decoration: const InputDecoration(hintText: '학원명 검색', isDense: true, border: OutlineInputBorder()),
+              onSubmitted: (_) => _searchAcademies(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: _searchingAcademy ? null : _searchAcademies,
+            child: _searchingAcademy
+                ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('검색'),
+          ),
+        ]),
+        if (_selectedAcademy != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Chip(
+              label: Text('선택됨: ${_selectedAcademy!['name']}'),
+              onDeleted: () => setState(() => _selectedAcademy = null),
+            ),
+          )
+        else
+          ..._academyResults.map((a) => ListTile(
+                dense: true,
+                title: Text(a['name'] ?? '-'),
+                subtitle: Text(a['address'] ?? '-'),
+                onTap: () => setState(() { _selectedAcademy = a; _academyResults = []; }),
+              )),
+        const SizedBox(height: 20),
+        if (_resultMsg != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(_resultMsg!, style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+          ),
+        FilledButton(
+          onPressed: (_selectedUser == null || _selectedAcademy == null || _sending) ? null : _send,
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+          child: _sending
+              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('발송'),
+        ),
+      ],
     );
   }
 }

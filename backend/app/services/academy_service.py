@@ -646,6 +646,15 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession, exclude_pr
     else:
         next_unlock_at = 1
 
+    # 진짜(non-seed) 후기 중 가장 이른 작성일 하나만 "개척자" 뱃지를 받는다.
+    # rows가 이미 is_seed desc, created_at asc로 정렬돼 있어 순회 중 처음
+    # 만나는 non-seed 행이 곧 최초 후기다.
+    pioneer_review_id: int | None = None
+    for review, _ in rows:
+        if not (review.is_seed or False):
+            pioneer_review_id = review.id
+            break
+
     out = []
     for review, author in rows:
         if exclude_preschool and author and author.active_child and author.active_child.school_type == "preschool":
@@ -686,6 +695,8 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession, exclude_pr
             author_display_name=author_display,
             author_school_name=school_name,
             author_grade=grade,
+            is_pioneer=(review.id == pioneer_review_id),
+            author_review_badge="찐후기러" if (author and (author.academy_review_count or 0) >= 5) else None,
             report_count=review.report_count or 0,
             is_hidden=review.is_hidden or False,
             is_seed=review.is_seed or False,
@@ -703,6 +714,25 @@ async def list_reviews(academy_id: int, user: User, db: AsyncSession, exclude_pr
             user_review_count=count,
         ),
     )
+
+
+async def get_academies_needing_review(region: str, db: AsyncSession, limit: int = 3) -> list[Academy]:
+    """이 지역에서 실사용자 후기가 0건인 학원 중 무작위 N곳 — "아직 후기 없는
+    우리 동네 학원" 배너/관리자 리마인드 발송 대상 추천에 공통으로 쓴다."""
+    has_real_review = sa.exists(
+        select(AcademyReview.id).where(
+            AcademyReview.academy_id == Academy.id,
+            AcademyReview.is_seed.isnot(True),
+            AcademyReview.is_hidden.isnot(True),
+        )
+    )
+    rows = (await db.execute(
+        select(Academy)
+        .where(Academy.region == region, ~has_real_review)
+        .order_by(func.random())
+        .limit(limit)
+    )).scalars().all()
+    return list(rows)
 
 
 # ── 학원 추천받기 (규칙 기반 매칭) ─────────────────────────────

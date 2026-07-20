@@ -33,6 +33,17 @@ async def get_review_quota(
     return await academy_service.get_unlock_quota_summary(user, db)
 
 
+@router.get("/needs-review")
+async def get_academies_needing_review(
+    region: str = Query(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """실후기 0건인 우리 동네 학원 배너용 — "첫 리뷰어 되어보세요" 유도."""
+    academies = await academy_service.get_academies_needing_review(region, db)
+    return [{"id": a.id, "name": a.name, "address": a.address, "region": a.region} for a in academies]
+
+
 @router.post("/recommendations", response_model=RecommendationResponse)
 async def recommend_academies(
     req: RecommendationRequest,

@@ -548,6 +548,24 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
+class _ReviewTagChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _ReviewTagChip({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Text(label, style: TextStyle(fontSize: 9.5, color: color, fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
 class _ReviewCard extends StatelessWidget {
   final Map<String, dynamic> review;
   final int academyId;
@@ -626,6 +644,14 @@ class _ReviewCard extends StatelessWidget {
                       ],
                     ),
                   ),
+                if (!isViewLimited && !isSeed && (review['is_pioneer'] == true)) ...[
+                  const SizedBox(width: 4),
+                  _ReviewTagChip(label: '🏆 개척자', color: Colors.amber.shade800),
+                ],
+                if (!isViewLimited && !isSeed && (review['author_review_badge'] as String?)?.isNotEmpty == true) ...[
+                  const SizedBox(width: 4),
+                  _ReviewTagChip(label: review['author_review_badge'] as String, color: theme.colorScheme.primary),
+                ],
                 const Spacer(),
                 Row(
                   children: List.generate(5, (i) => Icon(

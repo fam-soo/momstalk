@@ -191,6 +191,9 @@ class Post(Base):
     # 선택한 값(user_children.id 목록). 미선택(NULL)이면 기존처럼 school_code
     # 매칭/active_child로 뱃지를 추론한다(_author_badge 참고).
     child_ids = Column(JSONB, nullable=True)
+    # 작성자의 생애 첫 게시글이면 True — 작성 시점에 한 번만 계산해 저장(매 조회마다
+    # COUNT 쿼리를 돌리지 않기 위함). "첫 글" 뱃지 표시용.
+    is_first_post = Column(Boolean, default=False, server_default="false")
     title = Column(String(200), nullable=False)
     content = Column(Text, nullable=False)
     is_anonymous = Column(Boolean, default=True)

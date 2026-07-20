@@ -1202,6 +1202,150 @@ async def delete_profanity(
     await db.commit()
 
 
+# ── 학원 후기 리마인드 (관리자 수동 발송) ───────────────────
+#
+# 가입자가 아직 적어 자동/정기 발송은 사용자 피로도를 높일 수 있다는 판단으로
+# 관리자가 상황을 보고 그때그때 수동으로 발송하는 방식을 택했다. 두 가지
+# 진입 경로 모두 아래 /notify/review-nudge/send 하나로 합류한다:
+#   1) 추천 매칭: /candidates가 시스템이 유저-학원 짝을 자동으로 골라줌
+#   2) 수동 매칭: 관리자가 기존 유저 검색(/admin/users)·학원 검색(/academies)으로
+#      직접 유저와 학원을 하나씩 골라 pairs에 담아 보냄
+
+_REVIEW_NUDGE_COOLDOWN_DAYS = 7
+
+
+class ReviewNudgePair(BaseModel):
+    user_id: int
+    academy_id: int
+
+
+class ReviewNudgeSendRequest(BaseModel):
+    pairs: list[ReviewNudgePair]
+
+
+@router.get("/notify/review-nudge/candidates")
+async def get_review_nudge_candidates(
+    region: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """시스템이 추천하는 (유저, 학원) 짝 목록 — 관리자가 검토 후 그대로 또는
+    일부만 골라 /send로 발송한다. 대상: 정회원 + notify_academy 켜짐 + 활성
+    자녀 있음 + 최근 쿨다운 기간 내 같은 알림 미수신 + 본인 지역에 실후기
+    0건 학원이 존재하는 유저."""
+    from app.models.service_models import NotificationPreference, Notification, UserFcmToken
+    from app.services import academy_service
+    from app.services.post_service import _badge_label_for_child
+
+    cooldown_since = datetime.utcnow() - timedelta(days=_REVIEW_NUDGE_COOLDOWN_DAYS)
+    recently_notified = select(Notification.user_id).where(
+        Notification.type == "review_nudge", Notification.created_at >= cooldown_since,
+    )
+
+    query = (
+        select(User)
+        .join(NotificationPreference, NotificationPreference.user_id == User.id)
+        .where(
+            User.member_grade == "member",
+            User.is_admin == False,
+            NotificationPreference.notify_academy.is_(True),
+            User.active_child_id.isnot(None),
+            User.id.notin_(recently_notified),
+            User.id.in_(select(UserFcmToken.user_id)),  # 푸시 받을 기기 등록된 유저만
+        )
+        .order_by(func.random())
+        .limit(limit * 3)  # 지역에 후기 0건 학원이 없어 스킵될 수 있어 넉넉히 뽑는다
+    )
+    if region:
+        query = query.join(UserChild, UserChild.id == User.active_child_id).where(UserChild.region == region)
+
+    candidates = (await db.execute(query)).scalars().all()
+
+    results = []
+    academy_cache: dict[str, list] = {}
+    for u in candidates:
+        if len(results) >= limit:
+            break
+        active = u.active_child
+        if not active or not active.region:
+            continue
+        if active.region not in academy_cache:
+            academy_cache[active.region] = await academy_service.get_academies_needing_review(active.region, db, limit=5)
+        pool = academy_cache[active.region]
+        if not pool:
+            continue
+        academy = pool[len(results) % len(pool)]
+        results.append({
+            "user_id": u.id,
+            "nickname": u.nickname,
+            "region": active.region,
+            "child_label": _badge_label_for_child(active),
+            "academy_id": academy.id,
+            "academy_name": academy.name,
+        })
+    return results
+
+
+@router.post("/notify/review-nudge/send")
+async def send_review_nudge(
+    req: ReviewNudgeSendRequest,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    """추천 매칭이든 관리자가 직접 고른 수동 매칭이든, 확정된 (유저, 학원)
+    짝 목록을 받아 실제로 발송한다."""
+    from app.models.service_models import Notification
+    from app.services.notification_service import notify_user
+    from app.services.post_service import _badge_label_for_child
+
+    if not req.pairs:
+        raise HTTPException(status_code=400, detail="발송 대상이 없습니다.")
+
+    cooldown_since = datetime.utcnow() - timedelta(days=_REVIEW_NUDGE_COOLDOWN_DAYS)
+    user_ids = [p.user_id for p in req.pairs]
+    academy_ids = [p.academy_id for p in req.pairs]
+
+    users = {u.id: u for u in (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars().all()}
+    academies = {a.id: a for a in (await db.execute(select(Academy).where(Academy.id.in_(academy_ids)))).scalars().all()}
+    already_sent = {r for r in (await db.execute(
+        select(Notification.user_id).where(
+            Notification.user_id.in_(user_ids), Notification.type == "review_nudge",
+            Notification.created_at >= cooldown_since,
+        )
+    )).scalars()}
+
+    sent, skipped = [], []
+    for pair in req.pairs:
+        target_user = users.get(pair.user_id)
+        academy = academies.get(pair.academy_id)
+        if not target_user or not academy:
+            skipped.append({"user_id": pair.user_id, "reason": "유저 또는 학원을 찾을 수 없음"})
+            continue
+        if pair.user_id in already_sent:
+            skipped.append({"user_id": pair.user_id, "reason": f"최근 {_REVIEW_NUDGE_COOLDOWN_DAYS}일 내 이미 발송됨"})
+            continue
+
+        active = target_user.active_child
+        child_label = _badge_label_for_child(active) if active else None
+        title = "동네 학원 후기가 기다리고 있어요"
+        body = (
+            f"{child_label} 학부모님, {academy.name} 후기가 아직 없어요! 다녀보셨다면 한 줄만 남겨주세요."
+            if child_label else
+            f"{academy.name} 후기가 아직 없어요! 다녀보셨다면 한 줄만 남겨주세요."
+        )
+        await notify_user(
+            db, target_user.id, "review_nudge",
+            title=title, body=body,
+            data={"type": "academy", "academy_id": str(academy.id)},
+        )
+        sent.append(pair.user_id)
+
+    db.add(AdminAction(admin_id=admin.id, action_type="send_review_nudge", detail=f"{len(sent)}명 발송, {len(skipped)}명 스킵"))
+    await db.commit()
+    return {"sent_count": len(sent), "skipped": skipped}
+
+
 # ── 관리자 행동 로그 ───────────────────────────────────
 
 @router.get("/logs")

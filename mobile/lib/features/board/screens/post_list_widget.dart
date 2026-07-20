@@ -365,6 +365,10 @@ class _PostCardState extends State<PostCard> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    if (post['is_first_post'] == true) ...[
+                      const SizedBox(width: 4),
+                      const _FirstPostBadge(),
+                    ],
                   ]),
                 ),
                 // 오른쪽: 좋아요·댓글·조회수·더보기 — 항상 우측 끝 정렬 고정
@@ -449,6 +453,27 @@ class _AuthorBadge extends StatelessWidget {
         label,
         style: TextStyle(fontSize: 9.5, color: Theme.of(context).colorScheme.onTertiaryContainer, fontWeight: FontWeight.w600),
       ),
+    );
+  }
+}
+
+/// 작성자의 생애 첫 게시글 뱃지 — 닉네임 옆에 작게 표시.
+class _FirstPostBadge extends StatelessWidget {
+  const _FirstPostBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade100,
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.emoji_events, size: 9, color: Colors.amber.shade800),
+        const SizedBox(width: 2),
+        Text('첫 글', style: TextStyle(fontSize: 9.5, color: Colors.amber.shade800, fontWeight: FontWeight.w600)),
+      ]),
     );
   }
 }

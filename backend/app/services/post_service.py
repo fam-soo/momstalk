@@ -186,6 +186,13 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
             raise ValueError("본인 자녀만 선택할 수 있습니다.")
         child_ids = req.child_ids
 
+    is_first_post = False
+    if not user.is_admin:
+        prior_count = (await db.execute(
+            select(func.count()).where(Post.author_id == user.id, Post.is_deleted == False)
+        )).scalar() or 0
+        is_first_post = prior_count == 0
+
     post = Post(
         author_id=user.id,
         board_type=req.board_type,
@@ -200,6 +207,7 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
         nickname_snapshot=_resolve_nickname_snapshot(req.nickname_type, req.is_anonymous, user),
         mention_tags=req.mention_tags or None,
         child_ids=child_ids,
+        is_first_post=is_first_post,
     )
     db.add(post)
     await temperature_service.adjust(user.id, "post_created", db)
@@ -248,6 +256,7 @@ async def get_post_response(post: Post, user: User, db: AsyncSession) -> PostRes
         nickname_type=getattr(post, "nickname_type", "anon"),
         author_display_name=display_name,
         author_badge=_author_badge(author, post, children_by_user),
+        is_first_post=post.is_first_post,
         view_count=post.view_count,
         like_count=post.like_count,
         scrap_count=post.scrap_count,
@@ -457,6 +466,7 @@ async def list_posts(
             nickname_type=getattr(post, "nickname_type", "anon"),
             author_display_name=display_name,
             author_badge=_author_badge(author, post, children_by_user),
+        is_first_post=post.is_first_post,
             author_region=author.region if author else None,
             author_school=author.school_name if author else None,
             view_count=post.view_count,
@@ -566,6 +576,7 @@ async def get_hot_posts(user: User, db: AsyncSession, limit: int = 30) -> "PostL
             nickname_type=getattr(post, "nickname_type", "anon"),
             author_display_name=display_name,
             author_badge=_author_badge(author, post, children_by_user),
+        is_first_post=post.is_first_post,
             author_region=author.region if author else None,
             author_school=author.school_name if author else None,
             view_count=post.view_count,
