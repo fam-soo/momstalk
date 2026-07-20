@@ -589,25 +589,26 @@ class _SuggestedNudgePaneState extends ConsumerState<_SuggestedNudgePane> with A
       children: [
         Padding(
           padding: const EdgeInsets.all(12),
-          child: Row(children: [
-            Expanded(
-              child: TextField(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
                 controller: _regionCtrl,
                 decoration: const InputDecoration(
-                  hintText: '지역 (비우면 전체)',
-                  isDense: true,
+                  hintText: '지역 (비우면 전체, 예: 양천구)',
                   border: OutlineInputBorder(),
                 ),
+                onSubmitted: (_) => _loadCandidates(),
               ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: _loading ? null : _loadCandidates,
-              child: _loading
-                  ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('후보 불러오기'),
-            ),
-          ]),
+              const SizedBox(height: 8),
+              FilledButton(
+                onPressed: _loading ? null : _loadCandidates,
+                child: _loading
+                    ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('후보 불러오기'),
+              ),
+            ],
+          ),
         ),
         if (_resultMsg != null)
           Padding(
@@ -800,22 +801,20 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
       children: [
         Text('1. 대상 유저 선택', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 6),
-        Row(children: [
-          Expanded(
-            child: TextField(
-              controller: _userQueryCtrl,
-              decoration: const InputDecoration(hintText: '닉네임/카카오ID 검색', isDense: true, border: OutlineInputBorder()),
-              onSubmitted: (_) => _searchUsers(),
-            ),
+        TextField(
+          controller: _userQueryCtrl,
+          decoration: InputDecoration(
+            hintText: '닉네임/카카오ID 검색',
+            border: const OutlineInputBorder(),
+            suffixIcon: _searchingUser
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                : IconButton(icon: const Icon(Icons.search), onPressed: _searchUsers),
           ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: _searchingUser ? null : _searchUsers,
-            child: _searchingUser
-                ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('검색'),
-          ),
-        ]),
+          onSubmitted: (_) => _searchUsers(),
+        ),
         if (_selectedUser != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -839,22 +838,20 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
         const Divider(height: 28),
         Text('2. 학원 선택', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 6),
-        Row(children: [
-          Expanded(
-            child: TextField(
-              controller: _academyQueryCtrl,
-              decoration: const InputDecoration(hintText: '학원명 검색', isDense: true, border: OutlineInputBorder()),
-              onSubmitted: (_) => _searchAcademies(),
-            ),
+        TextField(
+          controller: _academyQueryCtrl,
+          decoration: InputDecoration(
+            hintText: '학원명 검색',
+            border: const OutlineInputBorder(),
+            suffixIcon: _searchingAcademy
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                : IconButton(icon: const Icon(Icons.search), onPressed: _searchAcademies),
           ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: _searchingAcademy ? null : _searchAcademies,
-            child: _searchingAcademy
-                ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('검색'),
-          ),
-        ]),
+          onSubmitted: (_) => _searchAcademies(),
+        ),
         if (_selectedAcademy != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
