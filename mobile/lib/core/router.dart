@@ -403,6 +403,14 @@ class _MainShellState extends ConsumerState<_MainShell> with WidgetsBindingObser
     final shell = widget.shell;
     final profileAsync = ref.watch(userProfileProvider);
     final schoolLocked = _onlyPreschoolChildren(profileAsync);
+    // MainBottomNav(셸 밖 화면들의 하단 네비)가 "어느 탭에서 왔는지" 알 수
+    // 있도록, 현재 활성 탭을 매 빌드마다 기록해둔다.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (ref.read(lastActiveTabIndexProvider) != shell.currentIndex) {
+        ref.read(lastActiveTabIndexProvider.notifier).state = shell.currentIndex;
+      }
+    });
     return Scaffold(
       body: Column(
         children: [

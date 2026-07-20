@@ -36,3 +36,11 @@ final notificationRefreshSignal = StateProvider<int>((_) => 0);
 void bumpNotificationRefresh(WidgetRef ref) {
   ref.read(notificationRefreshSignal.notifier).state++;
 }
+
+/// 현재(가장 최근) 활성 바텀 탭 인덱스. 셸(_MainShell) 밖(rootNavigatorKey)에
+/// 쌓이는 화면(게시글 상세/작성, 알림함, DM 등)은 자체적으로 "어느 탭에서
+/// 왔는지"를 모른다 — 예전엔 경로 문자열로 대충 추측했는데, 학교/인기 탭에서
+/// 글쓰기·게시글 상세로 이동하면 그 추측이 틀려서 하단 네비가 지역 탭으로
+/// 잘못 표시되는 문제가 있었다. 셸이 빌드될 때마다 이 값을 갱신해두고,
+/// MainBottomNav가 이 값을 그대로 읽어 표시한다.
+final lastActiveTabIndexProvider = StateProvider<int>((_) => 0);
