@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/main_bottom_nav.dart';
 import '../../../core/school_display.dart';
 
 /// 수업당 평균 정원을 10/20/30/50/100명 단위 구간으로 표시 — 원본 숫자는
@@ -433,6 +434,7 @@ class _AcademyDetailScreenState extends ConsumerState<AcademyDetailScreen> {
 
         ],
       ),
+      bottomNavigationBar: const MainBottomNav(),
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/main_bottom_nav.dart';
 import '../../../core/refresh_bus.dart';
 
 class PostWriteScreen extends ConsumerStatefulWidget {
@@ -152,8 +153,12 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
       ),
       // 공개 방식·자녀 선택 — 키보드 위에 고정
       bottomNavigationBar: SafeArea(
-        child: (_anonAllowed || _children.length > 1)
-            ? Container(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_anonAllowed || _children.length > 1)
+            Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border(top: BorderSide(color: Colors.grey.shade200)),
@@ -218,8 +223,10 @@ class _PostWriteScreenState extends ConsumerState<PostWriteScreen> {
                     ],
                   ],
                 ),
-              )
-            : const SizedBox.shrink(),
+              ),
+            const MainBottomNav(),
+          ],
+        ),
       ),
       body: SafeArea(
         bottom: false,

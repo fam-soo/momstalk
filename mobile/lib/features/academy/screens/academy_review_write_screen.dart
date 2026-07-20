@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/main_bottom_nav.dart';
 
 class AcademyReviewWriteScreen extends ConsumerStatefulWidget {
   final int academyId;
@@ -261,6 +262,7 @@ class _AcademyReviewWriteScreenState extends ConsumerState<AcademyReviewWriteScr
         padding: const EdgeInsets.all(16),
         child: _isAdmin ? _buildAdminBody(theme) : _buildReviewBody(theme),
       ),
+      bottomNavigationBar: const MainBottomNav(),
     );
   }
 

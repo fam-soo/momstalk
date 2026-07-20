@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/main_bottom_nav.dart';
 import '../../../core/refresh_bus.dart';
 import '../../auth/screens/capture_upload_screen.dart';
 import '../../board/screens/board_screen.dart' show userProfileProvider;
@@ -401,6 +402,7 @@ class _AddChildScreenState extends ConsumerState<AddChildScreen> {
           ),
         ],
       ),
+      bottomNavigationBar: const MainBottomNav(),
     );
   }
 }

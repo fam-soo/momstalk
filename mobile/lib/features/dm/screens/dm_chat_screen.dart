@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/kst_time.dart';
+import '../../../core/main_bottom_nav.dart';
 
 class DmChatScreen extends ConsumerStatefulWidget {
   final int convId;
@@ -149,6 +150,7 @@ class _DmChatScreenState extends ConsumerState<DmChatScreen> {
                 ),
               ),
             ]),
+      bottomNavigationBar: const MainBottomNav(),
     );
   }
 }

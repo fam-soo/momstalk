@@ -7,6 +7,7 @@ import '../../../core/kst_time.dart';
 import '../../../core/notification_prefs.dart';
 import '../../../core/push_notifications.dart';
 import '../../../core/push_target.dart';
+import '../../../core/main_bottom_nav.dart';
 import '../../../core/refresh_bus.dart';
 
 /// 알림함 — FCM 푸시는 기기가 꺼져있거나 알림 권한이 없으면 놓치기 쉬워서,
@@ -144,6 +145,7 @@ class _NotificationListScreenState extends ConsumerState<NotificationListScreen>
                 ),
         ),
       ]),
+      bottomNavigationBar: const MainBottomNav(),
     );
   }
 }

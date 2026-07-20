@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/info_banner.dart';
+import '../../../core/main_bottom_nav.dart';
 
 /// 학원 추천받기 — 5단계 설문 후 규칙 기반 매칭 결과를 보여준다.
 /// 매칭 점수(0~100%)는 서버(academy_service.recommend_academies)가 계산하며,
@@ -195,10 +196,13 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
     return Scaffold(
       appBar: AppBar(title: const Text('학원 추천받기')),
       body: _step == 6 ? _buildResults() : _buildSurveyStep(),
-      bottomNavigationBar: _step == 6
-          ? null
-          : SafeArea(
-              child: Padding(
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_step != 6)
+              Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(children: [
                   if (_step > 0)
@@ -221,7 +225,10 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
                   ),
                 ]),
               ),
-            ),
+            const MainBottomNav(),
+          ],
+        ),
+      ),
     );
   }
 

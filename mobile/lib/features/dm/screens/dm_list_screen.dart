@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import '../../../core/api_client.dart' show dioProvider, tokenStorageProvider;
 import '../../../core/kst_time.dart';
 import '../../../core/constants.dart' show AppConstants;
+import '../../../core/main_bottom_nav.dart';
 
 class DmListScreen extends ConsumerStatefulWidget {
   const DmListScreen({super.key});
@@ -164,6 +165,7 @@ class _DmListScreenState extends ConsumerState<DmListScreen> {
                     },
                   ),
                 ),
+      bottomNavigationBar: const MainBottomNav(),
     );
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/main_bottom_nav.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -79,6 +80,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     );
                   },
                 ),
+      bottomNavigationBar: const MainBottomNav(),
     );
   }
 }
