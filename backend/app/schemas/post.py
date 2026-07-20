@@ -13,6 +13,9 @@ class PostCreate(BaseModel):
     # 관리자 전용: 특정 지역/학교를 타겟으로 공지 작성 시 사용
     target_region: Optional[str] = None
     target_school_code: Optional[str] = None
+    # 다자녀 유저가 이 글이 어떤 자녀(들)에 대한 글인지 명시적으로 선택한 값
+    # (user_children.id 목록). 미선택 시 서버가 기존 방식대로 추론한다.
+    child_ids: Optional[list[int]] = None
 
     def model_post_init(self, __context) -> None:
         if self.board_type not in ("grade", "school", "free", "region", "notice", "popup"):

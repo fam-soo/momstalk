@@ -187,6 +187,10 @@ class Post(Base):
     target_region = Column(String(50), nullable=True)    # 공지사항 지역 타겟 (school_code 미지정 시). 일반 게시글은 미사용
     grade = Column(Integer, nullable=True)              # class / grade 게시판에서만 사용
     class_num = Column(Integer, nullable=True)          # class 게시판에서만 사용
+    # 다자녀 유저가 이 글이 어떤 자녀(들)에 대한 글인지 작성 시점에 명시적으로
+    # 선택한 값(user_children.id 목록). 미선택(NULL)이면 기존처럼 school_code
+    # 매칭/active_child로 뱃지를 추론한다(_author_badge 참고).
+    child_ids = Column(JSONB, nullable=True)
     title = Column(String(200), nullable=False)
     content = Column(Text, nullable=False)
     is_anonymous = Column(Boolean, default=True)

@@ -444,7 +444,7 @@ class _PostDetailScreenState extends ConsumerState<PostDetailScreen> {
                   Text('조회 ${post['view_count'] ?? 0}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
                 ]),
                 const Divider(height: 24),
-                Text(post['content'] ?? '', style: const TextStyle(fontSize: 15, height: 1.6)),
+                SelectableText(post['content'] ?? '', style: const TextStyle(fontSize: 15, height: 1.6)),
                 const SizedBox(height: 16),
                 Row(children: [
                   _ActionButton(

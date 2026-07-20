@@ -67,11 +67,21 @@ def _author_badge(author: User | None, post: Post | None = None, children_by_use
     바꾸면, 예전엔 active_child 기준으로만 뱃지를 계산해서 "중학교 게시판인데
     초1"처럼 글을 쓴 자녀가 아닌 현재 활성 자녀의 뱃지가 잘못 표시됐다.
     학교/학년 게시판은 글에 스냅샷된 school_code(+grade)와 일치하는 자녀를
-    찾아 그 자녀 기준으로 뱃지를 계산한다."""
+    찾아 그 자녀 기준으로 뱃지를 계산한다.
+
+    글쓴이가 작성 시점에 자녀를 직접 복수 선택했다면(post.child_ids) 그걸
+    최우선으로 쓴다 — 다자녀 유저가 지역/전체 게시판처럼 school_code로
+    특정이 안 되는 곳에 글을 쓸 때도 "둘째 얘기인데 첫째 뱃지가 붙는" 문제를
+    막기 위함. 여러 명 선택 시 "초1·중1"처럼 이어붙인다."""
     if not author or author.is_admin:
         return None
+    candidates = (children_by_user or {}).get(author.id, [])
+    if post is not None and post.child_ids:
+        selected = [c for c in candidates if c.id in post.child_ids]
+        labels = [l for l in (_badge_label_for_child(c) for c in selected) if l]
+        if labels:
+            return "·".join(dict.fromkeys(labels))
     if post is not None and post.board_type in SCHOOL_GATED_BOARDS and post.school_code:
-        candidates = (children_by_user or {}).get(author.id, [])
         matched = next((c for c in candidates if c.school_code == post.school_code), None)
         if matched:
             return _badge_label_for_child(matched)
@@ -80,10 +90,11 @@ def _author_badge(author: User | None, post: Post | None = None, children_by_use
 
 
 async def _batch_children_for_gated_posts(posts: list[Post], author_ids: set[int], db: AsyncSession) -> dict[int, list]:
-    """학교/학년 게시판 글이 섞여 있을 때만 작성자들의 자녀 목록을 한 번에
-    조회해 _author_badge()가 글 작성 당시 학교와 일치하는 자녀를 찾을 수
-    있게 한다. 지역/전체 게시판만 있는 목록이면 조회를 아예 건너뛴다."""
-    if not any(p.board_type in SCHOOL_GATED_BOARDS and p.school_code for p in posts):
+    """학교/학년 게시판 글이 섞여 있거나 작성자가 자녀를 직접 선택(child_ids)한
+    글이 섞여 있을 때만 작성자들의 자녀 목록을 한 번에 조회해 _author_badge()가
+    글에 맞는 자녀를 찾을 수 있게 한다. 둘 다 해당 없는 목록이면 조회를
+    아예 건너뛴다."""
+    if not any((p.board_type in SCHOOL_GATED_BOARDS and p.school_code) or p.child_ids for p in posts):
         return {}
     children_result = await db.execute(select(UserChild).where(UserChild.user_id.in_(author_ids)))
     children_by_user: dict[int, list] = {}
@@ -165,6 +176,16 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
     if req.board_type == "grade" and not grade and not user.is_admin:
         raise ValueError("학년 정보가 없어 학년 게시판을 이용할 수 없어요. 내정보에서 학년을 선택해주세요.")
 
+    child_ids = None
+    if req.child_ids:
+        owned_result = await db.execute(
+            select(UserChild.id).where(UserChild.user_id == user.id, UserChild.id.in_(req.child_ids))
+        )
+        owned_ids = {row for row in owned_result.scalars()}
+        if owned_ids != set(req.child_ids):
+            raise ValueError("본인 자녀만 선택할 수 있습니다.")
+        child_ids = req.child_ids
+
     post = Post(
         author_id=user.id,
         board_type=req.board_type,
@@ -178,6 +199,7 @@ async def create_post(user: User, req: PostCreate, db: AsyncSession) -> Post:
         nickname_type=req.nickname_type,
         nickname_snapshot=_resolve_nickname_snapshot(req.nickname_type, req.is_anonymous, user),
         mention_tags=req.mention_tags or None,
+        child_ids=child_ids,
     )
     db.add(post)
     await temperature_service.adjust(user.id, "post_created", db)
@@ -214,7 +236,7 @@ async def get_post_response(post: Post, user: User, db: AsyncSession) -> PostRes
     author = (await db.execute(select(User).where(User.id == post.author_id))).scalar_one_or_none()
     display_name = _author_display_name(post, author) if author else None
     children_by_user: dict = {}
-    if author and post.board_type in SCHOOL_GATED_BOARDS and post.school_code:
+    if author and ((post.board_type in SCHOOL_GATED_BOARDS and post.school_code) or post.child_ids):
         children_result = await db.execute(select(UserChild).where(UserChild.user_id == author.id))
         children_by_user[author.id] = children_result.scalars().all()
     return PostResponse(
