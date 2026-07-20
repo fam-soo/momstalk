@@ -166,6 +166,7 @@ async def search_academies(
     reviewer_school: Optional[str] = None,   # 후기 작성자 아이의 학교명
     reviewer_grades: Optional[list[int]] = None,  # 후기 작성자 아이의 학년(들)
     learning_goals: Optional[list[str]] = None,  # 학습 목표 필터 (선행/심화/내신/수능/경시/영재)
+    limit: Optional[int] = None,             # 관리자 화면 등 목록 브라우징용 상한
     user: Optional[User] = None,             # 로그인 유저 — 학원별 열람(해금) 여부 표기용
 ) -> list[AcademyResponse]:
     """DB 우선 검색 → 결과 없으면 NEIS API 조회 후 DB 캐싱."""
@@ -250,7 +251,7 @@ async def search_academies(
             Academy.avg_rating.desc().nulls_last(),
             # 이름 가나다 순
             Academy.name.asc(),
-        ).limit(10000)
+        ).limit(limit or 10000)
     )
     rows = result.all()
     academies = [(academy, urc, sc) for academy, urc, sc in rows]

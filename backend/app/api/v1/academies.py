@@ -70,6 +70,7 @@ async def search_academies(
     reviewer_school: Optional[str] = Query(None),     # 후기 작성자 아이 학교명
     reviewer_grades: Optional[str] = Query(None),     # 후기 작성자 아이 학년 콤마 구분 "1,2,3"
     learning_goals: Optional[str] = Query(None),      # 학습 목표 콤마 구분 "선행,심화"
+    limit: Optional[int] = Query(None, ge=1, le=200),  # 관리자 화면 등에서 목록 브라우징 시 제한
     user: Optional[User] = Depends(get_optional_user),
     db: AsyncSession = Depends(get_service_db),
 ):
@@ -101,6 +102,7 @@ async def search_academies(
         reviewer_school=reviewer_school,
         reviewer_grades=grade_list,
         learning_goals=goal_list,
+        limit=limit,
         user=user,
     )
 

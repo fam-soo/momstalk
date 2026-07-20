@@ -697,8 +697,6 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
   bool _searchingUser = false;
   bool _searchingAcademy = false;
   bool _sending = false;
-  bool _userSearchAttempted = false;
-  bool _academySearchAttempted = false;
   String? _resultMsg;
   Timer? _userDebounce;
   Timer? _academyDebounce;
@@ -709,6 +707,10 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
   @override
   void initState() {
     super.initState();
+    // 검색어를 몰라도 목록을 보면서 고를 수 있도록, 진입 시 기본 목록(최근
+    // 가입 유저 / 후기 많은 학원 순)을 먼저 불러온다.
+    _searchUsers();
+    _searchAcademies();
     // 검색 버튼을 따로 눌러야 하는 구조가 눈에 잘 안 띈다는 피드백이 있어,
     // 입력 즉시(디바운스) 자동으로 검색되도록 했다.
     _userQueryCtrl.addListener(() {
@@ -732,14 +734,10 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
 
   Future<void> _searchUsers() async {
     final q = _userQueryCtrl.text.trim();
-    if (q.isEmpty) {
-      setState(() { _userResults = []; _userSearchAttempted = false; });
-      return;
-    }
-    setState(() { _searchingUser = true; _userSearchAttempted = true; });
+    setState(() => _searchingUser = true);
     try {
       final dio = ref.read(adminDioProvider);
-      final resp = await dio.get('/admin/users', queryParameters: {'q': q});
+      final resp = await dio.get('/admin/users', queryParameters: q.isNotEmpty ? {'q': q} : null);
       setState(() => _userResults = (resp.data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList());
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('유저 검색 실패: $e')));
@@ -750,14 +748,13 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
 
   Future<void> _searchAcademies() async {
     final q = _academyQueryCtrl.text.trim();
-    if (q.isEmpty) {
-      setState(() { _academyResults = []; _academySearchAttempted = false; });
-      return;
-    }
-    setState(() { _searchingAcademy = true; _academySearchAttempted = true; });
+    setState(() => _searchingAcademy = true);
     try {
       final dio = ref.read(adminDioProvider);
-      final resp = await dio.get('/academies', queryParameters: {'name': q});
+      final resp = await dio.get('/academies', queryParameters: {
+        if (q.isNotEmpty) 'name': q,
+        'limit': 50,
+      });
       setState(() => _academyResults = (resp.data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList());
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('학원 검색 실패: $e')));
@@ -800,11 +797,13 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
       padding: const EdgeInsets.all(12),
       children: [
         Text('1. 대상 유저 선택', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 2),
+        Text('아래 목록에서 바로 고르거나, 검색어를 입력해 좁혀보세요', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
         const SizedBox(height: 6),
         TextField(
           controller: _userQueryCtrl,
           decoration: InputDecoration(
-            hintText: '닉네임/카카오ID 검색',
+            hintText: '닉네임/카카오ID 검색 (비우면 최근 가입 목록)',
             border: const OutlineInputBorder(),
             suffixIcon: _searchingUser
                 ? const Padding(
@@ -820,7 +819,10 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
             padding: const EdgeInsets.only(top: 8),
             child: Chip(
               label: Text('선택됨: ${_selectedUser!['nickname']}'),
-              onDeleted: () => setState(() => _selectedUser = null),
+              onDeleted: () {
+                setState(() => _selectedUser = null);
+                _searchUsers();
+              },
             ),
           )
         else if (_userResults.isNotEmpty)
@@ -830,18 +832,25 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
                 subtitle: Text('${u['school_name'] ?? '-'} ${u['grade'] ?? ''}학년'),
                 onTap: () => setState(() { _selectedUser = u; _userResults = []; }),
               ))
-        else if (_userSearchAttempted && !_searchingUser)
+        else if (_searchingUser)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('검색 결과가 없습니다', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('결과가 없습니다', style: TextStyle(color: Colors.grey, fontSize: 12)),
           ),
         const Divider(height: 28),
         Text('2. 학원 선택', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 2),
+        Text('후기 많은 순으로 기본 노출, 검색어를 입력해 좁혀보세요', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
         const SizedBox(height: 6),
         TextField(
           controller: _academyQueryCtrl,
           decoration: InputDecoration(
-            hintText: '학원명 검색',
+            hintText: '학원명 검색 (비우면 기본 목록)',
             border: const OutlineInputBorder(),
             suffixIcon: _searchingAcademy
                 ? const Padding(
@@ -857,7 +866,10 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
             padding: const EdgeInsets.only(top: 8),
             child: Chip(
               label: Text('선택됨: ${_selectedAcademy!['name']}'),
-              onDeleted: () => setState(() => _selectedAcademy = null),
+              onDeleted: () {
+                setState(() => _selectedAcademy = null);
+                _searchAcademies();
+              },
             ),
           )
         else if (_academyResults.isNotEmpty)
@@ -867,10 +879,15 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
                 subtitle: Text(a['address'] ?? '-'),
                 onTap: () => setState(() { _selectedAcademy = a; _academyResults = []; }),
               ))
-        else if (_academySearchAttempted && !_searchingAcademy)
+        else if (_searchingAcademy)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
-            child: Text('검색 결과가 없습니다', style: TextStyle(color: Colors.grey, fontSize: 12)),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('결과가 없습니다', style: TextStyle(color: Colors.grey, fontSize: 12)),
           ),
         const SizedBox(height: 20),
         if (_resultMsg != null)
