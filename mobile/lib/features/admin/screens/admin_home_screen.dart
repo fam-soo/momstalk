@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -524,6 +525,7 @@ class _SuggestedNudgePaneState extends ConsumerState<_SuggestedNudgePane> with A
   final Set<int> _checked = {};
   bool _loading = false;
   bool _sending = false;
+  bool _attempted = false;
   String? _resultMsg;
 
   @override
@@ -536,7 +538,7 @@ class _SuggestedNudgePaneState extends ConsumerState<_SuggestedNudgePane> with A
   }
 
   Future<void> _loadCandidates() async {
-    setState(() { _loading = true; _resultMsg = null; });
+    setState(() { _loading = true; _attempted = true; _resultMsg = null; });
     try {
       final dio = ref.read(adminDioProvider);
       final resp = await dio.get('/admin/notify/review-nudge/candidates', queryParameters: {
@@ -664,8 +666,13 @@ class _SuggestedNudgePaneState extends ConsumerState<_SuggestedNudgePane> with A
             ),
           ),
         ] else if (!_loading)
-          const Expanded(
-            child: Center(child: Text('지역을 입력하고 후보를 불러오세요', style: TextStyle(color: Colors.grey))),
+          Expanded(
+            child: Center(
+              child: Text(
+                _attempted ? '조건에 맞는 발송 대상이 없습니다' : '지역을 입력하고 후보를 불러오세요',
+                style: const TextStyle(color: Colors.grey),
+              ),
+            ),
           ),
       ],
     );
@@ -689,13 +696,34 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
   bool _searchingUser = false;
   bool _searchingAcademy = false;
   bool _sending = false;
+  bool _userSearchAttempted = false;
+  bool _academySearchAttempted = false;
   String? _resultMsg;
+  Timer? _userDebounce;
+  Timer? _academyDebounce;
 
   @override
   bool get wantKeepAlive => true;
 
   @override
+  void initState() {
+    super.initState();
+    // 검색 버튼을 따로 눌러야 하는 구조가 눈에 잘 안 띈다는 피드백이 있어,
+    // 입력 즉시(디바운스) 자동으로 검색되도록 했다.
+    _userQueryCtrl.addListener(() {
+      _userDebounce?.cancel();
+      _userDebounce = Timer(const Duration(milliseconds: 400), _searchUsers);
+    });
+    _academyQueryCtrl.addListener(() {
+      _academyDebounce?.cancel();
+      _academyDebounce = Timer(const Duration(milliseconds: 400), _searchAcademies);
+    });
+  }
+
+  @override
   void dispose() {
+    _userDebounce?.cancel();
+    _academyDebounce?.cancel();
     _userQueryCtrl.dispose();
     _academyQueryCtrl.dispose();
     super.dispose();
@@ -703,13 +731,17 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
 
   Future<void> _searchUsers() async {
     final q = _userQueryCtrl.text.trim();
-    if (q.isEmpty) return;
-    setState(() => _searchingUser = true);
+    if (q.isEmpty) {
+      setState(() { _userResults = []; _userSearchAttempted = false; });
+      return;
+    }
+    setState(() { _searchingUser = true; _userSearchAttempted = true; });
     try {
       final dio = ref.read(adminDioProvider);
       final resp = await dio.get('/admin/users', queryParameters: {'q': q});
       setState(() => _userResults = (resp.data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList());
-    } catch (_) {
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('유저 검색 실패: $e')));
     } finally {
       if (mounted) setState(() => _searchingUser = false);
     }
@@ -717,13 +749,17 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
 
   Future<void> _searchAcademies() async {
     final q = _academyQueryCtrl.text.trim();
-    if (q.isEmpty) return;
-    setState(() => _searchingAcademy = true);
+    if (q.isEmpty) {
+      setState(() { _academyResults = []; _academySearchAttempted = false; });
+      return;
+    }
+    setState(() { _searchingAcademy = true; _academySearchAttempted = true; });
     try {
       final dio = ref.read(adminDioProvider);
       final resp = await dio.get('/academies', queryParameters: {'name': q});
       setState(() => _academyResults = (resp.data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList());
-    } catch (_) {
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('학원 검색 실패: $e')));
     } finally {
       if (mounted) setState(() => _searchingAcademy = false);
     }
@@ -788,13 +824,18 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
               onDeleted: () => setState(() => _selectedUser = null),
             ),
           )
-        else
+        else if (_userResults.isNotEmpty)
           ..._userResults.map((u) => ListTile(
                 dense: true,
                 title: Text(u['nickname'] ?? '-'),
                 subtitle: Text('${u['school_name'] ?? '-'} ${u['grade'] ?? ''}학년'),
                 onTap: () => setState(() { _selectedUser = u; _userResults = []; }),
-              )),
+              ))
+        else if (_userSearchAttempted && !_searchingUser)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('검색 결과가 없습니다', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ),
         const Divider(height: 28),
         Text('2. 학원 선택', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 6),
@@ -822,13 +863,18 @@ class _ManualNudgePaneState extends ConsumerState<_ManualNudgePane> with Automat
               onDeleted: () => setState(() => _selectedAcademy = null),
             ),
           )
-        else
+        else if (_academyResults.isNotEmpty)
           ..._academyResults.map((a) => ListTile(
                 dense: true,
                 title: Text(a['name'] ?? '-'),
                 subtitle: Text(a['address'] ?? '-'),
                 onTap: () => setState(() { _selectedAcademy = a; _academyResults = []; }),
-              )),
+              ))
+        else if (_academySearchAttempted && !_searchingAcademy)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('검색 결과가 없습니다', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ),
         const SizedBox(height: 20),
         if (_resultMsg != null)
           Padding(
