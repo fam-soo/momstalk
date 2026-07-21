@@ -1,7 +1,7 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://momstalk.vercel.app/sitemap.xml
+Sitemap: https://momstalk.co.kr/sitemap.xml
 
 # 로그인 필요 콘텐츠 / 사용자 개인정보 관련 화면 — 크롤링 금지
 Disallow: /profile/
@@ -10,6 +10,5 @@ Disallow: /notifications/
 Disallow: /admin/
 Disallow: /auth/
 
-# 게시글·후기 등 사용자 작성 콘텐츠 상세 페이지 — 무단 스크래핑 방지
+# 게시글 상세는 로그인해야 열람 가능 — 크롤링 금지
 Disallow: /board/
-Disallow: /academy/
