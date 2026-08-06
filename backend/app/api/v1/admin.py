@@ -3,6 +3,7 @@
 
 인증: 일반 유저 JWT + users.is_admin = true
 """
+import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, or_, cast, String
 
+from app.core.config import settings
 from app.db import get_service_db
 from app.models.service_models import (
     Academy,
@@ -1412,5 +1414,56 @@ async def backfill_academy_school_types(
         "target_count": len(rows),          # target_school_types가 비어있던 학원 수
         "detected_count": detected,         # 이름에서 학교급을 추론할 수 있었던 수
         "unresolved_count": len(rows) - detected,  # 여전히 불명(null)으로 남는 수 — 필터에서 제외되지 않음
+        "dry_run": dry_run,
+    }
+
+
+# 위 정규식 백필로도 못 잡은 학원명을 Gemini로 "분류"(새 사실 생성 아님 — 이름 텍스트만
+# 근거로 초/중/고 중 어디인지 판단, 확신 없으면 반드시 불명으로 응답하도록 강제)해서
+# 보강한다. limit으로 1회 호출당 처리량을 제한해 Render 요청 타임아웃을 피하고,
+# 여러 번 나눠 호출하면 된다(매번 "아직 불명인 것"만 다시 골라오므로 중복 처리 없음).
+@router.post("/academies/backfill-school-types-ai")
+async def backfill_academy_school_types_ai(
+    dry_run: bool = Query(True, description="true면 반영 없이 건수만 확인"),
+    limit: int = Query(200, ge=1, le=1000, description="이번 호출에서 처리할 최대 학원 수"),
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    if not settings.GOOGLE_API_KEY:
+        raise HTTPException(status_code=400, detail="GOOGLE_API_KEY가 설정되어 있지 않습니다.")
+
+    rows = (await db.execute(
+        select(Academy).where(Academy.target_school_types.is_(None)).limit(limit)
+    )).scalars().all()
+    if not rows:
+        return {"target_count": 0, "detected_count": 0, "unresolved_count": 0, "dry_run": dry_run}
+
+    batch_size = academy_level_detect.CLASSIFY_BATCH_SIZE
+    chunks = [rows[i:i + batch_size] for i in range(0, len(rows), batch_size)]
+
+    # 동시 호출 수를 제한해 API rate limit을 피한다.
+    semaphore = asyncio.Semaphore(3)
+
+    async def _classify_chunk(chunk: list[Academy]) -> list[list[str]]:
+        async with semaphore:
+            return await academy_level_detect.classify_batch([a.name for a in chunk])
+
+    results = await asyncio.gather(*[_classify_chunk(c) for c in chunks])
+
+    detected = 0
+    for chunk, levels_list in zip(chunks, results):
+        for academy, levels in zip(chunk, levels_list):
+            if levels:
+                detected += 1
+                if not dry_run:
+                    academy.target_school_types = levels
+
+    if not dry_run:
+        await db.commit()
+
+    return {
+        "target_count": len(rows),
+        "detected_count": detected,
+        "unresolved_count": len(rows) - detected,
         "dry_run": dry_run,
     }
