@@ -68,7 +68,10 @@ async def generate_comparison(child_summary: dict, results: list) -> str | None:
 
     실패 시 None — 호출부에서 그대로 무시하고 기존 match_reasons만 노출한다.
     """
-    if not settings.GOOGLE_API_KEY or not results:
+    if not settings.GOOGLE_API_KEY:
+        logger.warning("academy AI comparison skipped: GOOGLE_API_KEY not configured")
+        return None
+    if not results:
         return None
 
     candidates = [_candidate_payload(r) for r in results[:_MAX_CANDIDATES]]
@@ -76,6 +79,8 @@ async def generate_comparison(child_summary: dict, results: list) -> str | None:
 
     try:
         text = await asyncio.wait_for(asyncio.to_thread(_call_gemini_sync, prompt), timeout=10)
+        if not text:
+            logger.warning("academy AI comparison returned empty text")
         return text or None
     except Exception as e:
         logger.warning("academy AI comparison failed: %s", e)
