@@ -197,10 +197,16 @@ async def search_academies(
                 *name_kw_filters,
             ))
         filters.append(sa.or_(*subject_filters))
+    # 주의: Academy.school_type은 NEIS 원본 REALM_SC_NM(학원 "계열명" — 보습/예능/
+    # 국제화(어학) 등)을 그대로 저장한 값이라 "초등학교"/"중학교"/"고등학교" 문자열이
+    # 애초에 들어가지 않는다. 이 필터를 hard filter로 걸면 school_level을 선택한
+    # 검색이 거의 항상 0건이 된다(2026-08 확인) — 아래에서 결과 0건이면 이 필터만
+    # 빼고 재시도하는 소프트 필터로 처리한다.
+    school_level_filter = None
     if school_level:
         level_map = {"초등": "초등학교", "중등": "중학교", "고등": "고등학교"}
         mapped = level_map.get(school_level, school_level)
-        filters.append(Academy.school_type.ilike(f"%{mapped}%"))
+        school_level_filter = Academy.school_type.ilike(f"%{mapped}%")
     if learning_goals:
         # 선택한 학습 목표 중 하나라도 커리큘럼에 포함되면 표시 (OR 조건)
         filters.append(sa.or_(*[
@@ -238,12 +244,12 @@ async def search_academies(
         .scalar_subquery()
     )
 
-    result = await db.execute(
-        select(
+    def _build_query(extra_filters: list) -> sa.Select:
+        return select(
             Academy,
             user_review_subq.label("user_review_count"),
             has_seed_subq.label("seed_count"),
-        ).where(*filters).order_by(
+        ).where(*extra_filters).order_by(
             # 숫자로 시작하는 이름은 맨 뒤
             sa.case((Academy.name.op("~")(r"^[0-9]"), 1), else_=0).asc(),
             # 후기 많은 것, 별점 높은 것 우선
@@ -252,8 +258,12 @@ async def search_academies(
             # 이름 가나다 순
             Academy.name.asc(),
         ).limit(limit or 10000)
-    )
-    rows = result.all()
+
+    rows = []
+    if school_level_filter is not None:
+        rows = (await db.execute(_build_query([school_level_filter, *filters]))).all()
+    if not rows:
+        rows = (await db.execute(_build_query(filters))).all()
     academies = [(academy, urc, sc) for academy, urc, sc in rows]
 
     # DB에 결과 없을 때만 NEIS에서 추가 데이터 가져오기
@@ -804,13 +814,17 @@ async def recommend_academies(user: User, req: RecommendationRequest, db: AsyncS
     )
 
     filters = []
-    # 미취학은 학원 school_type이 특정 학교급으로 좁혀지지 않은 경우가 많아
-    # (유아 대상 학원은 school_type이 비어있거나 다양함) 필터를 적용하지 않고,
-    # 초/중/고는 자녀 학교급과 일치하는 학원만 추천한다.
+    # 주의: Academy.school_type은 NEIS 원본 REALM_SC_NM(학원 "계열명" — 보습/예능/
+    # 국제화(어학) 등)을 그대로 저장한 값이라 "초등학교"/"중학교"/"고등학교" 같은
+    # 문자열이 애초에 들어가지 않는다. 즉 아래 school_type_filter는 실질적으로
+    # 거의 항상 0건이 되는 깨진 필터다(2026-08 확인) — 근본적으로는 NEIS 데이터에
+    # 학원의 대상 학교급 정보 자체가 없어 정확한 필터링이 불가능하다. 데이터가
+    # 보강되기 전까지는 "적용해서 0건이면 필터 없이 재시도"하는 소프트 필터로 둔다.
+    school_type_filter = None
     if child.school_type and child.school_type != "preschool":
         mapped = _ACADEMY_SCHOOL_TYPE_LABEL.get(child.school_type)
         if mapped:
-            filters.append(Academy.school_type.ilike(f"%{mapped}%"))
+            school_type_filter = Academy.school_type.ilike(f"%{mapped}%")
     if regions:
         if len(regions) == 1:
             filters.append(Academy.region.ilike(f"%{regions[0]}%"))
@@ -825,7 +839,13 @@ async def recommend_academies(user: User, req: RecommendationRequest, db: AsyncS
         ))
     filters.append(sa.or_(*subject_filters))
 
-    academies = (await db.execute(select(Academy).where(*filters).limit(300))).scalars().all()
+    academies = []
+    if school_type_filter is not None:
+        academies = (
+            await db.execute(select(Academy).where(school_type_filter, *filters).limit(300))
+        ).scalars().all()
+    if not academies:
+        academies = (await db.execute(select(Academy).where(*filters).limit(300))).scalars().all()
     if not academies:
         return RecommendationResponse(results=[])
 
