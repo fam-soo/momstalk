@@ -22,6 +22,11 @@ class Settings(BaseSettings):
 
     NEIS_API_KEY: str = ""
 
+    # 학원 추천 결과 상위 후보 AI 비교 설명용 (scripts/summarize_reviews.py와 동일 키 재사용)
+    # 미설정 시 AI 비교 없이 규칙 기반 매칭 이유만 노출 (graceful degradation)
+    GOOGLE_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-3.1-flash-lite"
+
     # 카카오 로그인
     KAKAO_CLIENT_ID: str = ""           # REST API 키
     KAKAO_REDIRECT_URI: str = ""        # 앱 딥링크 (카카오 콘솔 등록 필요)

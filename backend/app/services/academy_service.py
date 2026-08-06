@@ -22,7 +22,7 @@ from app.schemas.academy import (
     RecommendationRequest,
     RecommendationResponse,
 )
-from app.services import neis_service
+from app.services import academy_ai_service, neis_service
 
 _REVIEW_PREVIEW_LEN = 40
 
@@ -999,7 +999,18 @@ async def recommend_academies(user: User, req: RecommendationRequest, db: AsyncS
     results.sort(key=lambda r: r.match_score, reverse=True)
 
     if results:
-        return RecommendationResponse(results=results[:30])
+        top = results[:30]
+        child_summary = {
+            "school_type": child.school_type,
+            "subjects": req.subjects,
+            "homework_tolerance": req.homework_tolerance,
+            "management_need": req.management_need,
+            "desired_style": req.desired_style,
+            "goals": req.goals,
+            "learning_goals": req.learning_goals,
+        }
+        ai_comparison = await academy_ai_service.generate_comparison(child_summary, top)
+        return RecommendationResponse(results=top, ai_comparison=ai_comparison)
 
     # 조건에 맞는 학원이 하나도 없을 때 — 완전히 빈 화면 대신, 과목만 일치하는
     # 학원을 평점순으로 참고용으로 보여준다("매칭은 안 됐지만 후기 참고해서

@@ -22,6 +22,7 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
   bool _loading = false;
   List<Map<String, dynamic>>? _results;
   bool _isFallback = false;
+  String? _aiComparison;
 
   // 0단계 — 추천 대상 자녀 (필수). 학교급 정보 없이 추천하면 초등학생
   // 자녀에게 고등부 학원이 섞여 나오는 등 결과가 부정확해질 수 있어,
@@ -167,7 +168,15 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
       final data = resp.data as Map<String, dynamic>;
       final list = (data['results'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
       final isFallback = data['is_fallback'] as bool? ?? false;
-      if (mounted) setState(() { _results = list; _isFallback = isFallback; _step = 6; });
+      final aiComparison = data['ai_comparison'] as String?;
+      if (mounted) {
+        setState(() {
+          _results = list;
+          _isFallback = isFallback;
+          _aiComparison = aiComparison;
+          _step = 6;
+        });
+      }
     } on DioException catch (e) {
       if (mounted) {
         final detail = e.response?.data is Map ? e.response?.data['detail'] as String? : null;
@@ -503,6 +512,31 @@ class _AcademyRecommendScreenState extends ConsumerState<AcademyRecommendScreen>
       else
         const InfoBanner(
           text: '이 추천은 학부모님들의 후기를 바탕으로 계산돼요. 마음에 드는 학원을 이용해보셨다면 후기를 남겨주세요 — 다음 추천이 더 정확해져요!',
+        ),
+      if (!_isFallback && _aiComparison != null && _aiComparison!.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.deepPurple.shade50,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.deepPurple.shade100),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(Icons.auto_awesome, size: 16, color: Colors.deepPurple.shade400),
+                const SizedBox(width: 6),
+                Text('AI 비교 요약', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.deepPurple.shade400)),
+              ]),
+              const SizedBox(height: 6),
+              Text(_aiComparison!, style: const TextStyle(fontSize: 13, height: 1.5)),
+              const SizedBox(height: 4),
+              Text('수집된 학원 정보를 바탕으로 AI가 정리했어요 (실제 이용 후기 아님)',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            ]),
+          ),
         ),
       Expanded(
         child: ListView.separated(

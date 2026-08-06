@@ -177,3 +177,6 @@ class RecommendationResponse(BaseModel):
     # True면 조건에 딱 맞는 학원이 없어서, 과목만 일치하는 학원을 평점순으로
     # 대신 보여주는 상태 — match_score는 참고용 순위일 뿐 실제 매칭도가 아님
     is_fallback: bool = False
+    # 상위 후보에 대한 AI 비교 서술(있는 구조화 데이터만 근거로 생성, 새 사실 생성 없음).
+    # GOOGLE_API_KEY 미설정이거나 생성 실패 시 None — 프론트는 없으면 기존 match_reasons만 표시.
+    ai_comparison: Optional[str] = None
