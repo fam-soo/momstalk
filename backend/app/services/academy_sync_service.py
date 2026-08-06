@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import SessionLocal
 from app.models.service_models import Academy
+from app.services import academy_level_detect
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,9 @@ async def _upsert_rows(db: AsyncSession, rows: list[dict]) -> tuple[int, int]:
         phone     = (row.get("ACA_PONE_NO") or "").strip()
         # LE_ORD_NM은 "보통교과","예체능" 같은 계열명이라 과목명으로 부적합 → 이름 감지만 사용
         subjects = _detect_subjects(name)
+        # school_type(REALM_SC_NM, 계열명)은 학교급 정보가 아니라서 이름에서 별도로
+        # 추론한다 — academy_level_detect.py 참고. 근거 없으면 빈 리스트(=불명, 필터에서 통과).
+        target_school_types = academy_level_detect.detect_school_types(name)
 
         if not name:
             continue
@@ -153,6 +157,9 @@ async def _upsert_rows(db: AsyncSession, rows: list[dict]) -> tuple[int, int]:
                     changed = True
                 if phone and not existing.phone:
                     existing.phone = phone
+                    changed = True
+                if target_school_types and not existing.target_school_types:
+                    existing.target_school_types = target_school_types
                     changed = True
                 if changed:
                     updated += 1
@@ -179,6 +186,7 @@ async def _upsert_rows(db: AsyncSession, rows: list[dict]) -> tuple[int, int]:
             address=address,
             phone=phone,
             subjects=subjects,
+            target_school_types=target_school_types or None,
             review_count=0,
             avg_rating=None,
             is_b2b=False,

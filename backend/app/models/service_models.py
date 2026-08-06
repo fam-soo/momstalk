@@ -480,6 +480,13 @@ class Academy(Base):
     # 시설(복수, 오늘학교 "시설 및 편의사항"에서 채워짐 — 변별력 낮은 항목은 제외):
     # ["자습실 제공", "설명회 진행", "스터디 모임 있음"] (셔틀버스는 shuttle_bus로 별도 저장)
     facilities = Column(JSONB, nullable=True)
+    # 학원이 실제로 다루는 대상 학교급(복수 가능): ["elementary", "middle", "high"].
+    # school_type과는 별개 필드 — school_type은 NEIS REALM_SC_NM(학원 계열명: 보습/
+    # 예능/국제화 등)을 그대로 저장한 값이라 학교급 정보가 아니다(2026-08 확인,
+    # academy_service.py의 school_type ilike 필터가 항상 0건이던 버그의 원인).
+    # 학원명/후기의 학년 언급에서 추론해 채우며, 근거가 없으면 null(=학교급 무관/불명 —
+    # 필터에서 제외하지 않고 통과시킴). app/services/academy_level_detect.py 참고.
+    target_school_types = Column(JSONB, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
