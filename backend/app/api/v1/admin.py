@@ -27,7 +27,7 @@ from app.models.service_models import (
     UserChild,
     UserWarning,
 )
-from app.services import capture_service
+from app.services import academy_level_detect, capture_service
 from app.services.school_unlock_service import get_unlock_status
 from app.api.deps import get_current_user
 
@@ -1380,4 +1380,37 @@ async def list_admin_logs(
             }
             for log in logs
         ],
+    }
+
+
+# ── 학원 대상 학교급 백필 (2026-08, 일회성 — target_school_types 컬럼 추가에 따른 기존 행 보정) ──
+# Render Shell에서 scripts/backfill_academy_school_types.py를 직접 실행하기 번거로워서
+# (backend/scripts/는 .gitignore 대상이라 서버에 배포되지 않음) 관리자 API로 대체 제공.
+# Swagger UI(/docs)에서 관리자 로그인 후 바로 실행 가능.
+@router.post("/academies/backfill-school-types")
+async def backfill_academy_school_types(
+    dry_run: bool = Query(True, description="true면 반영 없이 건수만 확인"),
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_service_db),
+):
+    rows = (await db.execute(
+        select(Academy).where(Academy.target_school_types.is_(None))
+    )).scalars().all()
+
+    detected = 0
+    for a in rows:
+        levels = academy_level_detect.detect_school_types(a.name)
+        if levels:
+            detected += 1
+            if not dry_run:
+                a.target_school_types = levels
+
+    if not dry_run:
+        await db.commit()
+
+    return {
+        "target_count": len(rows),          # target_school_types가 비어있던 학원 수
+        "detected_count": detected,         # 이름에서 학교급을 추론할 수 있었던 수
+        "unresolved_count": len(rows) - detected,  # 여전히 불명(null)으로 남는 수 — 필터에서 제외되지 않음
+        "dry_run": dry_run,
     }
